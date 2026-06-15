@@ -20,6 +20,9 @@ snippets. Do not treat a zero exit code as enough.
   proposing `sbatch`.
 - For `Queued_or_running`, monitor with `squeue`/`sacct`; do not edit active-run
   scripts or resubmit without confirmation.
+- If `squeue`/`sacct` are unavailable but the newest log has a job ID/start line
+  without a terminal marker, keep the state at `Queued_or_running`/unknown instead
+  of validating older outputs.
 - For `Failed`, run `scripts/slurm_failure_triage.sh --jobid <id>` or `--err <file>`
   before changing resources.
 - For `Complete_unvalidated`, run result acceptance checks before any biological
@@ -56,6 +59,10 @@ snippets. Do not treat a zero exit code as enough.
 ## Resource-estimation checklist
 
 - Tool mode is identified, not just the tool name.
+- For generated workflows, generator warnings are reviewed before the generated
+  stage scripts are executed.
+- For KMERIA/k-mer GWAS, count output format is confirmed to be compatible with the
+  matrix-construction stage before scaling beyond a pilot.
 - Input scale evidence is recorded: file sizes, `.fai`, sample count, database size,
   or previous `sacct`.
 - Parallelism is classified: single-threaded, moderate, strong, memory-bound, or
@@ -78,6 +85,8 @@ snippets. Do not treat a zero exit code as enough.
 - Inputs, outputs, tools, and versions are echoed or logged.
 - Job name, partition, CPU, memory, array range, and array concurrency are reported.
 - No active `rm -rf` pattern is present unless the user explicitly approved it.
+- No unguarded display-only pipe to `head` is present under `set -euo pipefail`.
+- Stage wrappers keep full stderr/time logs, not only filtered `error` lines.
 - No write-like command targets `/data9/home/qgzeng/data/` or
   `/data9/home/qgzeng/tools/`.
 - User confirmation is obtained before `sbatch`, resubmission, `scancel`, high-memory,
@@ -94,6 +103,11 @@ snippets. Do not treat a zero exit code as enough.
   force long bioinformatics work to stop.
 - For OOM, compare `MaxRSS` to requested memory and adjust only with evidence.
 - For format or naming errors, validate a small explicit subset before rerunning.
+- For exit code 13/141, empty `.err`, or logs ending at a harmless preview command,
+  inspect unguarded `| head`/pipefail patterns before changing resources.
+- For KMERIA failures, distinguish count-stage input/tool failures from `count` to
+  `kctm` format incompatibility; do not resubmit the same stage order when the
+  wrapper already warned about incompatible formats.
 - Ask before resubmitting or changing concurrency.
 
 ## Result acceptance checklist

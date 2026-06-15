@@ -183,8 +183,8 @@ slurm_script_files="$(
 slurm_script_count="$(printf '%s\n' "$slurm_script_files" | count_lines)"
 
 failure_pattern='(OUT_OF_MEMORY|Out Of Memory|oom-kill|oom_kill|Cannot allocate memory|DUE TO TIME LIMIT|TIMEOUT|No such file or directory|cannot stat|command not found|ModuleNotFoundError|ImportError|Permission denied|Operation not permitted|Segmentation fault|core dumped|No space left on device|Disk quota exceeded|format error|invalid format|chromosome.*not found|contig.*not found|Traceback|FAILED|CANCELLED)'
-completion_pattern='(Job completed|Job finished|Finished successfully|completed successfully|normal completion|All done|Done\.?$|SUCCESS)'
-start_pattern='(Job started|Submitted batch job|SLURM_JOB_ID|Job ID:)'
+completion_pattern='(Job completed|Job finished|Finished successfully|normal completion|All done|Done\.?$|PILOT DONE|WORKFLOW DONE|Pipeline completed|Analysis completed)'
+start_pattern='(Job started|Submitted batch job|SLURM_JOB_ID|Job ID:|host=.*job=[0-9]+|(^|[[:space:]])job=[0-9]+)'
 
 failure_evidence="$(
     while IFS= read -r file; do
@@ -244,6 +244,17 @@ fi
 sacct_failed_evidence="$(printf '%s\n' "$sacct_evidence" | grep -Ei '(^|[|])(FAILED|TIMEOUT|OUT_OF_MEMORY|NODE_FAIL|CANCELLED)([|]|$)' | head -n 5 || true)"
 queue_active_evidence="$(printf '%s\n' "$queue_evidence" | grep -Ei '[|](PENDING|RUNNING|CONFIGURING|COMPLETING)[|]' | head -n 5 || true)"
 
+incomplete_run_evidence="$(
+    while IFS= read -r file; do
+        [[ -n "$file" && -r "$file" ]] || continue
+        [[ "$file" =~ \.(out|log)$ ]] || continue
+        tail_block="$(tail -n 240 "$file" 2>/dev/null || true)"
+        printf '%s\n' "$tail_block" | grep -Eiq -- "$completion_pattern|$failure_pattern" && continue
+        match="$(printf '%s\n' "$tail_block" | grep -Eim 1 -- "$start_pattern" || true)"
+        [[ -n "$match" ]] && { printf '%s: %s\n' "$file" "$match"; break; }
+    done < <(recent_files 12 logs reports)
+)"
+
 status_file="reports/workflow_status.tsv"
 validation_evidence=""
 latest_status_row=""
@@ -297,6 +308,12 @@ fi
 if [[ -n "$queue_active_evidence" ]]; then
     evidence="$(printf '%s\n' "$queue_active_evidence" | first_nonempty)"
     add_candidate "Queued_or_running" "Running" "$evidence" "Monitor with squeue/sacct and bounded log tails; do not edit or resubmit active work."
+elif [[ -n "$incomplete_run_evidence" && -n "$job_ids" ]]; then
+    if [[ "$check_queue" -eq 1 && -z "$queue_evidence" && -z "$sacct_evidence" ]]; then
+        add_candidate "Queued_or_running" "Queue_state_unknown" "$incomplete_run_evidence" "Queue/accounting evidence is unavailable; retry squeue/sacct or inspect the newest log before validation or edits."
+    else
+        add_candidate "Queued_or_running" "Needs_monitoring" "$incomplete_run_evidence" "Check squeue/sacct for the discovered job ID before changing scripts."
+    fi
 elif [[ -n "$start_evidence" && -z "$completion_evidence" && -z "$failure_evidence" && -n "$job_ids" ]]; then
     evidence="$(printf '%s\n' "$start_evidence" | first_nonempty)"
     add_candidate "Queued_or_running" "Needs_monitoring" "$evidence" "Check squeue/sacct for the discovered job ID before changing scripts."
@@ -304,12 +321,12 @@ fi
 
 if [[ "$result_count" -gt 0 && -n "$validation_evidence" ]]; then
     add_candidate "Analysis_ready" "Validated" "$status_file" "Proceed to plotting, reporting, or biological interpretation using validated evidence."
-elif [[ "$result_count" -gt 0 && -n "$completion_evidence" ]]; then
+elif [[ "$result_count" -gt 0 && -n "$completion_evidence" && -z "$incomplete_run_evidence" ]]; then
     evidence="$(printf '%s\n' "$completion_evidence" | first_nonempty)"
     add_candidate "Complete_unvalidated" "Needs_validation" "$evidence" "Run result acceptance checks before biological interpretation."
 fi
 
-if [[ "$slurm_script_count" -gt 0 && -z "$completion_evidence" && -z "$failure_evidence" ]]; then
+if [[ "$slurm_script_count" -gt 0 && -z "$completion_evidence" && -z "$failure_evidence" && -z "$incomplete_run_evidence" ]]; then
     evidence="$(printf '%s\n' "$slurm_script_files" | first_nonempty)"
     add_candidate "Script_ready" "Needs_preflight" "$evidence" "Run scripts/slurm_preflight.sh --script <file>; ask before sbatch."
 fi
@@ -366,9 +383,14 @@ if [[ "$evidence_path" == *:* && -e "${evidence_path%%:*}" ]]; then
 fi
 [[ -n "$evidence_path" ]] || evidence_path="NA"
 
+row_job_id="$first_job_id"
+if [[ "$primary_evidence" =~ ([0-9]{4,}) ]]; then
+    row_job_id="${BASH_REMATCH[1]}"
+fi
+
 printf '[INFO] Recommended_minimal_next_action: %s\n' "$primary_next"
 printf '[INFO] Suggested reports/workflow_status.tsv row (not written)\n'
 printf 'Stage\tStatus\tEvidence_Path\tJob_ID\tExit_Code\tInput_Path\tOutput_Path\tNext_Action\tUpdated_Time\n'
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$primary_stage" "$primary_status" "$evidence_path" "$first_job_id" "$first_exit_code" \
+    "$primary_stage" "$primary_status" "$evidence_path" "$row_job_id" "$first_exit_code" \
     "$first_input" "$first_output" "$primary_next" "$(date +%Y-%m-%dT%H:%M:%S%z)"

@@ -17,6 +17,7 @@ records when available.
 - STAR
 - featureCounts
 - PanGenie
+- KMERIA
 - BLAST, DIAMOND, and HMMER-family searches
 - hifiasm
 - Juicer and 3D-DNA
@@ -357,6 +358,63 @@ and sample-specific operations may dominate.
 - using `debug` for full production batches
 - uncapped arrays on memory-heavy stages
 - resubmitting failed samples without reading `.err` and MaxRSS
+
+## KMERIA
+
+**Typical use:** k-mer based GWAS or genotype/phenotype association workflows built
+from renamed FASTQ inputs, k-mer counting, matrix construction, filtering, format
+conversion, and association testing.
+
+**Parallelism:** stage-dependent. `kmeria count` can use threads per sample, but
+the useful thread count must be measured because FASTQ I/O and k-mer table writes
+can dominate. Matrix construction and association stages may have different CPU,
+memory, and disk behavior; do not extrapolate from the count stage alone.
+
+**Memory and disk drivers:**
+
+- sample count and read depth
+- k-mer size and min/max abundance filters
+- whether count output is binary/text, KMERIA native, or KMC-compatible
+- matrix-construction format and compression
+- temporary count tables and filtered/BIMBAM outputs
+- phenotype/sample order consistency
+
+**Starting points:**
+
+- install/CLI smoke test: login-safe only for `command -v`, `--version`, and tiny
+  metadata checks; no FASTQ streaming on a login/admin node
+- one-sample count benchmark: SLURM debug or normal, 4/8/16-thread comparison, full
+  stderr/time log retained
+- end-to-end pilot: small sample subset only after confirming count output can be
+  consumed by matrix construction; request disk headroom and record per-stage sizes
+- full sample set: split count by sample/batch with a conservative array cap; size
+  matrix, filtering, and association stages from pilot evidence before submission
+
+**Preflight checks:**
+
+- verify renamed FASTQ symlinks with explicit manifests; do not write into raw-data
+  directories
+- preserve sample order from count through matrix, phenotype, and association files
+- use long flags for Perl wrapper options when short flags have known collisions
+- run generation-only or inspect wrapper output before executing generated stages
+- treat wrapper text such as `IMPORTANT NOTE`, `kctm step currently expects KMC`,
+  or `count output to KMC format` as a blocker until the format path is resolved
+- keep full `kmeria count` stderr/time logs; failures may not include the literal
+  word `error`
+- avoid `rm -rf` cleanup of pilot/results directories; use a job-ID run directory or
+  explicit user-confirmed cleanup
+
+**Red flags:**
+
+- `kmeria count` outputs are fed directly to `kctm` after a wrapper warning that the
+  formats are incompatible
+- a pilot rerun deletes the previous failed evidence directory
+- `.err` is empty because stage stderr was redirected to a filtered/overwritten time
+  file
+- helper scripts contain `ls ... | head` under `set -euo pipefail`, causing a
+  diagnostic preview to fail the job
+- only count-stage disk/runtime is measured, then the full matrix/association run is
+  scaled without validating downstream stages
 
 ## BLAST, DIAMOND, and HMMER-family searches
 

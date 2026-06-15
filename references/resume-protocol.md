@@ -103,6 +103,8 @@ Bounded manual evidence sources:
 - `squeue` shows the job pending, running, configuring, or completing.
 - Logs contain a job start line or job ID without normal completion or failure.
 - `workflow_status.tsv` or handoff notes mark the stage as submitted/running.
+- Queue/accounting checks are unavailable, but the newest run log contains a job ID
+  or start line and lacks a terminal completion/failure marker.
 
 **Forbidden actions**
 
@@ -120,6 +122,7 @@ Bounded manual evidence sources:
 
 - Mistaking empty `tasks.txt` or partial output files for completion.
 - Editing scripts after submission and losing reproducibility of the active job.
+- Letting an older completion message override a newer incomplete run log.
 
 ### Failed
 

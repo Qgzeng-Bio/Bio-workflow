@@ -120,8 +120,12 @@ combined="$(
     printf '[err:%s]\n%s\n' "${err_file:-NA}" "$err_tail"
     printf '[out:%s]\n%s\n' "${out_file:-NA}" "$out_tail"
 )"
+sacct_classification="$sacct_output"
+if printf '%s\n' "$sacct_output" | grep -Eiq '^(sacct: error|slurm_load_jobs error)|Problem talking to the database|slurmdbd:'; then
+    sacct_classification=""
+fi
 classification_text="$(
-    printf '%s\n' "$sacct_output"
+    printf '%s\n' "$sacct_classification"
     printf '%s\n' "$err_tail"
     printf '%s\n' "$out_tail"
 )"
@@ -148,6 +152,18 @@ classify_if_match() {
         minimal_fix="$fix"
     fi
 }
+
+classify_if_match "KMERIA_FORMAT_INCOMPAT" \
+    '(IMPORTANT NOTE:|kctm step currently expects KMC|count output to KMC format|use a different kctm workflow|FAILED: .*kctm_job\.sh|Loading KMERIA: .*_k[0-9]+\.txt)' \
+    "Stop before resubmitting. Resolve the KMERIA count-output versus kctm/matrix input format path, then rerun only from the smallest affected stage."
+
+classify_if_match "KMERIA_COUNT_FAILED" \
+    '(FAIL t=[0-9]+|FAILED: .*count_batch_[0-9]+\.sh|kmeria count.*failed|Initiating k-mer count|Handling file: .*\.f(ast)?q\.gz)' \
+    "Inspect the full kmeria count stderr/time log, validate FASTQ symlink readability and command flags on one sample, then change resources only if the evidence supports it."
+
+classify_if_match "SHELL_PIPEFAIL_SIGPIPE" \
+    '(ExitCode[|=]13:0|[|]13:0|Exit status: 13|Broken pipe|SIGPIPE|signal 13|exit code 141|ExitCode[|=]141:0|[|]141:0)' \
+    "Inspect shell preview pipelines such as 'ls ... | head' under set -euo pipefail; guard diagnostic previews before changing resources or resubmitting."
 
 classify_if_match "OOM" \
     '(OUT_OF_MEMORY|Out Of Memory|oom-kill|oom_kill|Killed process|Cannot allocate memory|exceeded memory)' \
@@ -186,7 +202,7 @@ classify_if_match "NETWORK_PROXY" \
     "Check network/source availability and avoid external proxies for raw-data downloads unless the user explicitly confirms."
 
 if [[ "$failure_type" == "UNKNOWN" ]]; then
-    unknown_match="$(printf '%s\n' "$classification_text" | grep -Eim 1 '(FAILED|CANCELLED|NonZeroExitCode|ExitCode=[1-9]|[|][1-9][0-9]*:)' || true)"
+    unknown_match="$(printf '%s\n' "$classification_text" | grep -Eim 1 '(FAILED|FAIL[[:space:]]+t=|CANCELLED|NonZeroExitCode|ExitCode=[1-9]|[|][1-9][0-9]*:)' || true)"
     if [[ -n "$unknown_match" ]]; then
         severity="UNKNOWN"
         unknown_failure=1

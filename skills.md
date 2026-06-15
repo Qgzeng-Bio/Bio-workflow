@@ -166,6 +166,7 @@ Pick the narrowest route before reading detailed references or writing scripts:
 - **RNA-seq:** read `fastp, FastQC, and MultiQC`, `STAR`, and `featureCounts`; confirm strandedness, paired-end naming, and index reuse.
 - **SNP/INDEL/SV and synteny:** read `bcftools and GATK`, `minimap2`, `SyRI`, and `MUMmer and plotsr`; confirm reference compatibility and chromosome names.
 - **Pangenome/orthology:** read `OrthoFinder`, `PanGenie`, and search-tool cards; estimate database/output growth and array concurrency.
+- **K-mer GWAS / KMERIA:** read the `KMERIA` card; run a format-compatibility pilot before scaling, and treat wrapper warnings about `count`/`kctm` output formats as blockers.
 - **Download:** use section 10 first; avoid `proxychains`, `http_proxy`, `https_proxy`, and `all_proxy` for raw-data downloads unless confirmed.
 - **Plotting/reporting:** use section 12 and the figure checks in `references/validation-checklists.md`.
 
@@ -279,6 +280,13 @@ Use strict shell mode:
 set -euo pipefail
 ```
 
+With `pipefail`, display-only preview pipelines can become real failures. Avoid
+unguarded patterns such as `ls ... | head`, `find ... | head`, or `tool ... | head`
+inside SLURM scripts. If a preview is only diagnostic, guard it with `|| true`, use
+a bounded loop/array, or write the preview so every command in the pipeline can
+complete normally. This is especially important in helper scripts called from an
+sbatch script, because their exit status can fail the whole job.
+
 For SLURM scripts:
 
 - set absolute log paths with `%j_%x.out` and `%j_%x.err`
@@ -289,6 +297,10 @@ For SLURM scripts:
 - write temporary outputs under `tmp/`
 - avoid overwriting existing final outputs unless explicitly confirmed
 - make rerun behavior clear
+- preserve full stderr/time logs for each stage; do not reduce failure evidence to
+  only `grep error` snippets
+- stop after workflow generation if the generator prints an incompatibility warning
+  or tells the user to submit/inspect steps manually
 
 Default SLURM skeleton:
 
@@ -344,7 +356,9 @@ For failures:
 
 1. check `sacct` state, exit code, MaxRSS, and elapsed time
 2. read the matching `.err` and relevant `.out`
-3. classify the failure: missing input, permission, module/env, OOM, TIMEOUT, segfault, disk full, software bug, or biological/data issue
+3. classify the failure: missing input, permission, module/env, OOM, TIMEOUT,
+   segfault, disk full, shell/pipefail error, software format incompatibility, or
+   biological/data issue
 4. propose the smallest justified fix
 5. ask before resubmitting
 

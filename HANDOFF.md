@@ -1,6 +1,140 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-15 — Resume/Preflight review fixes
+Last updated: 2026-06-15 — KMERIA pilot failure feedback
+
+---
+
+## 2026-06-15 — KMERIA pilot 失败反馈回流
+
+### 背景 / 目标
+
+用户在真实项目
+`/data9/home/qgzeng/projects/2-C_quinoa/10-population_structure/4-kmer-GWAS`
+中使用本 skill 从空目录构建 KMERIA workflow，并经历 pilot/benchmark 多次失败重提。目标是只读审查真实日志，把可泛化的问题固化进 `bio-workflow`，不修改该 KMERIA 项目、不重提作业。
+
+### 关键发现
+
+- `845500` 失败根因不是资源：日志明确提示 `kmeria count` 输出格式与 `kctm` 期望的 KMC sorted database 格式不兼容，随后在 `kctm_job.sh` 读取 `*_k31.txt` 时失败。
+- `845510` 快速失败与 `.err` 为空；结合脚本可疑点，`set -euo pipefail` 下的展示型管道（如 `ls ... | head`）会把预览命令变成作业失败风险。
+- `845518` benchmark 失败只输出 `FAIL t=4`，没有字面 `error`；需要保留完整 stderr/time log，不能只 grep `error|invalid`。
+- `project_state_audit.sh --check-queue` 在当前环境无法访问 SLURM accounting 时，曾被旧日志里的“脚本生成成功”误导为 `Complete_unvalidated`；已改为在最新日志未终止时输出 `Queued_or_running / Queue_state_unknown`。
+
+### 已完成变更
+
+- `SKILL.md` / `skills.md`
+  - 新增 K-mer GWAS / KMERIA task route。
+  - 写脚本规则新增：避免未保护的 `| head` 预览管道；保留完整 stage stderr/time log；生成器出现格式不兼容警告时先停下。
+- `references/software-resource-cards.md`
+  - 新增 `KMERIA` 资源卡，覆盖 count/matrix/association 阶段、格式兼容、pilot、磁盘增长、长短参数和重跑风险。
+- `references/validation-checklists.md` / `references/resume-protocol.md`
+  - 增加 KMERIA 格式链路验收、pipefail/preview 管道诊断、SLURM 查询不可用时的保守 resume 规则。
+- `scripts/slurm_preflight.sh`
+  - 新增未保护 `| head` 检查，有风险时 `FAIL`。
+  - 新增 KMERIA wrapper/count/kctm 静态提示。
+  - 将 `kmeria` 加入大计算命令检测。
+- `scripts/slurm_failure_triage.sh`
+  - 新增 `KMERIA_FORMAT_INCOMPAT`、`KMERIA_COUNT_FAILED`、`SHELL_PIPEFAIL_SIGPIPE` 分类。
+  - 修复 sacct/slurmdbd 不可访问时误判为项目权限错误的问题。
+- `scripts/project_state_audit.sh`
+  - 收紧 terminal completion 模式，不再把 “All scripts generated successfully” 或局部 stage 成功当作全流程完成。
+  - 新增最新未终止运行日志检测；队列/accounting 不可用时输出 `Queue_state_unknown`，并让建议 TSV 的 `Job_ID` 跟主证据一致。
+
+### 命令 / 测试结果
+
+已运行：
+
+```bash
+bash -n scripts/project_state_audit.sh
+bash -n scripts/slurm_preflight.sh
+bash -n scripts/slurm_failure_triage.sh
+python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py /data9/home/qgzeng/projects/3-Biotools_create/bio-workflow
+cmp -s SKILL.md skills.md
+rg -n "KMERIA|KMERIA_FORMAT_INCOMPAT|SHELL_PIPEFAIL_SIGPIPE|Queue_state_unknown|pipe-to-head|count output format" SKILL.md skills.md references scripts
+```
+
+真实日志回归：
+
+- `slurm_failure_triage.sh --err logs/km_pilot_845500.err --out logs/km_pilot_845500.out`
+  输出 `Failure_Type: KMERIA_FORMAT_INCOMPAT`。
+- `slurm_failure_triage.sh --err logs/km_bench_845518.err --out logs/km_bench_845518.out`
+  输出 `Failure_Type: KMERIA_COUNT_FAILED`。
+- `slurm_preflight.sh --script scripts/10_pilot.sbatch --mode debug`
+  报出相对日志路径、未保护 `| head`、`rm -rf`，并给出 KMERIA 格式链路 WARN。
+- `project_state_audit.sh --project <KMERIA项目> --max-depth 3 --max-files 1000 --check-queue`
+  在 SLURM 查询不可用时输出 `Queued_or_running / Queue_state_unknown`，证据指向 `logs/km_pilot_845512.out` 和 Job_ID `845512`。
+
+新增 `/tmp/bio-workflow-kmeria-regression/` 夹具：
+
+- `preflight_good.sbatch`: `PASS=15 WARN=0 FAIL=0`。
+- `preflight_bad_head.sbatch`: 仅因 `Unguarded pipe to head` 失败，`FAIL=1`。
+
+### caveats / 注意事项
+
+- 当前只更新 skill，不修改 KMERIA 项目脚本和结果目录，也没有重提/取消任何作业。
+- 当前环境偶发 `sacct`/`squeue` socket 权限错误；audit/triage 已改为保守处理，但真实队列状态仍需在可访问 SLURM 的会话里复查。
+- `SHELL_PIPEFAIL_SIGPIPE` 对 845510 需要 job accounting 或人工脚本上下文；如果只有空 `.err` 和短 `.out`，triage 会保守返回 UNKNOWN。
+
+### 下一步建议
+
+1. 等当前 KMERIA pilot/benchmark 到终态后，再用新版 audit + triage 复查最新日志。
+2. 如要修 KMERIA 项目本身，优先解决 count→kctm 格式兼容，再改 `ls|head`、相对日志路径和 `rm -rf results/pilot`。
+3. 后续可为 KMERIA 增加专门的项目模板或 `scripts/kmeria_preflight.sh`，但应基于这次 pilot 的终态结果再定。
+
+---
+
+## 2026-06-15 — GitHub 发布与 README 同步
+
+### 背景 / 目标
+
+用户确认 GitHub 仓库 `https://github.com/Qgzeng-Bio/Bio-workflow` 用于托管当前 `bio-workflow` skill。目标是把当前 skill 文件发布到远端，并保留远端已有初始 README。
+
+### 已完成变更
+
+- 新增本地文件 `README.md`
+  - 内容来自远端已有 `README.md`：
+    `# Bio-workflow` 和 `bioinformatics workflow`。
+- 使用临时 git 工作副本 `/tmp/bio_workflow_push_repo` 完成发布
+  - 当前项目目录里的 `.git/` 是异常只读空目录，无法原地初始化。
+  - 临时副本包含 `SKILL.md`、`skills.md`、`HANDOFF.md`、`agents/`、`references/`、`scripts/` 和远端 `README.md`。
+- GitHub 远端更新
+  - 首次 skill 提交：`1a423bd Initial bio-workflow skill`。
+  - 合并远端 README 后推送：`599c74f Merge remote-tracking branch 'origin/main'`。
+  - 远端 `main` 已包含 11 个文件：`README.md`、skill 主文件、handoff、agent metadata、3 个 references、3 个 scripts。
+
+### 命令 / 检查
+
+已运行的关键命令：
+
+```bash
+git init -b main
+git add HANDOFF.md SKILL.md skills.md agents references scripts
+git commit -m "Initial bio-workflow skill"
+git remote add origin https://github.com/Qgzeng-Bio/Bio-workflow.git
+git remote set-url origin git@github.com:Qgzeng-Bio/Bio-workflow.git
+git fetch origin
+git merge origin/main --allow-unrelated-histories --no-edit
+git push -u origin main
+git ls-tree -r --name-only origin/main
+```
+
+结论：
+
+- `git push -u origin main` 使用 SSH remote 成功。
+- 远端原本不是完全空仓库，已有 `README.md` 初始提交；已合并保留，没有强推覆盖。
+- 当前工作目录已补回 `README.md`，与远端文件集保持一致。
+
+### caveats / 注意事项
+
+- 当前工作目录 `/data9/home/qgzeng/projects/3-Biotools_create/bio-workflow` 仍不是正常 git repo，因为 `.git/` 是异常只读空目录。
+- 后续若要在当前目录正常 `git status` / `git commit`，建议重新 clone 到新目录，或在可写环境下处理异常 `.git/` 后重新接入远端。
+- `/tmp/bio_workflow_push_repo` 是发布用临时仓库，不是长期维护目录。
+
+### 下一步建议
+
+1. 使用 GitHub 远端作为正式 source of truth。
+2. 找合适时机重新 clone：
+   `git clone git@github.com:Qgzeng-Bio/Bio-workflow.git <new-dir>`。
+3. 若继续在当前目录开发，先解决异常 `.git/`，否则本地无法正常追踪改动。
 
 ---
 

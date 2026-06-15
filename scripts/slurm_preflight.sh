@@ -195,6 +195,21 @@ check_strict_mode() {
     fi
 }
 
+check_pipefail_preview_pipelines() {
+    local match
+    match="$(
+        awk '/^[[:space:]]*#/ { next } { print }' "$script" \
+            | grep -Ei '\|[[:space:]]*head([[:space:]-]|$)' \
+            | grep -Eiv '(\|\|[[:space:]]*true|ALLOW_PIPEFAIL_HEAD)' \
+            | head -n 1 || true
+    )"
+    if [[ -n "$match" ]]; then
+        fail "Unguarded pipe to head can fail under pipefail: $match"
+    else
+        pass "No unguarded pipe-to-head preview pattern"
+    fi
+}
+
 check_protected_paths() {
     local path match write_pattern
     write_pattern='(^|[[:space:];|])(cp|mv|rsync|mkdir|touch|tee|wget|curl|ln|pigz|gzip|bgzip)([[:space:]]|$)|(^|[^<])>>?|--out([^[:alnum:]_-]|$)|--output([^[:alnum:]_-]|$)|--output=|-o[[:space:]]+|-O[[:space:]]+|--prefix|--dir|--tmp|--temp'
@@ -212,7 +227,22 @@ check_protected_paths() {
     done
 }
 
-big_command_pattern='(^|[[:space:]/])(minimap2|bwa|hisat2|STAR|samtools[[:space:]]+sort|hifiasm|orthofinder|braker\.pl|braker|maker|EDTA\.pl|RepeatModeler|RepeatMasker|syri|plotsr|nucmer|delta-filter|show-coords|juicer|3d-dna|run-asm-pipeline|busco|quast|gatk|bcftools|fastp|featureCounts|diamond|blastn|blastp|hmmsearch|hmmscan|cmscan|PanGenie)([[:space:]]|$)'
+check_kmeria_static() {
+    if ! grep_active '(^|[[:space:]/])(kmeria|kmc|gemma|plink)([[:space:]]|$)|kmeria_wrapper\.pl|kctm_job\.sh'; then
+        pass "No KMERIA-specific workflow pattern detected"
+        return
+    fi
+
+    warn "KMERIA workflow detected; confirm count output format is compatible with matrix construction before scaling"
+    if grep_active 'kmeria_wrapper\.pl' && grep_active '(^|[[:space:]])(--step[[:space:]]+all|--step=all)([[:space:]]|$)'; then
+        warn "KMERIA wrapper --step all detected; inspect generation output and treat IMPORTANT NOTE format warnings as blockers"
+    fi
+    if grep_active 'kctm_job\.sh|run_stage[[:space:]]+kctm|(^|[[:space:]/])kctm([[:space:]]|$)'; then
+        warn "KMERIA kctm/matrix stage detected; do not run it after incompatible count-output warnings"
+    fi
+}
+
+big_command_pattern='(^|[[:space:]/])(minimap2|bwa|hisat2|STAR|samtools[[:space:]]+sort|hifiasm|orthofinder|braker\.pl|braker|maker|EDTA\.pl|RepeatModeler|RepeatMasker|syri|plotsr|nucmer|delta-filter|show-coords|juicer|3d-dna|run-asm-pipeline|busco|quast|gatk|bcftools|fastp|featureCounts|diamond|blastn|blastp|hmmsearch|hmmscan|cmscan|PanGenie|kmeria)([[:space:]]|$)'
 
 if [[ -z "$mode" ]]; then
     mode="$(infer_partition || true)"
@@ -248,6 +278,7 @@ else
 fi
 
 check_strict_mode
+check_pipefail_preview_pipelines
 
 if grep_active '(^|[[:space:];])rm[[:space:]]+([^#;]*[[:space:]])?-[[:alnum:]]*r[[:alnum:]]*f|(^|[[:space:];])rm[[:space:]]+([^#;]*[[:space:]])?-[[:alnum:]]*f[[:alnum:]]*r'; then
     fail "Destructive rm -rf pattern found"
@@ -256,6 +287,7 @@ else
 fi
 
 check_protected_paths
+check_kmeria_static
 
 if grep_active '(^|[[:space:]])(proxychains|http_proxy|https_proxy|all_proxy|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY)([[:space:]=]|$)'; then
     warn "External proxy pattern found; do not use proxies for raw-data downloads without confirmation"
