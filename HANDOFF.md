@@ -58,12 +58,12 @@ cmp -s SKILL.md skills.md
 
 - preflight 是抓**常见误操作**的安全网，不是安全沙箱；动态求值类删除无法静态穷尽（见上"不追"）。
 - 项目 `check_quota.sh` 比全局副本多一行 `STATUS=`；`new_env.sh` 仍只在全局。
-- 当前目录 `.git` 异常，本轮所有改动只在本地，尚未推 GitHub `Qgzeng-Bio/Bio-workflow`。
+- 本轮改动已 push 到 GitHub `Qgzeng-Bio/Bio-workflow`（commit `ab6d5bc`，远端 `main`，经临时 clone fast-forward，非强推）；当前目录 `.git` 仍异常，后续 push 仍需走临时 clone 或重新 clone。
 - `codex exec` 的 Stop hook 会自动写 HANDOFF；本会话所有 Codex 复审均加 "REVIEW ONLY" 压住 hook，并快照还原兜底。
 
 ### 下一步
 
-1. 择机把 executor 三件套 + slurm_preflight 深修 push 到 GitHub（需先处理异常 `.git/` 或重新 clone）。
+1. （已完成）executor 三件套 + slurm_preflight 深修已 push（`ab6d5bc`）；本条 HANDOFF 微调将随下次 push 同步到远端。
 2. 视情况把 `check_quota.sh` 的 `STATUS=` 行同步回全局副本。
 3. 真实项目首次用三件套时，把任何误报/漏报最小化成 `/tmp` 夹具再微调。
 
