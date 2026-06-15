@@ -1,6 +1,57 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-15 — Executor 三件套补全（gen_sbatch + submit_and_log + slurm_preflight 深修）
+Last updated: 2026-06-16 — 领域 playbook ×3（survey+assembly / CPhasing scaffolding / finishing）+ 两轮 Codex 复审
+
+---
+
+## 2026-06-16 — 领域 playbook ×3：从真实藜麦流程提炼"生信副驾"大脑
+
+### 背景 / 目标
+
+把 bio-workflow 从"安全运维 harness"往用户初衷"**生信副驾**"拉回:安全层是地基,领域大脑才是
+主角。从用户**真实跑通**的藜麦(异源四倍体 AABB, 2n=4x=36)流程提炼领域 playbook,联网查证关键
+事实,经两轮 Codex 复审后整合进 SKILL.md 任务路由。
+
+### 已完成变更
+
+- 新增 `references/playbook-genome-survey-and-assembly.md`
+  - Read QC(NanoPlot/seqkit）→ k-mer survey(KMC+GenomeScope2 `-p 4` + FastK+Smudgeplot)→
+    hifiasm primary(HiFi-only 铺量 / HiFi+ONT `--ul` 参考级)→ QUAST/BUSCO(eudicots_odb10)/TIDK QC。
+  - 多倍体解读:GenomeScope p4 ≈ 单倍体染色体组(~0.5Gb ≈ 一个亚基因组),primary ≈ 1C 配子(A+B ~1.3Gb);
+    BUSCO 高重复(~94%)是亚基因组、正常;survey 尺寸 ≠ 组装尺寸。降采样 50–70× 为**可选**。
+- 新增 `references/playbook-chromosome-scaffolding-cphasing.md`
+  - CPhasing + Pore-C:`-n` 决策(异源 `-n 18` 折叠 / 同源 `-n 基数:倍性` 相位);酶 HindIII(AAGCTT);
+    Juicebox 人工校正;资源右配(实测峰值 25G,300G 严重过申);**锚定 ~96.9% 入 18 染色体,~303 小 contig 未定位**。
+- 新增 `references/playbook-genome-finishing.md`
+  - RagTag 参考挂载(dotplot + LAI <10/10-20/>20)给无 3C 样本;TGS-GapCloser+ONT **逐 gap 手动填**
+    (切 200kb 窗口→填→拼回;`--racon`/`--ne`/HiFi-contig 跨越;**端粒 = reads/contigs overlap 延伸**,
+    nextdenovo 仅供体来源);NextPolish2+HiFi polish + merqury QV(merged ≈63.2,hap1/hap2 66.9/65.8)。
+- `SKILL.md` / `skills.md`:`Task routing` 新增/改写 3 条路由指向上述 playbook(领域 playbook 当主入口、
+  资源卡退为细节层)。
+
+### 两轮 Codex 复审（只读沙箱,REVIEW ONLY 压 Stop hook,快照还原兜底）
+
+- 端粒措辞先纠正:不是"nextdenovo 延伸端粒",本质是 reads/contigs overlap 延伸。
+- Round 1:0 P1 + 7 P2 + 2 P3 → 全修(gfatools 前缀、CPhasing 子命令标简化、yak R1 用两次警示、
+  QV 归属、端粒 minimap2 方向、18 组 vs 亚基因组、端粒非 T2T、dotplot awk、gap 窗口可加宽)。
+- Round 2:8/9 CLOSED + 又抓 4 个(QV 残留绑定 `Cqu_final.fa`→merged 63.2;anchoring 100%→96.9%;
+  survey cov 静默 fallback 40 危险→改 fail;gap re-splice 坐标重叠会重复 flank→改连续不重叠)→ 全修。
+- Codex 全程实地交叉核对真实 AGP/fai/summary，数字对账。
+
+### 验证 / 命令
+
+```bash
+grep -oE 'playbook-[a-z-]+\.md' SKILL.md   # 3 条路由
+cmp -s SKILL.md skills.md                   # PASS 镜像
+python3 .../quick_validate.py .             # Skill is valid!（需带 yaml 的 python）
+```
+
+### caveats
+
+- 三条流程的真实运行均已确认**跑通**(survey 10/10、CPhasing 100% 完成、finishing scaffold/gap/polish
+  成功);但 Chr04 gap 故意留空、RagTag lm270/lm411 的 LAI 未完成。
+- playbook 是领域知识草稿,部分手动步骤(gap 提取/拼接、`--racon↔--ne` 选择)仍需人工判断。
+- 当前目录 `.git` 异常,改动经临时 clone push。
 
 ---
 

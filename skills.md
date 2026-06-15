@@ -160,8 +160,9 @@ prints a suggested TSV row; write the status file only after user confirmation.
 
 Pick the narrowest route before reading detailed references or writing scripts:
 
-- **Assembly:** inspect explicit read/genome inputs, read `references/software-resource-cards.md` for `hifiasm`, `BUSCO`, and `QUAST`, then plan staged validation.
-- **Hi-C scaffolding:** read the `Juicer and 3D-DNA` card, confirm enzyme/layout, and require contact-map review criteria.
+- **Genome survey & primary assembly (PacBio HiFi ± ONT):** start from `references/playbook-genome-survey-and-assembly.md` — it covers read QC → k-mer survey (genome size / heterozygosity / ploidy) → hifiasm primary assembly → QUAST/BUSCO/telomere QC, with quinoa-specific decisions and acceptance numbers. Use `references/software-resource-cards.md` (`hifiasm`, `BUSCO`, `QUAST`) for per-tool detail and `validation-checklists.md` for the acceptance gates.
+- **Chromosome scaffolding:** for Pore-C / Hi-C / polyploid, start from `references/playbook-chromosome-scaffolding-cphasing.md` (C-Phasing; pick `-n` by allo-/auto-polyploidy; anchoring + contact-map QC + Juicebox curation). For short-read Hi-C via 3D-DNA, read the `Juicer and 3D-DNA` card. Confirm enzyme/layout and require contact-map review criteria.
+- **Genome finishing (reference scaffolding / gap filling / polishing):** read `references/playbook-genome-finishing.md` — RagTag reference-based scaffolding (+ dot-plot & LAI QC) for accessions without 3C; TGS-GapCloser+ONT manual per-gap gap filling; NextPolish2+HiFi polishing with merqury QV. Polishing is optional (whole-genome when ONT was used, or local around filled gaps).
 - **Annotation:** read `BRAKER and MAKER`, `EDTA`, `RepeatModeler`, `BUSCO`, and `validation-checklists.md`; confirm repeat masking and evidence naming.
 - **RNA-seq:** read `fastp, FastQC, and MultiQC`, `STAR`, and `featureCounts`; confirm strandedness, paired-end naming, and index reuse.
 - **SNP/INDEL/SV and synteny:** read `bcftools and GATK`, `minimap2`, `SyRI`, and `MUMmer and plotsr`; confirm reference compatibility and chromosome names.
