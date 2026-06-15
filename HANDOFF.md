@@ -1,6 +1,276 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-15 — KMERIA pilot failure feedback
+Last updated: 2026-06-15 — Executor 三件套补全（gen_sbatch + submit_and_log + slurm_preflight 深修）
+
+---
+
+## 2026-06-15 — Executor 三件套补全：gen_sbatch + submit_and_log（含 slurm_preflight 深修）
+
+### 背景 / 目标
+
+在 `prepare_submission.sh`（提交闸门）基础上把 executor 三件套补齐：前端 `gen_sbatch.sh`
+负责"造 preflight-clean 脚本"，后端 `submit_and_log.sh` 负责"确认后提交 + 记账"，闸门居中。
+分工：生成器/提交器只管 SLURM 信封与安全壳，工具命令交给使用者填。
+
+### 已完成变更
+
+- 新增 `scripts/gen_sbatch.sh`（前端，零确认生成脚本）
+  - 按参数拼 sbatch 骨架：绝对 `%j_%x` 日志、`set -euo pipefail`、`THREADS=${SLURM_CPUS_PER_TASK}`
+    转发、array manifest 读行；normal/fat/fat2/high 默认不加 `--time`（debug 或 `--allow-time` 才加）。
+  - **preflight-by-construction**：生成后先跑 `bash -n` 再跑 `slurm_preflight.sh`，任一不过就不吐脚本。
+  - 校验：log-dir/chdir/out 经 `resolve_safe`（realpath 失效/残留 `..` → fail-closed）后查保护目录；
+    array 须为合法 range/list + `%[1-9][0-9]*`（拒 `foo%4`/`%0`/`:0`）；mem 拒 `0`；`--out` 默认不覆盖。
+- 新增 `scripts/submit_and_log.sh`（后端，确认后提交）
+  - **复用** `prepare_submission.sh` 当最终闸门（不重造检查）。默认 dry-run，只有 `--yes` 才 `sbatch`。
+  - 阻断：NO-GO、缺 `--yes`、record 不可写、脚本指纹自闸门后变化（TOCTOU，sha256/stat，拿不到则 fail-closed）。
+  - 提交后写 `reports/run_record.tsv`（Job_ID/Job_Name/Script/Partition/CPUs/Mem/Array/Submit_Time/User，
+    `whoami` 有 fallback）；**无 `--array` 旗标**（array 必须在脚本里，闸门才看得到）。
+- 深修 `scripts/slurm_preflight.sh`（惠及 preflight / prepare_submission / gen_sbatch 全体）
+  - `rm` 递归+强制检测改 awk token 扫描：认 `-rf`/`-fr`/`-r -f`/`--recursive --force`/`-Rf`/`/bin/rm`，剥行内注释避免误报。
+  - protected 路径检查改为扫**所有**引用行（不再只看首行）；write_pattern 加入 `rm`、`-delete`。
+- `SKILL.md` / `skills.md`：第 6 节加 `gen_sbatch.sh`，第 7 节加 `submit_and_log.sh`。
+
+### Codex 复审（只读沙箱，REVIEW ONLY 压住其 Stop hook）
+
+- 三件套首轮：7 个发现（`--cmd` 注入删保护目录、realpath fail-open、`--array` 绕过闸门、TOCTOU、
+  提交后才记账、生成物无语法检查、array/mem 校验松）→ 全修。
+- 确认轮：6 CLOSED + 5 新发现 → 修了 5 个可行动项（protected 全引用、`-delete`、`:0`、行内注释误报、
+  指纹 fail-closed）。
+- **明确不追**（静态启发式固有极限，非威胁模型）：`$RM -rf` / `bash -c "rm -rf"` / `eval` 等变量间接/
+  动态求值；反向区间 `10-1`（SLURM 提交时自拒）。真正防线是文件系统权限 + 人工确认闸门。
+
+### 命令 / 测试结果
+
+```bash
+bash -n scripts/{slurm_preflight,gen_sbatch,submit_and_log}.sh
+python3 .../quick_validate.py .../bio-workflow   # 需带 yaml 的 python (anaconda3)
+cmp -s SKILL.md skills.md
+```
+
+夹具回归（`/tmp/bio_prepare_sub_fixtures`，`--yes` 全用假 sbatch，**未提交任何真实作业**）：
+
+- gen→gate→submit 闭环：生成物 preflight `PASS=18 FAIL=0` → 闸门 GO → dry-run 显示命令 → `--yes` 假 sbatch 提交 + 记账。
+- 拦截全绿：`rm -r -f /protected`、`/bin/rm -rf`、`find /protected -delete`、先读后写 protected、`--cmd` 引号未闭合、
+  realpath 失效路径、`--conc/%0/:0`、`mem=0`、NO-GO 拒提交、record 不可写拒提交、TOCTOU、`--array` 旗标已删。
+- 无误报：含 `rm` 良性词 / 行内注释 `# rm -rf` 不触发；`good.sbatch` 仍 `PASS=18`。
+
+### caveats / 注意事项
+
+- preflight 是抓**常见误操作**的安全网，不是安全沙箱；动态求值类删除无法静态穷尽（见上"不追"）。
+- 项目 `check_quota.sh` 比全局副本多一行 `STATUS=`；`new_env.sh` 仍只在全局。
+- 当前目录 `.git` 异常，本轮所有改动只在本地，尚未推 GitHub `Qgzeng-Bio/Bio-workflow`。
+- `codex exec` 的 Stop hook 会自动写 HANDOFF；本会话所有 Codex 复审均加 "REVIEW ONLY" 压住 hook，并快照还原兜底。
+
+### 下一步
+
+1. 择机把 executor 三件套 + slurm_preflight 深修 push 到 GitHub（需先处理异常 `.git/` 或重新 clone）。
+2. 视情况把 `check_quota.sh` 的 `STATUS=` 行同步回全局副本。
+3. 真实项目首次用三件套时，把任何误报/漏报最小化成 `/tmp` 夹具再微调。
+
+---
+
+## 2026-06-15 — Executor 闸门 prepare_submission.sh（创建 + 两轮 Codex 复审修复）
+
+### 背景 / 目标
+
+给 `bio-workflow` 补 "executor" 成分：把"提交前靠 agent 自觉逐项检查"固化成一个只读
+"绿灯包"脚本——一条命令跑完 输入 / preflight / array-manifest / 配额 / 覆盖 检查，给出
+GO / NO-GO，并打印未执行的 `sbatch` 命令。它绝不提交；"按提交键"仍是用户确认动作。
+
+### 已完成变更
+
+- 新增 `scripts/prepare_submission.sh`（只读编排闸门）
+  - 编排已有只读 helper：`check_inputs.sh`（输入）→ `slurm_preflight.sh`（SBATCH 规则）→
+    `parallelization_audit.sh`（array 任务数 + manifest 表头）→ `check_quota.sh`（配额 dry-run）
+    → 输出目录 保护/覆盖 检查。
+  - 硬阻断（NO-GO，exit 1）：preflight FAIL、输入缺失/空、manifest 表头、`--output` 落在
+    `/data9/home/qgzeng/data` 或 `/data9/home/qgzeng/tools`、配额超提交上限、`--output` 无法
+    规范化为绝对路径。
+  - WARN（需确认，不拦）：preflight WARN、输出目录非空、配额/表头未知、helper 缺失降级。
+  - 自带 `array_task_count()`（范围/步长/逗号列表，前导零强制十进制）、`audit_col()`（按 TSV
+    表头名取列）。
+  - helper 跨"项目 `scripts/` + 全局 skill `scripts/`"两处查找，缺失即 WARN 降级，绝不挂。
+- 把 `check_inputs.sh`、`check_quota.sh`、`submit_chunked.sh` 拷入项目 `scripts/`，使项目自包含。
+- `check_quota.sh` dry-run 分支新增机器可读状态 `STATUS=SUBMIT_LIMIT_EXCEEDED` / `STATUS=OK`，
+  供 `prepare_submission.sh` 稳定解析（不再依赖中文文案）。
+- `SKILL.md` / `skills.md`：第 7 节 "Preflight before submitting" 新增 `prepare_submission.sh`
+  作为一键提交前闸门入口。
+
+### 两轮 Codex 复审（只读沙箱）→ 11 个问题全部修复
+
+- Round-1（7 个）：protected `--output` 仍判 GO、manifest 表头仍 GO、`--conc 0` 生成非法 `%0`、
+  已有 array 任务数误算、TSV 列号硬编码、配额中文文案匹配、死代码 `n_files`。
+- Round-2（4 个）：表头硬阻断被"脚本自带 array"分支绕过、`array_task_count` 前导零按八进制误算、
+  `audit_col` 缺列 fail-open 默认成无表头、`realpath` 失效时保护路径 fail-open。
+- 全部已修，并夹具回归验证（见下）。
+
+### 命令 / 测试结果
+
+已运行：
+
+```bash
+bash -n scripts/prepare_submission.sh
+bash -n scripts/check_quota.sh
+python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py /data9/home/qgzeng/projects/3-Biotools_create/bio-workflow
+cmp -s SKILL.md skills.md
+```
+
+夹具回归（`/tmp/bio_prepare_sub_fixtures`，只读，未提交任何作业）：
+
+- 干净路径 → 🟢 GO，自动出 `sbatch --array=1-2%2 ...`（未提交）。
+- manifest 表头（含自带 array 的脚本）→ 🔴 NO-GO，表头硬阻断不被绕过。
+- `--conc 0` → exit 2。
+- `--output /data9/home/qgzeng/data | /tools | 相对保护路径` → 🔴 NO-GO。
+- `realpath` 失效 + 相对路径 → 🔴 NO-GO（保守拒绝）；`realpath` 正常 + 相对非保护 → 不误拦。
+- `array_task_count`：`10-20%2→11`、`001-010→10`、`08-10→3`、`1-5,10-20%2→16`、`abc→WARN`。
+- `check_quota.sh -n 2 → STATUS=OK`；`-n 500 → STATUS=SUBMIT_LIMIT_EXCEEDED`。
+
+### caveats / 注意事项
+
+- 项目 `check_quota.sh` 比全局副本多一行 `STATUS=`（向后兼容，无害）；`new_env.sh` 仍只在全局。
+- 当前目录 `.git` 异常，本轮所有改动只在本地，尚未推到 GitHub `Qgzeng-Bio/Bio-workflow`。
+- `codex exec` 的 Stop hook 会自动往 `HANDOFF.md` 写复审记录；本轮已回退它写的两条过时记录，
+  换成本条准确合并记录。再跑 Codex 前需先处理该 hook（禁用或跑完即回退）。
+- `prepare_submission.sh` 是闸门，不提交作业；`sbatch` 仍需用户确认。
+
+### 下一步
+
+1. 补全三件套：`gen_sbatch.sh`（造 preflight-clean 脚本）、`submit_and_log.sh`（确认后提交 + 记账）。
+2. 择机把本轮改动 push 到 GitHub（需先处理异常 `.git/` 或重新 clone）。
+3. 视情况把 `check_quota.sh` 的 `STATUS=` 行同步回全局副本。
+
+---
+
+## 2026-06-15 — Review fixes：protected SBATCH、失败 time log、manifest 表头
+
+### 背景 / 目标
+
+根据整体 review 发现的 3 个内部使用风险做修复：`#SBATCH` 日志路径可绕过 protected path 检查；失败的 `/usr/bin/time -v` 日志会被误用于降 CPU/内存；array manifest 表头可能被当成第一个任务执行。
+
+### 已完成变更
+
+- `scripts/slurm_preflight.sh`
+  - `#SBATCH --output` / `--error` 若指向 `/data9/home/qgzeng/data` 或 `/data9/home/qgzeng/tools`，现在直接 `FAIL`。
+  - 新增 `#SBATCH --chdir` 检查，禁止作业工作目录指向 protected path。
+- `scripts/resource_usage_audit.sh`
+  - 解析 `/usr/bin/time -v` 的 `Exit status`。
+  - 非 0 exit status 分类为 `RUN_FAILED`，`Recommended_CPUs=NA`，提示先 triage，不再给降 CPU/内存建议。
+  - TSV 输出新增 `Exit_Status` 列。
+- `scripts/parallelization_audit.sh`
+  - 检测 manifest 第一条非注释记录是否为 `Sample_ID/Input_1/Chunk_ID` 等表头。
+  - 有表头时任务数自动扣除表头，并在 `Recommended_Action` 中提示默认模板要求无表头。
+  - TSV 输出新增 `Manifest_Header` 列。
+- `assets/slurm-templates/per_sample_array.sbatch` / `per_chunk_array.sbatch`
+  - 增加 manifest 表头 fail-fast 检查，避免把表头当样本或 chunk 跑。
+- `SKILL.md` / `skills.md` / `references/validation-checklists.md`
+  - 同步说明：非 0 time log 不能用于资源下调； bundled array templates 默认使用无表头 manifest；preflight 应检查 SBATCH 日志/chdir protected path。
+
+### 命令 / 测试结果
+
+已运行：
+
+```bash
+bash -n scripts/resource_usage_audit.sh
+bash -n scripts/parallelization_audit.sh
+bash -n scripts/slurm_preflight.sh
+bash -n scripts/project_state_audit.sh
+bash -n scripts/slurm_failure_triage.sh
+python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py /data9/home/qgzeng/projects/3-Biotools_create/bio-workflow
+cmp -s SKILL.md skills.md
+```
+
+关键夹具结果：
+
+- `protected_sbatch_log.sbatch`：`#SBATCH --output=/data9/home/qgzeng/data/%j_%x.out` 被 preflight 阻断，`FAIL=1`。
+- `protected_chdir.sbatch`：`#SBATCH --chdir=/data9/home/qgzeng/tools` 被 preflight 阻断，`FAIL=1`。
+- `failed.time`：`Exit status: 1` 输出 `Classification=RUN_FAILED`、`Recommended_CPUs=NA`。
+- `manifest_with_header.tsv`：`parallelization_audit.sh` 输出 `Estimated_Tasks=2`、`Manifest_Header=1`、`#SBATCH --array=1-2%2`，并提示默认模板要求无表头。
+- 原正常夹具仍通过：`array_ok.sbatch` preflight `PASS=18 WARN=0 FAIL=0`；成功 `pilot_count.time` 仍推荐 `Recommended_CPUs=4`。
+
+### caveats / 注意事项
+
+- 本轮仍未提交、取消或重提任何 SLURM 作业。
+- 这些修复只增强审计和模板保护；正式项目脚本生成或提交仍需用户确认。
+
+---
+
+## 2026-06-15 — 资源反馈闭环与 SLURM array 泛化优化
+
+### 背景 / 目标
+
+上一轮 KMERIA pilot 暴露出一个更通用的问题：脚本可能申请很多 CPU，但实际工具只用到少数 CPU；多个独立样本/文件也可能被写成串行命令。本轮目标是把这个问题固化成 `bio-workflow` 的通用能力：提交前审计 CPU 传递和串行瓶颈，pilot 后用真实 `/usr/bin/time -v` / `sacct` 证据反推更合理的 `--cpus-per-task`、`--mem` 和 SLURM array `%N` 并发上限。
+
+### 已完成变更
+
+- `SKILL.md` / `skills.md`
+  - 新增 `Resource feedback loop`：未知工具先做小 pilot/benchmark，再解析 `Percent of CPU`、`MaxRSS`、walltime 和 SLURM accounting。
+  - 明确判定规则：CPU efficiency `<50%` 视为 `CPU_OVERREQUEST`；4/8/16 线程 walltime 改善 `<15%` 时选接近最快的最小线程数；内存使用 `<35%` 只 WARN，不自动降内存。
+  - 明确独立样本/染色体/文件默认优先用 SLURM array，而不是一个大 CPU 串行 job。
+- `scripts/resource_usage_audit.sh`
+  - 新增只读资源审计脚本。
+  - 输出 TSV：`Requested_CPUs`、`Estimated_Used_CPUs`、`CPU_Efficiency`、`Requested_Mem_GB`、`MaxRSS_GB`、`Mem_Efficiency`、`Classification`、`Recommended_CPUs`、`Recommended_Action`。
+  - 不写 `reports/resource_usage.tsv`，只打印建议。
+- `scripts/parallelization_audit.sh`
+  - 新增只读并行审计脚本。
+  - 检测重复串行大计算命令、循环内大计算、`--cpus-per-task >4` 但未传线程参数。
+  - 输出候选并行单元、估计任务数、推荐 array 结构、每任务 CPU、array `%N` 并发上限和模板路径。
+- `scripts/slurm_preflight.sh`
+  - 增加 WARN：高 CPU 申请但无 `--threads/-t/-p/-@/--cpus` 或 `$SLURM_CPUS_PER_TASK`。
+  - 增加 WARN：多个独立-looking 大计算命令串行执行时，建议运行 `parallelization_audit.sh`。
+  - 保留原 FAIL 逻辑：相对日志、array 无 `%N`、未保护 `| head`、`rm -rf`、保护目录写入等仍为阻断。
+- 新增模板资产
+  - `assets/slurm-templates/per_sample_array.sbatch`
+  - `assets/slurm-templates/per_chunk_array.sbatch`
+  - 模板包含绝对日志路径占位、`%A_%a_%x`、manifest 行读取、每任务独立输出/临时目录、可按失败 array index 单独重跑的结构。
+
+### 命令 / 测试结果
+
+已运行静态检查：
+
+```bash
+bash -n scripts/resource_usage_audit.sh
+bash -n scripts/parallelization_audit.sh
+bash -n scripts/slurm_preflight.sh
+python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py /data9/home/qgzeng/projects/3-Biotools_create/bio-workflow
+cmp -s SKILL.md skills.md
+```
+
+验证结果：
+
+- `quick_validate.py` 输出 `Skill is valid!`。
+- `cmp -s SKILL.md skills.md` 退出 0。
+- 当前目录不是正常 git repo，`git status --short` 返回 `fatal: not a git repository`。
+
+`/tmp/bio_workflow_audit_fixtures/` 夹具测试：
+
+- `cpu_no_forward.sbatch`：preflight 正确 WARN `--cpus-per-task=16` 但未传线程参数。
+- `cpu_forward.sbatch`：使用 `${SLURM_CPUS_PER_TASK}` 后不触发 CPU 未传递 WARN。
+- `serial_multi.sbatch`：8 条串行 `kmeria count` 被 preflight WARN，`parallelization_audit.sh` 推荐 `#SBATCH --array=1-8%2` 和 `assets/slurm-templates/per_sample_array.sbatch`。
+- `array_ok.sbatch`：`#SBATCH --array=1-8%2` 通过 array cap 检查，preflight `PASS=17 WARN=0 FAIL=0`。
+- `pilot_count.time`：`Percent of CPU=306%` + requested CPU 16 解析为 `Estimated_Used_CPUs=3.06`、`CPU_Efficiency=19.1`，分类 `CPU_OVERREQUEST;MEM_OVERREQUEST`，推荐 `Recommended_CPUs=4`。
+- 4/8/16 benchmark 夹具：扩展性差时推荐 4 CPU；8 明显快于 4 且 16 无收益时推荐 8 CPU。
+
+### 当前结论
+
+- 说人话就是：skill 现在不会只看“申请了多少 CPU”，而会追问“工具到底用了多少 CPU”和“样本是不是其实可以 array 跑”。
+- `resource_usage_audit.sh` 负责 pilot 后用真实日志反推资源。
+- `parallelization_audit.sh` 负责提交前找串行瓶颈并给出 array 模板。
+- `slurm_preflight.sh` 负责把明显浪费 CPU 或串行独立任务的问题提前 WARN 出来。
+
+### caveats / 注意事项
+
+- 本轮没有提交、取消或重提任何 SLURM 作业。
+- 本轮没有修改 KMERIA 真实项目脚本、结果目录或 `reports/resource_usage.tsv`。
+- 新审计脚本是启发式工具；它们给出建议，不自动改正式分析脚本，也不自动下调内存。
+- `/tmp/bio_workflow_audit_fixtures/` 是临时测试夹具，不是项目正式数据。
+- array `%N` 推荐仍需结合真实内存、I/O、数据库竞争和当前队列压力人工确认。
+
+### 下一步建议
+
+1. 在真实 KMERIA pilot/benchmark 终态后，用 `scripts/resource_usage_audit.sh --script <sbatch> --time-log <time.log> --stage <name>` 复查资源效率。
+2. 对真实批处理脚本先跑 `scripts/slurm_preflight.sh --script <file>`；若出现串行或 CPU 未传递 WARN，再跑 `scripts/parallelization_audit.sh --script <file> --manifest <manifest.tsv> --mode auto`。
+3. 若用户确认要改真实项目脚本，再基于 `assets/slurm-templates/per_sample_array.sbatch` 生成项目专用 array 脚本；生成和提交必须分开确认。
+4. 如后续要发布到 GitHub，需先处理当前目录异常 `.git/` 或重新 clone 官方远端。
 
 ---
 

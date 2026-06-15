@@ -69,9 +69,13 @@ snippets. Do not treat a zero exit code as enough.
   I/O-bound.
 - Memory estimate names the main driver and includes headroom.
 - CPU request explains why more CPUs would or would not help.
+- Pilot `/usr/bin/time -v` logs have `Exit status: 0` before they are used for CPU
+  or memory down-tuning.
 - Partition follows estimated memory: usually `normal` below 200G; consider `fat` or
   `fat2` at or above 200G after confirmation.
 - Array concurrency has a `%N` cap chosen from memory, disk I/O, and queue pressure.
+- Array manifests for bundled templates are headerless; remove `Sample_ID`/`Chunk_ID`
+  headers or adjust task-line indexing before submission.
 - Expected runtime and disk growth are stated when they may be material.
 - `#SBATCH --time` is absent by default, or its presence is explicitly justified.
 
@@ -80,6 +84,8 @@ snippets. Do not treat a zero exit code as enough.
 - Run `scripts/slurm_preflight.sh --script <file>` before proposing `sbatch`.
 - Script uses strict mode: `set -euo pipefail` or equivalent.
 - Log paths are absolute and include `%j` or `%x`.
+- `#SBATCH --output`, `#SBATCH --error`, and `#SBATCH --chdir` do not target protected
+  raw-data or tool directories.
 - Output directories are explicit and overwrite behavior is known.
 - Temporary directories are project-local and sized for the tool.
 - Inputs, outputs, tools, and versions are echoed or logged.

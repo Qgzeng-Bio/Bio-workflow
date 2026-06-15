@@ -251,6 +251,47 @@ Examples to remember:
 
 When uncertain, propose a small pilot or benchmark before the full run.
 
+### 4.1 Resource feedback loop
+
+Unknown or poorly characterized tools must go through a feedback loop before the
+full run:
+
+1. Run a small pilot or benchmark with `/usr/bin/time -v` and preserved stderr.
+2. After completion, parse both SLURM accounting and time logs:
+
+   ```bash
+   scripts/resource_usage_audit.sh --script <slurm_script> --jobid <jobid> --time-log <stage.time.log> --stage <stage_name>
+   ```
+
+3. Use observed `Percent of CPU`, `MaxRSS`, and walltime to choose the next
+   `--cpus-per-task`, `--mem`, and array `%N` cap. Do not keep high CPU requests
+   just because the original template used them.
+
+Decision rules:
+
+- If `Estimated_Used_CPUs ~= PercentCPU / 100` is far below requested CPUs, reduce
+  the next CPU request toward the measured effective CPU count.
+- If `/usr/bin/time -v` reports non-zero `Exit status`, do not use that log to
+  down-tune resources. Triage the failure first.
+- If requested CPUs are `> 4` and CPU efficiency is `< 50%`, treat the job as
+  `CPU_OVERREQUEST` unless there is a known bursty or phased parallel step.
+- If 4/8/16-thread benchmark walltime improves by `< 15%` at higher thread counts,
+  choose the smallest thread count within 15% of the fastest run.
+- If `MaxRSS / requested memory < 35%`, warn as `MEM_OVERREQUEST`, but do not
+  automatically lower memory without another pilot or input-size scaling evidence.
+- For independent samples, chromosomes, or files, prefer a SLURM array with a
+  concurrency cap over one oversized serial job. Use node-local/thread parallelism
+  only when the tool demonstrably scales better inside one task.
+- Bundled array templates expect manifest files without a header. If a manifest has
+  a `Sample_ID`, `Input_1`, `Chunk_ID`, or similar header row, remove it or adjust
+  task-line indexing before submission.
+
+Use this read-only audit before rewriting real project scripts:
+
+```bash
+scripts/parallelization_audit.sh --script <slurm_script> --manifest <manifest.tsv> --mode auto
+```
+
 For tool-specific estimates, read `references/software-resource-cards.md` when the
 task involves minimap2, samtools sort, SyRI, OrthoFinder, EDTA, RepeatModeler,
 STAR, featureCounts, PanGenie, BLAST, DIAMOND, HMMER-family searches, hifiasm,
@@ -273,6 +314,21 @@ Do not add `#SBATCH --time` by default for `normal`, `fat`, `fat2`, or `high`. I
 Use job arrays for independent samples, but always set a concurrency cap such as `%2`, `%4`, or `%5`. Choose the cap from combined memory, disk I/O, database contention, and current queue pressure.
 
 ### 6. Write robust scripts
+
+To generate a skeleton that already satisfies the rules in this section — absolute
+`%j_%x` logs, strict mode, CPU forwarding, no default `--time`, an array `%N` cap, and
+protected-path guards — use `gen_sbatch.sh`. It runs `slurm_preflight.sh` on its own
+output and refuses to emit anything that would FAIL (and `bash -n`-checks it), so a
+generated script is preflight-clean by construction:
+
+```bash
+scripts/gen_sbatch.sh --job-name NAME --cpus N --mem SIZE --log-dir ABS_DIR \
+    [--partition P] [--array RANGE] [--manifest FILE] [--cmd 'COMMAND'] [--out FILE]
+```
+
+It prints to stdout by default; fill in `--cmd` (use `"$THREADS"` for the thread count and
+`"$TASK_LINE"` for the per-task manifest row). The generator is a convenience for the SLURM
+envelope, not a substitute for reviewing the tool command itself.
 
 Use strict shell mode:
 
@@ -324,7 +380,22 @@ Do not include `#SBATCH --time` in this skeleton.
 
 ### 7. Preflight before submitting
 
-Before proposing or running `sbatch`, run the read-only preflight script:
+For a single read-only "green-light" gate, run `prepare_submission.sh`. It bundles the
+input, preflight, array/manifest, quota, and overwrite checks into one GO/NO-GO verdict
+and prints the exact, UNSUBMITTED `sbatch` command:
+
+```bash
+scripts/prepare_submission.sh --script <slurm_script> [--manifest <manifest.tsv>] \
+    [--input-list <filelist.txt>] [--output <output_dir>] [--mode <partition>] [--conc <N>]
+```
+
+It hard-blocks (NO-GO, exit 1) on: preflight FAIL, missing/empty inputs, a manifest
+header row (bundled templates are 1-indexed), `--output` under `/data9/home/qgzeng/data`
+or `/data9/home/qgzeng/tools`, or a quota submit-cap overrun. Everything else (preflight
+WARN, non-empty output directory, unknown quota/header) is a WARN to acknowledge. It
+never submits — pressing `sbatch` stays a user-confirmed action.
+
+To run the underlying checks individually, or if `prepare_submission.sh` is unavailable:
 
 ```bash
 scripts/slurm_preflight.sh --script <slurm_script>
@@ -332,8 +403,33 @@ scripts/slurm_preflight.sh --script <slurm_script>
 
 Use `--mode debug|normal|fat|fat2|high` when the intended partition differs from the
 script or cannot be inferred. Treat any `FAIL` as a blocker. Treat `WARN` as an item
-to explain to the user before submission. Also consult `references/validation-checklists.md`
-for the full pre-submit checklist.
+to explain to the user before submission. If preflight warns about serial independent
+tasks or high CPUs not being passed to the tool, run:
+
+```bash
+scripts/parallelization_audit.sh --script <slurm_script> --manifest <manifest.tsv> --mode auto
+```
+
+For pilot or benchmark logs, run:
+
+```bash
+scripts/resource_usage_audit.sh --script <slurm_script> --time-log <stage.time.log> --stage <stage_name>
+```
+
+Both audit scripts are read-only and print TSV recommendations only; do not write
+`reports/resource_usage.tsv`, generate project-specific replacement scripts, or
+submit arrays without user confirmation. Also consult
+`references/validation-checklists.md` for the full pre-submit checklist.
+
+SLURM array templates are bundled as starting points:
+
+- `assets/slurm-templates/per_sample_array.sbatch`: one sample/accession per task.
+- `assets/slurm-templates/per_chunk_array.sbatch`: one chunk per task when files are
+  too light or too numerous.
+
+Templates must be adapted with absolute project paths, manifest columns, per-task
+output directories, no-header manifest files, and explicit tool CPU flags before
+submission.
 
 Before `sbatch`, show the user:
 
@@ -347,6 +443,19 @@ Before `sbatch`, show the user:
 - validation checks after completion
 
 Submit only after confirmation.
+
+To execute the confirmed submission and record it, use `submit_and_log.sh`. It re-runs
+`prepare_submission.sh` as the final gate and is DRY-RUN by default; only with `--yes` does
+it submit (via `sbatch`) and append a row to `reports/run_record.tsv`. A NO-GO gate, a
+missing `--yes`, an unwritable record path, or a script changed since the gate each block
+the submission:
+
+```bash
+scripts/submit_and_log.sh --script <slurm_script> [gate options] [--record FILE] [--yes]
+```
+
+The array, if any, must live in the script itself (which the gate inspects); there is no
+`--array` override on the submitter, by design.
 
 ### 8. Monitor and diagnose
 

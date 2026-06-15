@@ -159,11 +159,18 @@ has_sbatch_value() {
 check_log_path() {
     local label="$1"
     local value="$2"
+    local clean_value
     if [[ -z "$value" ]]; then
         fail "Missing #SBATCH $label directive"
         return
     fi
-    if [[ "$value" == /* ]]; then
+    clean_value="${value%\"}"
+    clean_value="${clean_value#\"}"
+    clean_value="${clean_value%\'}"
+    clean_value="${clean_value#\'}"
+    if [[ "$clean_value" == /data9/home/qgzeng/data || "$clean_value" == /data9/home/qgzeng/data/* || "$clean_value" == /data9/home/qgzeng/tools || "$clean_value" == /data9/home/qgzeng/tools/* ]]; then
+        fail "#SBATCH $label writes to protected path: $clean_value"
+    elif [[ "$clean_value" == /* ]]; then
         pass "#SBATCH $label uses an absolute path: $value"
     else
         fail "#SBATCH $label must use an absolute path, found: $value"
@@ -172,6 +179,24 @@ check_log_path() {
         pass "#SBATCH $label contains %j or %x"
     else
         fail "#SBATCH $label should include %j or %x to avoid log collisions: $value"
+    fi
+}
+
+check_sbatch_chdir() {
+    local value clean_value
+    value="$(get_sbatch_value "--chdir" "-D" || true)"
+    if [[ -z "$value" ]]; then
+        pass "No #SBATCH --chdir directive"
+        return
+    fi
+    clean_value="${value%\"}"
+    clean_value="${clean_value#\"}"
+    clean_value="${clean_value%\'}"
+    clean_value="${clean_value#\'}"
+    if [[ "$clean_value" == /data9/home/qgzeng/data || "$clean_value" == /data9/home/qgzeng/data/* || "$clean_value" == /data9/home/qgzeng/tools || "$clean_value" == /data9/home/qgzeng/tools/* ]]; then
+        fail "#SBATCH --chdir targets protected path: $clean_value"
+    else
+        pass "#SBATCH --chdir does not target a protected path: $clean_value"
     fi
 }
 
@@ -211,16 +236,16 @@ check_pipefail_preview_pipelines() {
 }
 
 check_protected_paths() {
-    local path match write_pattern
-    write_pattern='(^|[[:space:];|])(cp|mv|rsync|mkdir|touch|tee|wget|curl|ln|pigz|gzip|bgzip)([[:space:]]|$)|(^|[^<])>>?|--out([^[:alnum:]_-]|$)|--output([^[:alnum:]_-]|$)|--output=|-o[[:space:]]+|-O[[:space:]]+|--prefix|--dir|--tmp|--temp'
+    local path lines write_pattern
+    write_pattern='(^|[[:space:];|])(cp|mv|rm|rsync|mkdir|touch|tee|wget|curl|ln|pigz|gzip|bgzip)([[:space:]]|$)|(^|[[:space:]])--?delete([[:space:]]|$)|(^|[^<])>>?|--out([^[:alnum:]_-]|$)|--output([^[:alnum:]_-]|$)|--output=|-o[[:space:]]+|-O[[:space:]]+|--prefix|--dir|--tmp|--temp'
     for path in "/data9/home/qgzeng/data/" "/data9/home/qgzeng/tools/"; do
-        match="$(first_active_match "$path" || true)"
-        if [[ -z "$match" ]]; then
+        # check EVERY active reference, not just the first: a later write/delete must
+        # not be masked by an earlier read of the same protected path.
+        lines="$(awk '/^[[:space:]]*#/ { next } { print }' "$script" | grep -F -- "$path" || true)"
+        if [[ -z "$lines" ]]; then
             pass "No active reference to protected path: $path"
-            continue
-        fi
-        if printf '%s\n' "$match" | grep -Eiq -- "$write_pattern"; then
-            fail "Protected path appears in a write-like command: $path"
+        elif printf '%s\n' "$lines" | grep -Eiq -- "$write_pattern"; then
+            fail "Protected path appears in a write-like/delete command: $path"
         else
             warn "Protected path is referenced; verify it is read-only input: $path"
         fi
@@ -242,7 +267,105 @@ check_kmeria_static() {
     fi
 }
 
-big_command_pattern='(^|[[:space:]/])(minimap2|bwa|hisat2|STAR|samtools[[:space:]]+sort|hifiasm|orthofinder|braker\.pl|braker|maker|EDTA\.pl|RepeatModeler|RepeatMasker|syri|plotsr|nucmer|delta-filter|show-coords|juicer|3d-dna|run-asm-pipeline|busco|quast|gatk|bcftools|fastp|featureCounts|diamond|blastn|blastp|hmmsearch|hmmscan|cmscan|PanGenie|kmeria)([[:space:]]|$)'
+big_command_pattern='(^|[[:space:]/])(minimap2|bwa|hisat2|STAR|samtools[[:space:]]+sort|hifiasm|orthofinder|braker[.]pl|braker|maker|EDTA[.]pl|RepeatModeler|RepeatMasker|syri|plotsr|nucmer|delta-filter|show-coords|juicer|3d-dna|run-asm-pipeline|busco|quast|gatk|bcftools|fastp|featureCounts|diamond|blastn|blastp|hmmsearch|hmmscan|cmscan|PanGenie|kmeria)([[:space:]]|$)'
+
+check_cpu_forwarding() {
+    local cpus
+    cpus="$(get_sbatch_value "--cpus-per-task" "-c" || true)"
+    if [[ -z "$cpus" ]]; then
+        pass "No #SBATCH --cpus-per-task directive requiring CPU forwarding check"
+        return
+    fi
+    if [[ ! "$cpus" =~ ^[0-9]+$ ]]; then
+        warn "Cannot parse #SBATCH --cpus-per-task value for CPU forwarding check: $cpus"
+        return
+    fi
+    if [[ "$cpus" -le 4 ]]; then
+        pass "#SBATCH --cpus-per-task=$cpus is conservative; CPU forwarding warning not needed"
+        return
+    fi
+
+    if grep_active '\$SLURM_CPUS_PER_TASK|\$\{SLURM_CPUS_PER_TASK(:-[0-9]+)?\}|--threads(=|[[:space:]])|--thread(=|[[:space:]])|--cpus(=|[[:space:]])|--cpu(=|[[:space:]])|--cores(=|[[:space:]])|--jobs(=|[[:space:]])|--workers(=|[[:space:]])|(^|[[:space:]])-[tp@][[:space:]]+[0-9$]'; then
+        pass "High CPU request appears to be passed to a tool or SLURM_CPUS_PER_TASK"
+    else
+        warn "#SBATCH --cpus-per-task=$cpus but no obvious --threads/-t/-p/-@/--cpus or SLURM_CPUS_PER_TASK use; CPU may be over-requested"
+    fi
+}
+
+check_serial_parallelization_hint() {
+    local has_array=0
+    local has_parallel=0
+    local repeated_summary loop_big_count repeat_key repeat_count repeat_example
+
+    if has_sbatch_value "--array" "-a"; then
+        has_array=1
+    fi
+    if grep_active 'xargs[[:space:]].*-P|(^|[[:space:];|])parallel([[:space:]]|$)|(^|[[:space:];])wait([[:space:]]|$)|[[:space:]]&([[:space:]]*(#.*)?)?$'; then
+        has_parallel=1
+    fi
+
+    repeated_summary="$(
+        awk '
+            BEGIN { IGNORECASE = 1 }
+            /^[[:space:]]*#/ { next }
+            function key_for(line, lower) {
+                lower = tolower(line)
+                if (lower ~ /kmeria[[:space:]]+count/) return "kmeria count"
+                if (lower ~ /bwa[[:space:]]+mem/) return "bwa mem"
+                if (lower ~ /samtools[[:space:]]+sort/) return "samtools sort"
+                if (lower ~ /featurecounts/) return "featureCounts"
+                if (lower ~ /repeatmodeler/) return "RepeatModeler"
+                if (lower ~ /repeatmasker/) return "RepeatMasker"
+                if (lower ~ /edta[.]pl/) return "EDTA.pl"
+                if (match(lower, /(^|[[:space:]\/])(fastp|minimap2|hisat2|star|hifiasm|orthofinder|braker[.]pl|braker|maker|syri|plotsr|nucmer|busco|quast|gatk|bcftools|diamond|blastn|blastp|hmmsearch|hmmscan|cmscan|pangenie)([[:space:]]|$)/, a)) return a[2]
+                return ""
+            }
+            {
+                k = key_for($0)
+                if (k != "") {
+                    count[k]++
+                    if (!(k in first)) first[k] = $0
+                }
+            }
+            END {
+                best = ""
+                best_count = 0
+                for (k in count) {
+                    if (count[k] > best_count) {
+                        best = k
+                        best_count = count[k]
+                    }
+                }
+                if (best_count > 0) print best "\t" best_count "\t" first[best]
+            }
+        ' "$script"
+    )"
+
+    loop_big_count="$(
+        awk -v pattern="$big_command_pattern" '
+            BEGIN { IGNORECASE = 1; in_loop = 0; found = 0 }
+            /^[[:space:]]*#/ { next }
+            /^[[:space:]]*(for[[:space:]].*[[:space:]]in[[:space:]]|while[[:space:]]+read)(.*)$/ { in_loop = 1 }
+            in_loop && $0 ~ pattern { found++ }
+            /^[[:space:]]*done([[:space:]]|$)/ { in_loop = 0 }
+            END { print found + 0 }
+        ' "$script"
+    )"
+
+    if [[ "$has_array" -eq 0 && "$has_parallel" -eq 0 && -n "$repeated_summary" ]]; then
+        IFS=$'\t' read -r repeat_key repeat_count repeat_example <<< "$repeated_summary"
+        if [[ "$repeat_count" -ge 3 ]]; then
+            warn "Repeated independent-looking $repeat_key commands run serially ($repeat_count copies); consider scripts/parallelization_audit.sh --script $script"
+            return
+        fi
+    fi
+
+    if [[ "$has_array" -eq 0 && "$has_parallel" -eq 0 && "$loop_big_count" -gt 0 ]]; then
+        warn "Large-compute command appears inside a serial loop; consider scripts/parallelization_audit.sh --script $script"
+    else
+        pass "No obvious serial independent-task bottleneck detected"
+    fi
+}
 
 if [[ -z "$mode" ]]; then
     mode="$(infer_partition || true)"
@@ -267,6 +390,7 @@ fi
 
 check_log_path "--output" "$(get_sbatch_value "--output" "-o" || true)"
 check_log_path "--error" "$(get_sbatch_value "--error" "-e" || true)"
+check_sbatch_chdir
 
 array_value="$(get_sbatch_value "--array" "-a" || true)"
 if [[ -z "$array_value" ]]; then
@@ -280,10 +404,29 @@ fi
 check_strict_mode
 check_pipefail_preview_pipelines
 
-if grep_active '(^|[[:space:];])rm[[:space:]]+([^#;]*[[:space:]])?-[[:alnum:]]*r[[:alnum:]]*f|(^|[[:space:];])rm[[:space:]]+([^#;]*[[:space:]])?-[[:alnum:]]*f[[:alnum:]]*r'; then
-    fail "Destructive rm -rf pattern found"
+# Catch a recursive+force rm whether the flags are combined (-rf/-fr), separated
+# (-r -f), or long (--recursive --force) — the combined-only regex used to miss them.
+rm_hit="$(awk '
+    /^[[:space:]]*#/ { next }
+    {
+        cl = $0
+        sub(/[[:space:]]#.*/, "", cl)   # drop an inline comment (space-#) to avoid false hits
+        if (cl !~ /(^|[[:space:];&|(\/])rm([[:space:]]|$)/) next
+        rec = 0; force = 0
+        n = split(cl, toks, /[[:space:]]+/)
+        for (i = 1; i <= n; i++) {
+            t = toks[i]
+            if (t == "--recursive" || t == "-r" || t == "-R") rec = 1
+            else if (t == "--force" || t == "-f") force = 1
+            else if (t ~ /^-[a-zA-Z]+$/) { if (t ~ /[rR]/) rec = 1; if (t ~ /f/) force = 1 }
+        }
+        if (rec && force) { print; exit }
+    }
+' "$script")"
+if [[ -n "$rm_hit" ]]; then
+    fail "Destructive recursive+force rm found (combined or separated flags)"
 else
-    pass "No active rm -rf pattern"
+    pass "No active recursive+force rm pattern"
 fi
 
 check_protected_paths
@@ -304,6 +447,9 @@ elif grep_active 'admin2'; then
 else
     pass "No active admin2 compute target pattern"
 fi
+
+check_cpu_forwarding
+check_serial_parallelization_hint
 
 if grep_active "$big_command_pattern"; then
     big_match="$(first_active_match "$big_command_pattern" || true)"
