@@ -1,0 +1,424 @@
+---
+name: bio-workflow
+description: "规划、接管、实现、提交前检查、监控和验收 qgzeng 个人分析服务器上的生物信息学工作流。Use when working under /data9/home/qgzeng/projects on quinoa genomics, assembly, annotation, repeat, pan-genome, RNA-seq, GWAS, SNP/INDEL/SV, synteny, centromere, plotting, SLURM scripts, Singularity/Conda environments, raw-data downloads, CPU/memory estimation, job arrays, failure diagnosis, project resume/takeover, result validation, or reproducible reports. This skill emphasizes server-specific safety: no broad filesystem scans, no compute on admin2/login nodes, no wasteful CPU or memory requests, no external proxy for raw-data downloads, and no default SLURM --time except debug-style jobs when needed."
+---
+
+# Bio-workflow
+
+## Mission
+
+Plan and execute reproducible bioinformatics work on qgzeng's server without wasting shared resources. Start from the research question, explicit input paths, expected outputs, resource model, and validation criteria. Do not start by writing a command.
+
+## Non-negotiable startup
+
+Before substantive work:
+
+1. Read `/data9/home/qgzeng/.codex/memories/user_output_format_preferences.md`.
+2. Read `/data9/home/qgzeng/.codex/memories/slurm_preferences.md`.
+3. Read the nearest `AGENTS.md` in the current directory or parent directories.
+4. If any required file is missing, state the missing item briefly and continue with available context.
+5. Reply in Chinese by default, with conclusion first and compact status markers.
+
+## Server safety boundaries
+
+Use only explicit paths from the user or the current project. Keep probes narrow and cheap.
+
+### Allowed lightweight probes
+
+Use these freely when they answer the task:
+
+- `pwd`
+- `hostname`
+- `df -h .`
+- `sinfo`
+- `squeue -u "$USER"` or plain `squeue` when user-wide context matters
+- `sacct -j <jobid> --format=JobID,State,ExitCode,MaxRSS,Elapsed`
+- `scontrol show job <jobid>`
+- `command -v <tool>`
+- `<tool> --version`, `<tool> -h`, or `<tool> --help`
+- `rg`, `rg --files`, `find . -maxdepth N` scoped to the project
+- `ls -lh`, `wc -l`, `head`, `tail`, `file` on explicit files
+- `du -sh <explicit_project_or_output_path>` only for user-specified paths
+
+### Avoid resource-heavy discovery
+
+Do not run broad scans such as:
+
+- `find /data9`, `find /data9/home/qgzeng`, or unbounded `find` on large project roots
+- `du -sh /data9/*`, `du -sh /data9/home/qgzeng/*`, or recursive size checks over broad trees
+- `ls -R` on large directories
+- full-file `grep`, `zcat`, `awk`, `seqkit stats`, `samtools view`, or decompression over large FASTQ/BAM/VCF files unless the task requires it and the cost is explained
+- any compute-heavy tool on a login/admin node
+
+When information may require a large scan, ask the user to provide the exact target path or propose a bounded command first.
+
+## admin2 and login-node rule
+
+Treat `admin2` as a login/admin node. On `admin2`, run only planning, script edits, syntax checks, light metadata checks, and SLURM control commands. Do not run aligners, assemblers, sorters, repeat annotation, pangenome tools, compression/decompression over large files, or full-data QC directly on `admin2`.
+
+If a command may use more than one CPU, run for more than about 3 minutes, stream large genomic files, or produce large output, route it through SLURM or ask the user for confirmation before an interactive compute allocation.
+
+## Permission and confirmation rules
+
+Always apply the nearest `AGENTS.md` first. If an `AGENTS.md` requires write
+disclosure or confirmation, follow it even for low-risk project files. If no
+applicable `AGENTS.md` adds stricter limits, use the lower-risk defaults below.
+
+Low-risk actions inside the working project:
+
+- read files and inspect small explicit inputs
+- create or edit scripts, configs, manifests, reports, and small check files
+- run syntax checks such as `bash -n`, R parse checks, or Python import/compile checks
+- inspect queue state and existing logs
+
+Require user confirmation before:
+
+- `sbatch`, `scancel`, resubmission, or changing job concurrency
+- starting high CPU, high memory, long-running, or large-I/O work
+- installing, upgrading, removing, or changing Conda, modules, tools, or containers
+- writing into `/data9/home/qgzeng/data/` or `/data9/home/qgzeng/tools/`
+- overwriting, moving, deleting, or replacing existing results
+- changing formal analysis parameters after a plan has been agreed
+- downloading large raw data
+
+Before any write or job action, state:
+
+1. purpose and logic
+2. exact command or edit method
+3. affected paths and approximate size
+4. expected outputs
+5. risks, including overwrite, disk, runtime, and queue impact
+
+## Project layout
+
+Prefer this structure unless the project already has a stronger convention:
+
+```text
+project/
+├── config/
+├── data/       # symlinks or manifests only; raw data remains protected
+├── scripts/
+├── logs/
+├── results/
+├── reports/
+└── tmp/
+```
+
+Use tab-separated tables for intermediate and final tabular outputs. Use English column names with initial capitals and underscores, for example `Gene_ID`, `Sample_Name`, and `Read_Count`.
+
+## Resume an existing project
+
+When the user asks to continue, check, recover, validate, explain, or take over an
+existing project, do not default to planning from scratch. First decide the current
+project state, then take the smallest safe next step.
+
+Use this read-only entry before task routing when project artifacts already exist
+or the request is ambiguous. The default project is the current directory; do not
+walk upward to parent roots or scan account/project roots unless the user confirms
+a deliberately broader audit:
+
+```bash
+scripts/project_state_audit.sh --project <project_dir> --max-depth 3
+```
+
+Add `--check-queue` only when the audit or user-provided evidence contains job IDs
+or SLURM log clues. This may call `squeue`/`sacct`, but it must not submit, cancel,
+resubmit, repair, or write status files.
+
+Read `references/resume-protocol.md` when resuming a project. Classify the project
+into one primary state, while noting secondary candidates when evidence is mixed:
+
+- `Input_ready`: inputs or manifests exist, but no runnable workflow is ready.
+- `Script_ready`: scripts exist and need preflight before submission.
+- `Queued_or_running`: SLURM evidence shows work is pending, running, or incomplete.
+- `Failed`: logs or accounting show a failed job or failed workflow step.
+- `Complete_unvalidated`: outputs and completion logs exist, but result acceptance is missing.
+- `Analysis_ready`: results have been validated and are ready for interpretation, plotting, or reporting.
+
+Use this fixed response shape for resume work:
+
+```text
+📌 当前阶段
+🔎 证据
+⚠️ 阻塞
+🛠️ 下一步最小动作
+```
+
+Minimum next actions:
+
+- `Input_ready`: return to workflow steps 1-2 and define missing manifests, methods, and success criteria.
+- `Script_ready`: run `scripts/slurm_preflight.sh --script <file>` and ask before `sbatch`.
+- `Queued_or_running`: monitor with `squeue`/`sacct`; do not edit scripts or resubmit while state is active.
+- `Failed`: run `scripts/slurm_failure_triage.sh --jobid <id>` or `--err <file>`, then propose the smallest fix.
+- `Complete_unvalidated`: run result acceptance from `references/validation-checklists.md` before biological interpretation.
+- `Analysis_ready`: proceed to plotting/reporting/biological interpretation with concrete validated evidence.
+
+Do not write `reports/workflow_status.tsv` automatically. The audit script only
+prints a suggested TSV row; write the status file only after user confirmation.
+
+## Task routing
+
+Pick the narrowest route before reading detailed references or writing scripts:
+
+- **Assembly:** inspect explicit read/genome inputs, read `references/software-resource-cards.md` for `hifiasm`, `BUSCO`, and `QUAST`, then plan staged validation.
+- **Hi-C scaffolding:** read the `Juicer and 3D-DNA` card, confirm enzyme/layout, and require contact-map review criteria.
+- **Annotation:** read `BRAKER and MAKER`, `EDTA`, `RepeatModeler`, `BUSCO`, and `validation-checklists.md`; confirm repeat masking and evidence naming.
+- **RNA-seq:** read `fastp, FastQC, and MultiQC`, `STAR`, and `featureCounts`; confirm strandedness, paired-end naming, and index reuse.
+- **SNP/INDEL/SV and synteny:** read `bcftools and GATK`, `minimap2`, `SyRI`, and `MUMmer and plotsr`; confirm reference compatibility and chromosome names.
+- **Pangenome/orthology:** read `OrthoFinder`, `PanGenie`, and search-tool cards; estimate database/output growth and array concurrency.
+- **Download:** use section 10 first; avoid `proxychains`, `http_proxy`, `https_proxy`, and `all_proxy` for raw-data downloads unless confirmed.
+- **Plotting/reporting:** use section 12 and the figure checks in `references/validation-checklists.md`.
+
+## Workflow
+
+### 1. Define the task
+
+Record:
+
+- research question and biological purpose
+- organism, reference version, samples, groups, and replicate design
+- exact input paths and file types
+- expected outputs and final deliverables
+- method preferences or constraints
+- success criteria and failure conditions
+
+If key biological or experimental information is missing, list missing items instead of inventing assumptions.
+
+### 2. Build a narrow input inventory
+
+Inspect only explicit inputs. Prefer metadata and indexes over reading full files:
+
+- FASTQ: use file sizes and file names first; avoid full decompression unless needed
+- FASTA: use `.fai` if present; creating a new index writes a file, so state impact first
+- BAM/CRAM: use `.bai/.crai` and `samtools idxstats` only when indexes exist and the tool is available
+- VCF/BCF: use header, tabix index, and small targeted regions when possible
+- GFF/GTF/BED/TSV: use `head`, `wc -l`, and format-specific sanity checks on explicit files
+
+Stop and warn if files are missing, empty, inconsistent, damaged, or biologically ambiguous.
+
+### 3. Discover tools without installing
+
+Check tools in this order:
+
+1. current `PATH`
+2. active Conda environment
+3. known Conda environments only when explicitly named or cheap to inspect
+4. cluster module system if available
+5. project or user tool paths when explicitly provided
+6. Singularity images when explicitly provided or already used by the project
+7. installation only after user confirmation
+
+Record tool versions and exact commands used for reproducibility.
+
+### 4. Estimate resources from software behavior
+
+Do not request CPU or memory by habit. Estimate from:
+
+- input size and record count
+- algorithm memory model
+- thread scalability
+- temporary file expansion
+- per-thread memory settings
+- array concurrency
+- current queue state
+- previous job history when available
+
+Use this reasoning pattern:
+
+```text
+Resource request = base memory for input/index/database
+                 + per-thread memory * useful threads
+                 + temporary/output headroom
+```
+
+Classify software before choosing CPU:
+
+- mostly single-threaded: request 1-4 CPUs
+- moderately parallel: request 4-16 CPUs
+- strongly parallel and proven to scale: request 16-32 CPUs
+- I/O-bound or memory-bound: keep CPUs conservative and protect disk bandwidth
+- tools with per-thread memory such as sorting: calculate `threads * memory_per_thread`
+
+Examples to remember:
+
+- `samtools sort`: total memory is approximately `-m * threads`; do not request many threads with large `-m` blindly.
+- aligners such as `minimap2`, `bwa`, `hisat2`, and `STAR`: CPU can help, but memory depends on reference/index size and mode.
+- `blast`, `diamond`, and HMM searches: database size and output volume often dominate memory and disk.
+- assemblers, repeat annotation, pangenome construction, and orthology clustering can be memory-heavy; require explicit sizing or a pilot.
+- R/Python plotting and summarization usually need 1-4 CPUs unless using real parallel code.
+- gzip-like compression should use `pigz` only when parallel I/O is helpful; otherwise avoid tying up many CPUs.
+
+When uncertain, propose a small pilot or benchmark before the full run.
+
+For tool-specific estimates, read `references/software-resource-cards.md` when the
+task involves minimap2, samtools sort, SyRI, OrthoFinder, EDTA, RepeatModeler,
+STAR, featureCounts, PanGenie, BLAST, DIAMOND, HMMER-family searches, hifiasm,
+Juicer/3D-DNA, BRAKER/MAKER, bcftools/GATK, fastp/FastQC/MultiQC, MUMmer/plotsr,
+BUSCO, or QUAST. Use the cards as starting points, then adjust with explicit input
+size, queue state, and previous `sacct` evidence.
+
+### 5. Choose SLURM resources for this server
+
+Use current queue and memory estimate, not a fixed template.
+
+- `< 200G` memory: prefer `normal`, usually up to about 16 CPUs.
+- `>= 200G` memory: consider `fat` or `fat2`, often 16-32 CPUs, after checking queue state.
+- `debug`: use only tiny tests, dry runs, and fast validation. A short `--time` is acceptable here when helpful or required.
+- `high`: use only when user/project policy or queue state justifies it.
+- unknown memory: ask or run a bounded pilot; do not guess with maximum resources.
+
+Do not add `#SBATCH --time` by default for `normal`, `fat`, `fat2`, or `high`. If an existing script has a short walltime, warn that it may cause `TIMEOUT`. Add or keep `--time` only when the user explicitly asks, cluster policy requires it, or the job is a debug-style test.
+
+Use job arrays for independent samples, but always set a concurrency cap such as `%2`, `%4`, or `%5`. Choose the cap from combined memory, disk I/O, database contention, and current queue pressure.
+
+### 6. Write robust scripts
+
+Use strict shell mode:
+
+```bash
+set -euo pipefail
+```
+
+For SLURM scripts:
+
+- set absolute log paths with `%j_%x.out` and `%j_%x.err`
+- echo host, date, job ID, partition, CPUs, memory, and working directory
+- record tool versions
+- quote paths safely
+- fail early on missing inputs
+- write temporary outputs under `tmp/`
+- avoid overwriting existing final outputs unless explicitly confirmed
+- make rerun behavior clear
+
+Default SLURM skeleton:
+
+```bash
+#!/bin/bash
+#SBATCH --partition=normal
+#SBATCH --job-name=job_name
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
+#SBATCH --output=/full/path/to/logs/%j_%x.out
+#SBATCH --error=/full/path/to/logs/%j_%x.err
+
+set -euo pipefail
+
+echo "[INFO] Job started | Host: $(hostname) | Time: $(date)"
+echo "[INFO] Job ID: ${SLURM_JOB_ID:-NA} | Partition: ${SLURM_JOB_PARTITION:-NA}"
+echo "[INFO] CPUs: ${SLURM_CPUS_PER_TASK:-NA} | Workdir: $(pwd)"
+```
+
+Do not include `#SBATCH --time` in this skeleton.
+
+### 7. Preflight before submitting
+
+Before proposing or running `sbatch`, run the read-only preflight script:
+
+```bash
+scripts/slurm_preflight.sh --script <slurm_script>
+```
+
+Use `--mode debug|normal|fat|fat2|high` when the intended partition differs from the
+script or cannot be inferred. Treat any `FAIL` as a blocker. Treat `WARN` as an item
+to explain to the user before submission. Also consult `references/validation-checklists.md`
+for the full pre-submit checklist.
+
+Before `sbatch`, show the user:
+
+- exact command to submit
+- script path and log paths
+- input manifest and sample count
+- output directory and overwrite status
+- CPU, memory, partition, array range, and array concurrency
+- whether `--time` is absent or why it is present
+- expected runtime and disk growth
+- validation checks after completion
+
+Submit only after confirmation.
+
+### 8. Monitor and diagnose
+
+After submission, record job ID, script path, config path, resource request, and submit time.
+
+For failures:
+
+1. check `sacct` state, exit code, MaxRSS, and elapsed time
+2. read the matching `.err` and relevant `.out`
+3. classify the failure: missing input, permission, module/env, OOM, TIMEOUT, segfault, disk full, software bug, or biological/data issue
+4. propose the smallest justified fix
+5. ask before resubmitting
+
+Treat `TIMEOUT` as a script/resource-policy problem first. Do not wrap long bioinformatics commands with `timeout` as a completion mechanism.
+
+### 9. Validate results in layers
+
+Read `references/validation-checklists.md` for the relevant acceptance gate. Do not
+treat exit code 0 as success. Validate:
+
+1. run layer: exit code, logs, expected files, non-empty outputs
+2. data layer: sample count, record count, format, coordinate system, chromosome names
+3. analysis layer: QC metrics, expected controls, known biological patterns, parameter sensitivity
+4. biology layer: whether conclusions answer the research question and what remains speculative
+
+For quinoa work, connect interpretation to plausible biology such as stress tolerance, salinity, drought response, mineral accumulation, subgenome differentiation, structural variation, and pangenome variability. Mark hypotheses as speculative unless experimentally validated.
+
+### 10. Download raw data safely
+
+Do not route original data downloads through external proxies. Avoid `proxychains` and avoid relying on `http_proxy`, `https_proxy`, or `all_proxy` for SRA/ENA/NCBI-style raw data downloads.
+
+Before large downloads:
+
+- confirm destination and expected size
+- avoid writing into protected raw-data directories unless the user explicitly confirms
+- prefer project staging directories with manifests and checksums
+- use direct, cluster-appropriate tools
+- if proxy variables appear necessary or already set, warn the user and ask before proceeding
+
+After download, validate checksums or file integrity when available.
+
+### 11. Use qp mode when appropriate
+
+For the user's multi-task queue pattern:
+
+- working directory: `/data9/home/qgzeng/projects/2-C_quinoa/12-jobs/`
+- entry script: `manager_parallel.slurm`
+- manager: `run_task_manager_parallel.sh`
+- task list: `tasks.txt`
+- history: `run_record.txt`
+
+Each task command must include environment activation and explicit output paths. Empty `tasks.txt` does not prove no work is running; inspect `task_log.txt` and SLURM state. Do not change `MAX_PARALLEL` for large-memory jobs without confirmation.
+
+### 12. Plot and report
+
+For publication figures, follow the user's Nature-style plotting rules from `AGENTS.md`: Arial fonts, white background, no grids, clean axes, colorblind-aware palettes, PDF first, PNG/JPEG at 300 dpi, and figure legends in English.
+
+Always save plotting data, code, and parameters. Report what the figure proves and what it does not prove.
+
+## Skill maintenance
+
+Treat `SKILL.md` as the official entry point. Keep `skills.md` as a byte-for-byte
+mirror when retained for user habit. After editing either file, run:
+
+```bash
+cmp -s SKILL.md skills.md
+```
+
+Run `quick_validate.py` after structural changes and `bash -n` for any bundled shell
+script changes. For `scripts/slurm_preflight.sh`, test at least one passing script
+and one failing script before trusting the rule changes.
+
+## Default response shape
+
+Use a compact Chinese structure:
+
+```text
+📌 结论
+🔎 已确认
+⚠️ 风险
+🧮 资源判断
+🛠️ 将执行/已执行
+✅ 验收
+▶️ 下一步
+```
+
+Keep tables short. Prefer clear bullets with concrete paths, commands, job IDs, and validation criteria.
