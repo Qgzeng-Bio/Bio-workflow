@@ -52,7 +52,7 @@ Outputs: `ragtag_output/ragtag.scaffold.fasta` (+ `.agp`, `.confidence.txt`). Th
 ```bash
 # 1) Dot plot vs reference (visual collinearity)
 minimap2 -cx asm5 -t 24 <reference.fa> <ragtag.chrom.fa> > acc.paf
-awk '{if (match($1,/([0-9]+[AB])/,a)) $1=a[1]; OFS="\t"; print}' acc.paf > acc_rename.paf  # strip _RagTag suffix
+awk 'BEGIN{OFS="\t"} {sub(/_RagTag.*/,"",$1); print}' acc.paf > acc_rename.paf  # strip _RagTag suffix, KEEP the Cq..A/B name
 Rscript ~/tools/dotPlotly/pafCoordsDotPlotly.R -i acc_rename.paf -o acc -s -l -x
 # 2) LAI — LTR Assembly Index (repeat-space contiguity), via LTR_FINDER_parallel + LTR_retriever
 ```
@@ -121,9 +121,9 @@ original window region). The chromosome therefore grows only by the gap size, **
 (Chr05g1: 100 bp N → ~12 kb real sequence, net ≈ +12 kb). Then check the joins:
 
 ```bash
-cat Chr05g1_left.fa <filled-window-seq> Chr05g1_right.fa > Chr05g1_gapfree.fa   # concept; hand-run
+cat Chr05g1_left.fa <filled-window-seq> Chr05g1_right.fa > Chr05g1_gapfree.fa   # concept only: join the SEQUENCE BODIES into ONE chromosome record (not 3 FASTA records); hand-run
 # validate: map long reads across each join; confirm continuous depth (no drop at the seam)
-minimap2 -ax asm5 -t 24 <gap_2end_flanking>.fa cqu_hifi_70x.fa.gz | samtools sort -o 2end.bam -
+minimap2 -ax map-hifi -t 24 <gap_2end_flanking>.fa cqu_hifi_70x.fa.gz | samtools sort -o 2end.bam -   # map-hifi for HiFi reads (asm5 is for assembly-vs-ref, not reads)
 pandepth -i 2end.bam -w 1000 -o 2end.depth
 ```
 

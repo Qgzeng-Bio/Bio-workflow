@@ -100,7 +100,8 @@ samtools index "$bam"; samtools quickcheck "$bam"; samtools flagstat "$bam" > "$
 One script, three caller modes, then `bcftools sort | bgzip | tabix`. Common rules:
 
 - **Guarantee `INFO/SVTYPE` + `INFO/SVLEN`** (infer when missing — symbolic `<…>` alt → `END-POS+1`, literal →
-  `|len(ALT)-len(REF)|`).
+  `|len(ALT)-len(REF)|`). Note `END-POS+1` is the SyRI/project event-interval convention; the generic VCF
+  anchor-base convention is `END-POS` — spot-check a few 50 bp-boundary records if you reuse this elsewhere.
 - **Canonical contigs** `Cq1A…Cq9B` (strip any `_<suffix>`), de-dupe contig headers.
 - **Size filter:** drop **length-bearing** types (DEL/INS/DUP/INV) `< 50 bp`; **keep TRANS/BND/CPG/CPL/HDR
   regardless of length** (they have no meaningful SVLEN).
@@ -110,7 +111,8 @@ One script, three caller modes, then `bcftools sort | bgzip | tabix`. Common rul
 Normalization is where SyRI shrinks hardest: **~2.0 M input → ~20–27 k SVs/sample** (drops ~1.7 M SYN/NOTAL/SNP
 + ~350 k `*AL`), **472,996 SVs across 19** (✅ done). SVIM-asm barely shrinks: ~38 k → ~38 k, dominated by
 INS/DEL (e.g. 0321072RM: 38,003 = INS 19,928 / DEL 17,964 / DUP 57 / BND 54) — **far more INS/DEL than SyRI**,
-which is exactly the second-opinion value. **Run state: SyRI 19/19, SVIM-asm 2/19, Sniffles2 0/19.**
+which is exactly the second-opinion value. **Run state (normalization): SyRI 19/19, SVIM-asm 2/19, Sniffles2 0/19**
+(Sniffles2 *calling* stands at 2/19 — see B2; none of those are normalized yet).
 
 ---
 
@@ -118,8 +120,11 @@ which is exactly the second-opinion value. **Run state: SyRI 19/19, SVIM-asm 2/1
 
 ```bash
 # caller order FIXED [syri, svimasm, sniffles] so SUPP_VEC positions are comparable across samples
-for caller in syri svimasm sniffles; do [[ -s "$NORM/$S.$caller.norm.vcf" ]] && echo "$NORM/$S.$caller.norm.vcf" >> list; done
-SURVIVOR merge list 1000 1 1 0 0 50 "$S.3caller.vcf"
+: > "$S.list"; : > "$S.callers_order"      # fresh per sample, or re-runs accumulate stale paths
+for caller in syri svimasm sniffles; do
+  [[ -s "$NORM/$S.$caller.norm.vcf" ]] && { echo "$NORM/$S.$caller.norm.vcf" >> "$S.list"; echo "$caller" >> "$S.callers_order"; }
+done
+SURVIVOR merge "$S.list" 1000 1 1 0 0 50 "$S.3caller.vcf"   # $S.callers_order records which SUPP_VEC position is which caller
 #                   │    │ │ │ │ │  └ min SV size 50 bp
 #                   │    │ │ │ │ └ estimate_distance — DISABLED in 1.0.7 (no effect; max_dist stays fixed bp)
 #                   │    │ │ │ └ agree on STRAND 0 (off — minor; matters mainly for INV/BND)
@@ -154,9 +159,9 @@ by ≥50% reciprocal overlap instead of breakpoint distance:
 ```bash
 # per caller: large SVs -> BED(chrom,start,end), then 50% reciprocal overlap of read (sniffles) vs assembly
 for c in syri svimasm sniffles; do
-  awk -F'\t' '!/^#/{ if (match($8,/SVLEN=(-?[0-9]+)/,m) && (m[1]<0?-m[1]:m[1])>=50000){
-      match($8,/END=([0-9]+)/,e); print $1"\t"($2-1)"\t"(e[1]?e[1]:$2)"\t"c }}' results/norm/$S.$c.norm.vcf > $S.$c.large.bed
-done
+  awk -F'\t' -v caller="$c" '!/^#/{ if (match($8,/SVTYPE=(DEL|INV|DUP)/,t) && match($8,/SVLEN=(-?[0-9]+)/,m) && (m[1]<0?-m[1]:m[1])>=50000){
+      match($8,/END=([0-9]+)/,e); print $1"\t"($2-1)"\t"(e[1]?e[1]:$2)"\t"caller }}' results/norm/$S.$c.norm.vcf > $S.$c.large.bed
+done   # length-bearing DEL/INV/DUP only; BND/TRANS have no usable interval -> handle them by IGV/dotplot/Truvari
 cat $S.syri.large.bed $S.svimasm.large.bed | sort -k1,1 -k2,2n > $S.asm.large.bed
 bedtools intersect -a $S.sniffles.large.bed -b $S.asm.large.bed -f 0.5 -r -wo > $S.large.read_int_asm.tsv
 ```

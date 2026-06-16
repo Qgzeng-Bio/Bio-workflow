@@ -7,8 +7,9 @@
 > field patching) are flagged honestly, not dressed up as a clean recipe.
 >
 > Downstream of finished assemblies (`playbook-genome-finishing.md`). Design here; submit via the executor trio.
-> Scope: **assembly-vs-assembly SV via SyRI**. Graph-based complex SV (Swave) and read-based SV
-> (sniffles2 / svim-asm) are a larger story — out of scope here, pointers at the bottom.
+> Scope: **assembly-vs-assembly SV via SyRI**. The orthogonal multi-caller workflow (Sniffles2 **read-based**
+> + SVIM-asm **assembly-based**) and graph-based complex SV (Swave) are a larger story — see
+> `playbook-high-confidence-sv-multicaller.md`; pointers at the bottom.
 
 ## Two topologies (know which you're on, and why)
 
@@ -185,13 +186,13 @@ plotsr --sr "$syri_out" --genomes genomes.txt -o out.pdf -W 8 -H 6 -f 8         
 plotsr --sr "$syri_out" --genomes genomes.txt -o out.png -W 8 -H 6 -f 8 -d 300   # PNG @300 dpi
 # chained panorama: 19 --sr in chain order + a 20-line genomes file
 plotsr $(printf -- '--sr %s ' "${syri_outs[@]}") --genomes genomes.chain.20.txt \
-       -o plotsr_chain_20genomes.pdf -W 16 -H 30 -f 7 -S 0.5                      # -S = track spacing
+       -o plotsr_chain_20genomes.pdf -W 16 -H 30 -f 7 -S 0.5                      # -S = homologous-chromosome space
 ```
 
 - **`genomes.txt`** format: `#file<TAB>name<TAB>tags`, one fasta per line **in chain order**; chromosome-bar
   colour comes from the **`lc:` tag** here (e.g. `lw:1.2;lc:#888888`), *not* from the cfg.
-- **`--cfg base.cfg`** styling: plotsr accepts exactly 12 keys — colours `syncol:#DEDEDE invcol:#2E8B57
-  tracol:#1E90FF dupcol:#CD2626 alpha:0.85` + layout `chrmar exmar marginchr bbox bboxmar` + `legend:F genlegcol`
+- **`--cfg base.cfg`** styling: plotsr 1.1.1 accepts a fixed set of styling keys — colours `syncol:#DEDEDE invcol:#2E8B57
+  tracol:#1E90FF dupcol:#CD2626 alpha:0.85`, layout `chrmar exmar marginchr bbox bbox_v bboxmar`, and `legend:F genlegcol`
   (INVTR/INVDP reuse inv/tra colours; unknown keys are rejected).
 - **`--markers markers.tsv`** (`chrom<TAB>start<TAB>end<TAB>genome<TAB>tags`, centromere tag `mt:s;mc:#222222;ms:6`;
   note the breakpoint-marker colour is inconsistent — `#000000` in `build_markers.py` vs `#333333` in the assembled legend).
@@ -257,4 +258,4 @@ plotsr $(printf -- '--sr %s ' "${syri_outs[@]}") --genomes genomes.chain.20.txt 
 - minimap2 — Li, *Bioinformatics* 2018, 34:3094 (`-ax asm5` for ≤~5% divergent assemblies).
 - SURVIVOR — Jeffares et al., *Nature Communications* 2017, 8:14061;
   https://github.com/fritzsedlazeck/SURVIVOR (`merge max_dist min_support type strand est_dist min_size`).
-- (Out of scope, for the fuller SV story) Swave — graph-pangenome complex SV; sniffles2 / svim-asm — read-based SV.
+- (Out of scope, for the fuller SV story) Swave — graph-pangenome complex SV; Sniffles2 — read-based SV; SVIM-asm — assembly-based SV.

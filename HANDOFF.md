@@ -1,6 +1,41 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-16 — high-confidence multi-caller SV playbook + SURVIVOR/SVIM-asm 实证修正 + gap-fill 跨越脚本 + F2 两路重构
+Last updated: 2026-06-16 — 今日新增 playbook 模块的两轮 Codex review + 修复(尤其 gap-fill 脚本加固)
+
+---
+
+## 2026-06-16 — 今日新增 playbook 模块：两轮 Codex 只读 review + 修复
+
+### 背景 / 目标
+
+对今天新增/重构的模块(`playbook-variant-synteny-syri.md`、`playbook-high-confidence-sv-multicaller.md`、
+finishing F2、`scripts/fill_gap_from_spanning_alignment.py`)做两轮 codex 只读复审并逐条修复。
+经验:codex **只锁这几个小文件、禁止漫扫 GB 级数据**(prompt 经 `- < file`、`-s read-only`、`touch HANDOFF`
+压 stop guard)——两轮各几分钟出结果,远好过此前漫扫 33 分钟无果。
+
+### Round 1 修复
+
+- **P1**:`SKILL.md` 高置信路由 SURVIVOR 仍 `type=0`→`1000 1 1 0 0 50`;high-conf large-event awk 的 `c` 没传进
+  awk→`-v caller="$c"`;gap-fill 脚本缺 identity 阈值 + 锚定只看 ref span;多 gap 重建无重叠检测;finishing join
+  验证误用 `asm5` 比 HiFi reads→`map-hifi`。
+- **P2/P3**:SVIM-asm 被误称 read-based;run-state 0/19 vs 2/19 口径;plotsr cfg "exactly 12 keys" 不准;`cat`
+  拼 FASTA 歧义;SVLEN=END-POS+1 约定 caveat——全修。
+
+### Round 2 修复(脚本加固为主)
+
+- **P1**:gap-fill splice 用候选 `r_left/r_right`(比对锚点)而非原 gap 边界 → donor 在 gap 边缘有 deletion 时会静默
+  删非 gap 碱基。**重构**:要求 donor 恰好锚定到 gap 两边沿(`r_left==gap_s0-1 且 r_right==gap_e0+1`,否则拒绝),
+  splice 改按**原 gap 坐标** `ref[..gap_s0-1]+fill+ref[gap_e0+1..]`,只换 N 段。
+- **P2/P3**:per-flank 分别统计 aligned 列数 + identity;overlap 跳过标 `skipped_overlap`(report 与 FASTA 一致);
+  `--min-identity` 加 [0,1] 校验;tie-break 改 fill 长度+qname+fill;high-conf large BED awk 加 `SVTYPE=(DEL|INV|DUP)`;
+  C2 list `: >` 清空 + 写 `callers_order`;finishing RagTag awk 用 `sub(/_RagTag.*/,"")` 保 `Cq..` 前缀;variant
+  sources 行 SVIM-asm 改 assembly-based。
+
+### 验证
+
+- gap-fill 脚本每轮改动后跑**合成数据端到端测试**:正向 contig / 反向 read / 重复 gff 去重 / identity 拒绝 /
+  双 gap 拼回——全部与预期一致。`quick_validate.py` → `Skill is valid!`;`py syntax OK`。
+- codex 全程 `-s read-only`;HANDOFF 经 snapshot+touch 保护未被改写。本次只动 skill 文件,未碰用户真实项目。
 
 ---
 
