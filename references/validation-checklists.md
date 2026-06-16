@@ -145,9 +145,7 @@ snippets. Do not treat a zero exit code as enough.
 
 ## Skill-maintenance checklist
 
-- Keep `SKILL.md` as the official entry point.
-- Keep `skills.md` as a byte-for-byte mirror when it is retained for user habit.
-- After edits, run `cmp -s SKILL.md skills.md`.
+- Keep `SKILL.md` as the single official entry point (the skill loader reads only this file).
 - Run quick validation:
   `python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py /data9/home/qgzeng/projects/3-Biotools_create/bio-workflow`.
 - For script changes, run `bash -n` and at least one representative positive and

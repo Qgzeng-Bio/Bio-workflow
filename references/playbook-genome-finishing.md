@@ -188,10 +188,17 @@ meryl count k=15 output merylDB Cqu_gapsfilled.fa
 meryl print greater-than distinct=0.9998 merylDB > repetitive_k15.txt
 winnowmap -t 32 -W repetitive_k15.txt -ax map-pb Cqu_gapsfilled.fa cqu_hifi_70x.fa.gz \
   | samtools sort -o hifi.map.sort.bam -
-# 2) short-read k-mer truth (Illumina) for NextPolish2 — use BOTH mates R1 + R2
-yak count -o k21.yak -k 21 -b 37 <(zcat sr_1.fq.gz) <(zcat sr_2.fq.gz)
-yak count -o k31.yak -k 31 -b 37 <(zcat sr_1.fq.gz) <(zcat sr_2.fq.gz)
-# NOTE: the archived polish.sh passed R1 TWICE (not R1+R2) — likely a typo; audit and re-run with both mates.
+# 2) short-read k-mer truth (Illumina) for NextPolish2.
+#    yak -b37 builds a TWO-PASS Bloom filter (drops singleton/error k-mers to save memory), so it must
+#    read the reads TWICE. The two positional slots `<in> [in]` are "two IDENTICAL streams", NOT "R1, R2"
+#    — pass 1 fills the Bloom filter, pass 2 counts. So put BOTH mates inside EACH stream, identical:
+yak count -o k21.yak -k 21 -b 37 -t 32 <(zcat sr_1.fq.gz sr_2.fq.gz) <(zcat sr_1.fq.gz sr_2.fq.gz)
+yak count -o k31.yak -k 31 -b 37 -t 32 <(zcat sr_1.fq.gz sr_2.fq.gz) <(zcat sr_1.fq.gz sr_2.fq.gz)
+# Official idiom (yak + NextPolish2 READMEs): `yak count -b37 -o sr.yak <(zcat sr*.fq.gz) <(zcat sr*.fq.gz)`
+#   — one glob `sr*.fq.gz` already pulls in R1+R2; the SAME stream is given twice for the 2-pass filter.
+# BUG that was here: `<(zcat R1) <(zcat R2)` feeds R1 to the Bloom pass and R2 to the count pass (broken);
+#   passing R1 twice drops R2 entirely. Both wrong → the archived k21/k31.yak truth set was incomplete,
+#   so a re-polish with the corrected command may shift the QV below (66.9 / 65.8). Verified: yak v0.1-r69.
 # 3) polish: HiFi alignment + short-read k-mer hash tables
 nextPolish2 -t 32 hifi.map.sort.bam Cqu_gapsfilled.fa k21.yak k31.yak > cqu_np2.fa
 ```
@@ -249,6 +256,10 @@ merqury.sh read.meryl Cqu_final_rename_hap2.fa result_hap2
   the `--racon`→`--ne` fallback in mind, and don't assume the extraction/rename is fully scripted.
 - Polish: **NextPolish2 (HiFi) ≠ NextPolish v1 (Illumina config)** — don't run the legacy `run.cfg`
   thinking it's what produced `Cqu_final.fa`. Winnowmap mapping is the time sink (~26 h), not the polish.
+- **`yak count -b37` is a TWO-PASS Bloom filter, not "R1, R2"** — the two positional inputs are *two
+  identical streams* of the SAME reads (pass 1 builds the filter, pass 2 counts). Put both mates in each:
+  `<(zcat sr_1.fq.gz sr_2.fq.gz) <(zcat sr_1.fq.gz sr_2.fq.gz)`. Splitting `<(R1) <(R2)` counts only R2
+  against an R1-only filter; passing R1 twice drops R2. Either bug yields an incomplete k-mer truth set.
 - QV is computed from **short reads** (the accurate truth set) via merqury — keep a clean Illumina library for this.
 
 ## Sources

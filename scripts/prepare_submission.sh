@@ -323,8 +323,18 @@ else
         quota_line="$quota_line  [✗ 超提交上限, 需分块]"
     elif printf '%s\n' "$cq_out" | grep -q '^STATUS=OK'; then
         [[ -n "$quota_line" ]] || quota_line="(配额预演通过)"
+    elif [[ "$cq_rc" -eq 1 ]]; then
+        # No STATUS= marker, but check_quota.sh's documented contract is exit 1 = over
+        # submit limit. Honour the exit code so an OUTDATED check_quota.sh copy (one that
+        # never prints STATUS=) cannot silently turn a real over-limit into a soft WARN.
+        # A squeue failure mid-run can also exit 1; in that ambiguous case a safety gate
+        # must fail closed (block), not proceed.
+        blockers+=("配额预演退出码=1 (check_quota.sh 契约: =超提交上限) 但缺 STATUS= 标记; 可能是旧版 check_quota.sh 或 squeue 中途失败。保守阻断: 先同步 scripts/check_quota.sh 或在可访问 SLURM 的会话手动核对配额, 超限时用 scripts/submit_chunked.sh 分块")
+        [[ -n "$quota_line" ]] || quota_line="配额预演 exit=1 (疑似超限或 check_quota.sh 过旧)"
+        quota_line="$quota_line  [✗ exit=1, 保守阻断]"
     else
-        # no STATUS marker -> squeue/sacct unavailable; never a hard blocker
+        # exit 2 / other with no STATUS -> squeue/sacct genuinely unavailable; per design
+        # this stays a WARN (the box's squeue is intermittently flaky), never a hard blocker.
         warnings+=("配额检查不可用 (check_quota.sh exit $cq_rc; 本机 squeue/sacct 偶发权限问题), 提交前请在可访问 SLURM 的会话复核")
         quota_line="配额检查不可用 (exit $cq_rc), 需手动复核"
     fi

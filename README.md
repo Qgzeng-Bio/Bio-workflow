@@ -6,7 +6,7 @@ wasting shared compute or submitting anything by accident.
 
 It is a Claude Code / codex **skill**, not a pipeline: [`SKILL.md`](SKILL.md) is the entry
 point an agent loads, and the `scripts/` are read-only checks and guarded executors it
-calls. `skills.md` is a byte-for-byte mirror of `SKILL.md` kept for habit.
+calls.
 
 > **Safety first.** Nothing here installs, cancels, or overwrites on its own, and nothing
 > submits a job without an explicit `--yes`. The audit scripts are read-only and only
@@ -33,7 +33,7 @@ These are baked in as defaults so an agent doesn't rediscover them every time:
 
 ```text
 bio-workflow/
-├── SKILL.md / skills.md     # skill entry point (+ mirror)
+├── SKILL.md                 # skill entry point
 ├── HANDOFF.md               # running change log
 ├── agents/openai.yaml       # agent metadata
 ├── assets/slurm-templates/  # per_sample_array.sbatch, per_chunk_array.sbatch
@@ -116,10 +116,9 @@ acceptance gates (exit code 0 ≠ success).
 
 ## Maintenance
 
-`SKILL.md` is the source of truth; keep `skills.md` identical and validate after changes:
+`SKILL.md` is the source of truth; validate after changes:
 
 ```bash
-cmp -s SKILL.md skills.md                       # must match byte-for-byte
 bash -n scripts/*.sh                             # shell syntax
 python3 .../skill-creator/scripts/quick_validate.py .   # needs a python with PyYAML
 ```

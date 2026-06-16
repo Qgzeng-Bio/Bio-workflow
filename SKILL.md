@@ -165,7 +165,8 @@ Pick the narrowest route before reading detailed references or writing scripts:
 - **Genome finishing (reference scaffolding / gap filling / polishing):** read `references/playbook-genome-finishing.md` — RagTag reference-based scaffolding (+ dot-plot & LAI QC) for accessions without 3C; TGS-GapCloser+ONT manual per-gap gap filling; NextPolish2+HiFi polishing with merqury QV. Polishing is optional (whole-genome when ONT was used, or local around filled gaps).
 - **Annotation:** read `BRAKER and MAKER`, `EDTA`, `RepeatModeler`, `BUSCO`, and `validation-checklists.md`; confirm repeat masking and evidence naming.
 - **RNA-seq:** read `fastp, FastQC, and MultiQC`, `STAR`, and `featureCounts`; confirm strandedness, paired-end naming, and index reuse.
-- **SNP/INDEL/SV and synteny:** read `bcftools and GATK`, `minimap2`, `SyRI`, and `MUMmer and plotsr`; confirm reference compatibility and chromosome names.
+- **Structural variation & synteny (assembly-vs-assembly):** start from `references/playbook-variant-synteny-syri.md` — SyRI SV calling (minimap2 `-ax asm5 --eqx` → `syri -F S -k`) in two topologies (chained multi-genome plotsr panorama vs all-to-reference → SURVIVOR population SV set → hotspots), with the chromosome-orientation fix and the mandatory SVLEN+SVTYPE VCF patch, plus quinoa acceptance numbers. For per-tool detail use the `SyRI`, `MUMmer and plotsr`, and `minimap2` cards. (Graph-based complex SV via Swave and read-based SV via sniffles2/svim-asm are out of this playbook's scope.)
+- **Read-based / population SNP·INDEL·SV:** read `bcftools and GATK`; confirm reference compatibility and chromosome names before calling.
 - **Pangenome/orthology:** read `OrthoFinder`, `PanGenie`, and search-tool cards; estimate database/output growth and array concurrency.
 - **K-mer GWAS / KMERIA:** read the `KMERIA` card; run a format-compatibility pilot before scaling, and treat wrapper warnings about `count`/`kctm` output formats as blockers.
 - **Download:** use section 10 first; avoid `proxychains`, `http_proxy`, `https_proxy`, and `all_proxy` for raw-data downloads unless confirmed.
@@ -520,12 +521,7 @@ Always save plotting data, code, and parameters. Report what the figure proves a
 
 ## Skill maintenance
 
-Treat `SKILL.md` as the official entry point. Keep `skills.md` as a byte-for-byte
-mirror when retained for user habit. After editing either file, run:
-
-```bash
-cmp -s SKILL.md skills.md
-```
+`SKILL.md` is the single official entry point — the skill loader reads only this file.
 
 Run `quick_validate.py` after structural changes and `bash -n` for any bundled shell
 script changes. For `scripts/slurm_preflight.sh`, test at least one passing script

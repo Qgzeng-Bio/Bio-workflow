@@ -1,6 +1,54 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-16 — 领域 playbook ×3（survey+assembly / CPhasing scaffolding / finishing）+ 两轮 Codex 复审
+Last updated: 2026-06-16 — variant+synteny SyRI playbook（定点核对复审）+ yak count 两遍修正 + 删除 skills.md 镜像 + 改为直推远端
+
+---
+
+## 2026-06-16 — variant+synteny SyRI playbook + yak 修正 + skills.md 清理 + 直推
+
+### 背景 / 目标
+
+继续把 bio-workflow 往"生信副驾"领域大脑方向补：新增第 4 个领域 playbook（结构变异 + 共线性），
+并顺手修掉两处历史遗留（finishing playbook 的 yak 误用、冗余的 skills.md 镜像）。本轮还纠正了
+"必须临时 clone push"的过时做法——当前目录 `.git` 已恢复正常，直接 `git push` 即可。
+
+### 已完成变更
+
+- **新增 `references/playbook-variant-synteny-syri.md`（260 行，DRAFT）**
+  - 从真实藜麦目录提炼：链式 SyRI（`6-Comparation/7-pangenome`，20 基因组成链）vs all2ref
+    （`3-syri_analysis/all2ref`，19 材料比 Cqu）两种拓扑；共享 `minimap2 -ax asm5 --eqx → syri -F S -k`。
+  - 三大坑为主轴：① minimap2 峰值 100–113G 需 ≥150G（80G OOM）；② 染色体反向互补（Cq3B；
+    8/9 非 LM 样本，QQ74 十条非 Cq3B）→ SyRI `No syntenic region found` 或倒位被误画成 INVTR；
+    ③ SyRI VCF 缺 SVLEN+SVTYPE 必须双补（只补一个会丢全部 INS 或塌成 NA）。
+  - all2ref 下游：SURVIVOR `merge 50 1 1 1 0 50` → 群体 SV 集（实测 202,406 条，类型完整）→ SV 热点
+    （100kb/50kb 窗、SUPP≥2、top10%，25,430→2,586）。plotsr 两种布局 + 18 列后期 PIL 拼图坑。
+  - `SKILL.md` 路由：原 "SNP/INDEL/SV and synteny" 拆成「装配层 SV+共线性 → 新 playbook（主入口）」+
+    「读段层变异 → 卡片」两条。
+- **定点核对复审（取代 codex 漫扫）**：codex 漫扫 GB 级真实目录跑 33 min 无果（rg 卡在 syri.out/vcf）；
+  改用只读子代理点名小文件 + 对合并 VCF 一次计数，4 min 出 P1/P2/P3。约 40 项断言精确命中（含实测
+  202,406）；7 处偏差全修（版本号未证标注、两版 VCF 分布加"需重数"脚注、方向修正样本数说精确、
+  热点 `parse_vcf_weighted` 只认 4 类的坑加重、base.cfg 补全 12 key、breakpoint marker 颜色不一致、
+  Cqu==LM134 坐标注明）。经验写入项目 memory `codex-review-no-broad-dir-scan`。
+- **`references/playbook-genome-finishing.md` yak 修正**：`yak count -b37` 是两遍 bloom filter，两个位置
+  参数是"两份相同的流"非"R1,R2"。改成 `<(zcat sr_1 sr_2) <(zcat sr_1 sr_2)`，并加 pitfalls 告警
+  （原归档脚本 R1 喂两次、playbook 旧写法 R1/R2 拆开，两种都错）。
+- **删除 `skills.md`**（不再维护逐字镜像）：仅 `SKILL.md` 被 loader 加载，全局/`.codex` 配置均不引用小写
+  skills.md。清理 `SKILL.md`/`README.md`/`validation-checklists.md` 里"保持镜像 + cmp"的指令。
+
+### 验证 / 命令
+
+```bash
+quick_validate.py .            # Skill is valid!
+grep -oE 'playbook-[a-z-]+\.md' SKILL.md | sort -u   # 4 条 playbook 路由
+git ls-remote --heads origin   # 远端可达，main=adce445，本地无分叉 → 直接 fast-forward push
+```
+
+### caveats
+
+- variant-synteny playbook 仍是 DRAFT：`syri 1.7.1` 版本号未证（需现场 `--version`）；SVLEN-only/SVTYPE-only
+  两版的类型分布数字未在交接留痕（已加"需重数"脚注，总数 199,343 有据）。
+- **本轮起改为直推**：`.git` 正常、`origin` SSH 可达、本地 main 跟踪 origin/main 且同步于 adce445；
+  无需再走 `/tmp` 临时 clone。HANDOFF 旧条目里"必须临时 clone"的说法已作废。
 
 ---
 
@@ -48,10 +96,11 @@ python3 .../quick_validate.py .             # Skill is valid!（需带 yaml 的 
 
 ### caveats
 
-- 三条流程的真实运行均已确认**跑通**(survey 10/10、CPhasing 100% 完成、finishing scaffold/gap/polish
-  成功);但 Chr04 gap 故意留空、RagTag lm270/lm411 的 LAI 未完成。
+- 三条流程的真实运行均已确认**跑通**(survey 10/10、CPhasing 流程完整跑通且锚定 ~96.9% 入 18 染色体、
+  finishing scaffold/gap/polish 成功);但 Chr04 gap 故意留空、RagTag lm270/lm411 的 LAI 未完成。
 - playbook 是领域知识草稿,部分手动步骤(gap 提取/拼接、`--racon↔--ne` 选择)仍需人工判断。
-- 当前目录 `.git` 异常,改动经临时 clone push。
+- 已 push 到 GitHub `Qgzeng-Bio/Bio-workflow`(commit `adce445`,远端 `main`,经临时 clone fast-forward,
+  非强推);当前目录 `.git` 异常,后续 push 仍走临时 clone。本条 HANDOFF 微调将随下次 push 同步到远端。
 
 ---
 
