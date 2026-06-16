@@ -1,6 +1,51 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-16 — variant+synteny SyRI playbook（定点核对复审）+ yak count 两遍修正 + 删除 skills.md 镜像 + 改为直推远端
+Last updated: 2026-06-16 — high-confidence multi-caller SV playbook + SURVIVOR/SVIM-asm 实证修正 + gap-fill 跨越脚本 + F2 两路重构
+
+---
+
+## 2026-06-16 — high-confidence SV playbook + gap-fill 跨越脚本 + finishing F2 两路重构
+
+### 背景 / 目标
+
+继续补领域大脑:① 把"读段层高置信 SV(SyRI+SVIM-asm+Sniffles2 三 caller)"提炼成第 5 个 playbook;
+② 把 finishing 的人工 gap-filling 从"IGV 肉眼挑跨越序列"升级成可复现的 pysam 脚本并重构 F2。
+关键工具语义**全部实证**(读源码/帮助 + 受控小实验),不凭记忆。
+
+### 已完成变更
+
+- **新增 `references/playbook-high-confidence-sv-multicaller.md`(METHOD DRAFT)** + `SKILL.md` 新增
+  "High-confidence SV(multi-caller consensus)"路由。同一参考 Cqu_final.fa 上三 caller 正交
+  (SyRI 复用 + SVIM-asm 装配 + Sniffles2 读段),per-sample SURVIVOR union 合并,read∩assembly = 高置信轴。
+- **SURVIVOR / SVIM-asm 参数实证修正**(写进 playbook):
+  - SURVIVOR `type=0→1`:实测 `type=0` 把 DEL+INS+DEL 并成一条 `SUPP=3`、SVTYPE 取少数派
+    (`SVTYPE=INS`/`SVLEN=-500` 自相矛盾)→ 虚高一致性;`est_dist` 在 1.0.7 标 "Disabled"(无效);
+    大 SV under-merge(`max_dist=1000` 固定、两端都要进窗;实测 100kb DEL 断点差 1.5kb 就并不上)
+    → 定"保持 1000 + 大事件单独 reciprocal-overlap"。
+  - SVIM-asm `--max_sv_size`:帮助原文是"DEL/INV vs translocation 分界",默认 100kb 把大倒位
+    **误报成 translocation**(非"丢弃");override 1e8 才报成 INV;准确性靠后续确认而非放开 cap。
+  - 纠正旧错句 "type kept in INFO"(实为 SURVIVOR 的 FORMAT `TY` 字段)。
+- **新增 skill 脚本 `scripts/fill_gap_from_spanning_alignment.py`(pysam)**:把"IGV 挑跨越 reads/contigs"
+  程序化——单条线性 PRIMARY 跨越;锚定 contig 50kb/read 1kb;MAPQ≥30(优先≥50);两翼 identity(排除 N)
+  + 决定性次序(可复现);反向由 BAM 参考向 SEQ + pysam 自动处理;只换 N 段。**合成数据端到端验证通过**
+  (正向 contig + 反向 read 都正确填入真值)。
+- **`references/playbook-genome-finishing.md` F2 重构**:三种方法 → **两条路**(A=TGS-GapCloser,
+  `--racon/--ne` 是其参数;B=上面脚本的跨越法),删掉对半成品 `7-Auto_gapsfilling/` 的误导引用。
+
+### 验证
+
+```bash
+quick_validate.py .                          # Skill is valid!
+grep -oE 'playbook-[a-z-]+\.md' SKILL.md     # 5 条 playbook 路由
+# SURVIVOR / svim-asm / pysam gap-fill 脚本均跑了受控小实验,结果与预期一致
+```
+
+### caveats
+
+- high-confidence SV playbook 标 **METHOD DRAFT**(真实运行当时读段侧未跑完;方法/命令/版本已坐实)。
+- 应用户要求也改了**真实项目** `2-C_quinoa/.../6-high_quality_sv_calling/scripts/`(16_ type=1、
+  14_ 注释校准、新增 19_large_event_concordance.sh,已合成验证)——这些**不在本 repo**,未纳入本次提交。
+- gap-fill 脚本只做进 skill,未动用户项目 `5-Gaps_filling/`。
 
 ---
 

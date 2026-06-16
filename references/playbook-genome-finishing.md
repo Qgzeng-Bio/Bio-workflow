@@ -69,12 +69,13 @@ lm411 LAI logs absent — re-run those two). Non-fatal conda `GLIBCXX` warning a
 
 ---
 
-## Stage F2 — Gap filling (TGS-GapCloser + ONT) — manual, per-gap
+## Stage F2 — Gap filling — per-gap, two paths
 
-> **Honest framing:** done **gap-by-gap, by hand**. The core trick: **operate only on a ~200 kb
-> window around each gap, fill it, then splice it back into the whole chromosome** — never feed the
-> 87 Mb chromosome to the filler. The extract / re-splice are hand-run `samtools faidx` / `cat`, and
-> the `--racon`↔`--ne` choice is a manual call on fill quality.
+> **Two ways to fill a gap, both per-gap.** **Path A — TGS-GapCloser** on a ~200 kb window
+> (`--racon` vs `--ne` is a *parameter of the same tool*, not a separate method). **Path B — splice in a
+> single read/contig that spans the gap** (done by hand in IGV before; now scripted — see Path B below).
+> Shared: find gaps (Step 1), then re-splice + validate, telomeres, and combine. Path A's extract/re-splice
+> are hand-run `samtools faidx`/`cat`; Path B is `scripts/fill_gap_from_spanning_alignment.py`.
 
 ### Step 1 — find gaps
 
@@ -84,7 +85,9 @@ lm411 LAI logs absent — re-run those two). Non-fatal conda `GLIBCXX` warning a
 python get_gaps.py Cqu_chrom.fa >> gaps.gff3      # these gaps were 100 bp placeholder N-runs from scaffolding
 ```
 
-### Step 2 — split the chromosome at the gap (the key technique)
+### Path A — TGS-GapCloser on a ~200 kb window
+
+**Step 2 — split the chromosome at the gap** (the key technique):
 
 `samtools faidx` the chromosome into the left flank, the right flank, and a small **gap ± ~100 kb
 window** (~200 kb total; widen to ±200 kb / 400 kb by hand for a stubborn gap, as `Chr05g2` needed) —
@@ -97,7 +100,7 @@ samtools faidx chrom.fa Chr05:73900001-87193029 > Chr05g1_right.fa              
 # left / window / right are CONTIGUOUS and NON-OVERLAPPING — so re-splicing them duplicates nothing
 ```
 
-### Step 3 — fill the window (three ways, in preference order)
+**Step 3 — fill the window** with TGS-GapCloser (ONT):
 
 ```bash
 conda activate gapcloser          # TGS-GapCloser v1.2.1 + racon
@@ -107,11 +110,9 @@ tgsgapcloser --scaff Chr05g1_gaps_flanking_200kb.fa --reads Cqu_ONT.fasta.gz --o
 # → filled window: to_filled_chr05g1.fa  (203 kb N-gap window → ~215 kb real sequence)
 ```
 
-- **ONT + racon** (default) — error-corrected ONT fills the gap.
-- **`--ne`** (raw ONT, no racon) — fallback when racon's fill is poor/empty (used for `Chr05g2`).
-- **HiFi-contig span** (most accurate) — if a single HiFi contig (e.g. hap2 `h2tg000001l`) already
-  spans the gap (found by `minimap2 -ax asm5 Cqu_gaps.fa cqu_hifi_all.fa | samtools view -F 4`), take
-  that contig's sequence across the gap instead of an ONT fill.
+`--racon` (default, error-corrected) vs **`--ne`** (raw ONT, no racon) is a **flag of the same tool**, not
+a separate method — switch to `--ne` when racon's fill is poor/empty (used for `Chr05g2`). The choice is a
+manual call on fill quality.
 
 ### Step 4 — re-splice + validate
 
@@ -127,6 +128,33 @@ pandepth -i 2end.bam -w 1000 -o 2end.depth
 ```
 
 A gap that can't be filled cleanly is **left open** (Chr04 here — only an end-check, the N-gap stays).
+
+### Path B — splice in a single spanning read/contig (`scripts/fill_gap_from_spanning_alignment.py`)
+
+Instead of an ONT fill, take **one read or contig that already bridges the gap** and splice its sequence
+in. This was done by **eyeballing IGV** for a bridging alignment; the script does it deterministically from
+a BAM (verified on synthetic spanners, forward + reverse):
+
+```bash
+conda activate assembly            # any env with pysam (anaconda3 base works) + minimap2 + samtools
+# 1) align the donor to the GAPPED chromosome — contigs FIRST (fast); reads only as fallback (heavy)
+minimap2 -ax asm5 -t 24 chrom.fa donor_contigs.fa | samtools sort -o donor.bam - && samtools index donor.bam
+# 2) find the spanning donor and splice it in
+python scripts/fill_gap_from_spanning_alignment.py \
+    --bam donor.bam --ref chrom.fa --gaps gaps.gff3 --donor-type contig \
+    --out chrom.gapfilled.fa --report gapfill_report.tsv
+# no spanner found? re-run on a reads BAM:  minimap2 -ax map-hifi … reads.fa  +  --donor-type read
+```
+
+Rules it encodes (so it matches the manual judgement): a valid spanner is **one single linear PRIMARY
+alignment** — a read split across the gap into supplementary (SA) alignments does **not** count as
+bridging; it must anchor **≥ MIN_ANCHOR on both flanks** (contig 50 kb / read 1 kb — reads kept permissive
+so short ones aren't missed) at **MAPQ ≥ 30** (prefer ≥ 50). Among candidates it takes the **highest flank
+identity** (over the anchored flanks only, **excluding the N gap**), ties broken **deterministically**
+(longest anchor → leftmost coord) for reproducibility. The fill is the donor bases between the two flank
+anchors; a **reverse-strand donor needs no manual reverse-complement** — the BAM stores SEQ in reference
+orientation and pysam returns it ref-oriented (confirmed by test). The splice replaces only the N run,
+keeping the flanks; then validate the joins exactly as in Path A (re-map long reads, continuous depth).
 
 ### Step 5 — telomere ends (missing telomeres ≠ internal gaps) — extend by overlap with donor reads/contigs
 
@@ -159,11 +187,12 @@ to the A/B subgenomes by synteny (e.g. `Chr01→Cq1B`, `Chr04→Cq3B`; 9 `Cq*A` 
 
 ### Resources & state
 
-`fat`, 24 CPU, ~300 G; ~1–2 h/gap (racon), ~20–30 min (`--ne`). **State: most gaps filled** (`pipe.log`
-→ `ALL DONE !!!`); **Chr04 left open**; Chr05g2 used `--ne`; Chr08/Chr14 telomere ends recovered by
-overlap-extension with donor reads/contigs (HiFi telomere reads + NextDenovo donor contigs).
-A scripted version of the extract/fill exists at `…/5-Gaps_filling/7-Auto_gapsfilling/`; the per-gap
-`--racon`↔`--ne` decision remains a manual call on fill quality.
+`fat`, 24 CPU, ~300 G; Path A ~1–2 h/gap (racon), ~20–30 min (`--ne`). **State: most gaps filled**
+(`pipe.log` → `ALL DONE !!!`); **Chr04 left open**; Chr05g2 used `--ne`; Chr08/Chr14 telomere ends
+recovered by overlap-extension with donor reads/contigs (HiFi telomere reads + NextDenovo donor contigs).
+Path B was done ad hoc through IGV in the real run; it is now `scripts/fill_gap_from_spanning_alignment.py`
+(a half-finished auto-pipeline under `5-Gaps_filling/7-Auto_gapsfilling/` is unrelated and not used).
+Path A's `--racon`↔`--ne` choice remains a manual call on fill quality.
 
 ---
 
