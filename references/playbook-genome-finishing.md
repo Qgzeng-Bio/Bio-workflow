@@ -5,7 +5,7 @@
 > reconciled with the literature (sources at bottom). Style: flexible. Gap-filling was **manual /
 > semi-automated** — the **judgment-heavy** parts are flagged honestly, not dressed up as a clean recipe.
 >
-> Downstream of assembly (`playbook-genome-survey-and-assembly.md`) and Hi-C/Pore-C scaffolding
+> Downstream of assembly (`playbook-genome-assembly.md`) and Hi-C/Pore-C scaffolding
 > (`playbook-chromosome-scaffolding-cphasing.md`). Design here; submit via the executor trio.
 
 ## Two finishing paths (know which you're on)

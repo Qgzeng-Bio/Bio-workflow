@@ -1,6 +1,44 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-16 — 今日新增 playbook 模块的两轮 Codex review + 修复(尤其 gap-fill 脚本加固)
+Last updated: 2026-06-16 — survey/assembly 拆分 + 新增 evaluation playbook + scaffolding orient 步骤 + BUSCO geno 查证
+
+---
+
+## 2026-06-16 — Genome-assembly 管线对齐:survey/assembly 拆分 + evaluation playbook + scaffolding orient 步骤
+
+### 背景 / 目标
+
+把 skill 的 de-novo 管线按用户的规范 6 阶段对齐:**survey → assembly → scaffolding → gap-fill & polish →
+evaluation → SV calling**,并新增系统质量评估这一阶段。
+
+### 已完成变更
+
+- **拆分**:`playbook-genome-survey-and-assembly.md`(已删)→ `playbook-genome-survey.md`(Read QC + k-mer
+  survey)+ `playbook-genome-assembly.md`(hifiasm primary + 组装 QC)。用交叉引用保住 "survey ploidy →
+  BUSCO duplication → subgenome sizes" 贯穿线索(survey 末尾 handoff、assembly 开头接续 + Stage C 三方一致性)。
+- **新增** `playbook-genome-quality-evaluation.md`(从真实 `7-Genome-evalution/` 提炼):6 核心(QUAST 连续性 /
+  Merqury QV / BUSCO / LAI / mapping rate / tidk telomere)+ 1 bonus(BlobToolKit snail plot,真实项目仅 staged
+  未运行,如实标注)。对 primary + hap1/hap2 打分;真实数字:18 contig / N50 70.1Mb / 0 gap、QV 66.9/65.8/63.2、
+  BUSCO odb12 C 99.7%、LAI 16.09/10.28/9.99、mapping 100/99.74/99.98%、telomere 36/36。
+- **scaffolding** 新增 "Orient & name to a reference (synteny dot plot)" 一节:挂载后用 MUMmer(或 minimap2)
+  点图判染色体名 + 方向,再 `seqkit` 改 ID + 反向互补;用真实 Cq3B rc 事故说明为什么必须在此修(否则下游 SyRI
+  出假 INVTR)。
+- **SKILL.md** Task routing:顶部加 6 阶段流水线总览;survey/assembly 拆成两条;新增 evaluation 路由;6 个管线阶段
+  连续编号 ①–⑥(SV calling 紧跟 evaluation,非管线路由后置)。交叉引用(scaffolding/finishing)改指 assembly。
+
+### 复审 / 验证
+
+- 一轮 codex 只读 review(scoped 到本批小文件,禁漫扫 GB):修了 BUSCO `-m geno→genome`、scaffolding flip 顺序
+  bug(先翻转再 rename)、eval "三套全跑"表述收紧、mapping hap 列展开、scaffolding "prevents that" 软化、SKILL
+  ⑥ 重排。
+- **BUSCO `geno` 查证(教训)**:codex 说 `geno` 错;我先怀疑(对)→ 读半截 `update_mode` 源码"确认"codex(错)
+  → `busco --help` + 实跑证明 **v6.0.0 仍接受 `geno`**(等价 genome)。playbook 注释已订正为中性。教训入 memory
+  `verify-tool-cli-by-help-not-source-fragment`。`-m genome` 保留(有效、匹配真实脚本)。
+- `quick_validate.py` → `Skill is valid!`;7 个 playbook 全在路由。
+
+### 下一步
+
+- 本提交后用 `/code-review ultra` 云端复审本批;按发现修复后再 push。
 
 ---
 

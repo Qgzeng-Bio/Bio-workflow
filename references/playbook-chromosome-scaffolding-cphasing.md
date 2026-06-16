@@ -5,8 +5,8 @@
 > into 18 chromosomes with Pore-C, then reconciled with the literature (sources at the bottom).
 > Style: flexible.
 >
-> **This is Stage D**, downstream of the assembly playbook
-> (`playbook-genome-survey-and-assembly.md`): its **input is the `*_primary.fa`** that playbook
+> **Stage 3 (scaffolding)**, downstream of the assembly playbook
+> (`playbook-genome-assembly.md`): its **input is the `*_primary.fa`** that playbook
 > produces. Design here; submit via the executor trio (`gen_sbatch` → `prepare_submission` →
 > `submit_and_log`).
 
@@ -109,6 +109,45 @@ cphasing utils agp2fasta groups.review.agp -o groups.review.fasta
 
 Result of curation here: `groups.review.corrected.agp` (the final, curated chromosome map).
 
+## Orient & name to a reference (synteny dot plot) — do this before anything downstream
+
+C-Phasing's chromosome **IDs (Chr01…Chr18) and per-chromosome orientation are arbitrary** — assigned by the
+algorithm, *not* tied to any reference. Before any comparative/SV work, align the curated chromosomes to a
+chromosome-scale reference, read a **dot plot**, and **rename + reverse-complement** to match the reference's
+names and orientation. (This is the C-Phasing analogue of the RagTag dot-plot QC in `playbook-genome-finishing.md`.)
+
+```bash
+# 1) align curated chromosomes to the reference, then a whole-genome dot plot
+conda activate <mummer-env>                       # 〔MUMmer 4; or use the minimap2 alternative below〕
+nucmer --maxmatch -t 16 -p cqu_vs_ref reference.fa cqu_chrom.fa
+delta-filter -1 cqu_vs_ref.delta > cqu_vs_ref.1.delta              # optional: 1-to-1 filter → cleaner dot plot
+mummerplot --png --large --layout -p cqu_vs_ref cqu_vs_ref.1.delta
+#   project alternative (what the RagTag stage actually used): minimap2 -cx asm5 ref.fa cqu_chrom.fa > x.paf
+#   then Rscript ~/tools/dotPlotly/pafCoordsDotPlotly.R -i x.paf -o cqu_vs_ref -s -l -x
+```
+
+Read the dot plot — each query chromosome maps to one reference chromosome:
+- **Name** = which reference chromosome the diagonal falls on → that query's true ID.
+- **Orientation** = the diagonal's slope: **↗ (forward) = same orientation; ↘ (anti-diagonal) = REVERSED** →
+  that chromosome must be reverse-complemented.
+
+```bash
+# 2) build maps from the dot plot, then apply with seqkit (real project pattern)
+#    flip.ids: the ORIGINAL Chr0x IDs on the anti-diagonal (one/line) — flip BEFORE renaming so they still match
+#    rename.txt: <oldID>\t<refID> per line — must cover all 18 (an unmatched key blanks the ID; seqkit replace -U keeps it)
+seqkit grep   -n -f flip.ids cqu_chrom.fa | seqkit seq -r -p > flipped.fa       # -r -p = reverse-complement
+seqkit grep -v -n -f flip.ids cqu_chrom.fa > kept.fa
+cat kept.fa flipped.fa | seqkit replace -p '^(\S+)' -r '{kv}' -k rename.txt \
+    | seqkit sort -N > cqu_chrom.oriented.fa     # sort -N = natural ID order; if reference order differs, sort by a reference_order.ids list
+```
+
+**Why this is not optional:** a chromosome left in the wrong orientation does **not** error — it silently
+surfaces downstream as a **fake two-segment translocation / INVTR** in SyRI (exactly the Cq3B reverse-complement
+saga in `playbook-variant-synteny-syri.md`, where QQ74/Javi had to be rc-corrected *after* the fact). Fixing
+name + orientation here, against the reference, **prevents this class of artifact for this assembly** — it does
+not replace the **per-comparison** SyRI orientation check downstream. 〔Exact MUMmer flags + the rename/flip-map building
+are the standard recipe — ground them against your real run before relying on specific values.〕
+
 ## Resources & right-sizing  ⚠️
 
 The run used `--partition=fat --cpus-per-task=32 --mem=300G`, but **peak memory was only 24.91 GB**
@@ -130,8 +169,8 @@ The run used `--partition=fat --cpus-per-task=32 --mem=300G`, but **peak memory 
 **Interpretation hooks:**
 
 - For an **allotetraploid**, CPhasing yields **18 gametic chromosome groups** (clean diagonal blocks);
-  the **9A + 9B subgenome assignment is made downstream by synteny** (the finishing-stage `name.txt`
-  rename), not by CPhasing itself. Off-diagonal signal between a Chr-A and its homeolog Chr-B is expected to be *low*
+  the chromosome **names + orientation come from the synteny dot-plot step above** (CPhasing's Chr01–18
+  IDs/orientation are arbitrary), and the 9A/9B subgenome IDs are finalized at finishing via `name.txt`. Off-diagonal signal between a Chr-A and its homeolog Chr-B is expected to be *low*
   (diverged subgenomes); strong A↔B bleed would flag mis-assignment.
 - Anchored length ≈ the input primary length (here exactly equal) → no contigs lost; an anchoring
   rate well below ~90% means many contigs stayed unplaced (check contig sizes / Pore-C coverage).
