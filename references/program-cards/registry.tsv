@@ -1,0 +1,6 @@
+Program_Key	Display_Name	Aliases	Card_Path	Modes	Status
+busco	BUSCO	busco,BUSCO	references/program-cards/busco.md	genome,protein,transcriptome	active
+minimap2-samtools	minimap2 + samtools	minimap2,samtools,samtools sort,samtools-sort,minimap2-samtools,mm2	references/program-cards/minimap2-samtools.md	reads_to_ref_hifi,reads_to_ref_ont,asm_to_asm_syri,asm_to_asm_paf,reads_to_ref_bam	active
+syri	SyRI	syri,SyRI	references/program-cards/syri.md	pairwise_asm_sv,all_to_ref_batch,chained_plotsr_input	active
+biser	BISER	biser,BISER,synmap-like SD,sds,sds_output	references/program-cards/biser.md	single_reference_sd_catalog,batch_sample_sd_catalog	active
+kmeria	KMERIA	kmeria,KMERIA,kmer-gwas,k-mer GWAS,kmeria_wrapper.pl	references/program-cards/kmeria.md	pilot_kmer_gwas,full_population_kmer_gwas,kmer_to_genome_mapping	active

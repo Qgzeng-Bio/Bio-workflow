@@ -1,0 +1,52 @@
+
+#===============================================================================#
+#                                                                               #
+#                 _  ____  __ ______ _____  _____                               #
+#                | |/ /  \/  |  ____|  __ \|_   _|   /\                         #
+#                | ' /| \  / | |__  | |__) | | |    /  \                        #
+#                |  < | |\/| |  __| |  _  /  | |   / /\ \                       #
+#                | . \| |  | | |____| | \ \ _| |_ / ____ \                      #
+#                |_|\_|_|  |_|______|_|  \_\_____/_/    \_\                     #
+#                                                                               #
+#===============================================================================#
+
+Program:  [1;31mKMERIA[0m - A [1;31mKMER[0m-based genome-w[1;31mI[0mde [1;31mA[0;0mssociation testing approach
+          for polyploids
+
+Version:  v2.0.4 (2026-06-12)
+Author:   Chen Shuai <chensss1209@gmail.com>
+GitHub:   https://github.com/Sh1ne111/KMERIA
+
+[1;33mUsage:[0m    [1;31mkmeria[0m <command> [options]
+
+[1;33mCommands:[0m
+
+  [1;32mData Processing:[0m
+    count      Count k-mers from FASTA/FASTQ files
+    dump       Convert binary k-mer file to plain text
+    kctm       Build population k-mer counting matrix
+    filter     Filter k-mer matrix by frequency and quality
+
+  [1;32mFormat Conversion:[0m
+    m2b        Convert k-mer matrix to BIMBAM dosage format
+    b2g        Convert BIMBAM format to genotype format
+
+  [1;32mAnalysis:[0m
+    sketch     Random sampling for PCA and kinship calculation
+    asso       Conduct k-mer genome-wide association study
+
+  [1;32mUtilities:[0m
+    fkr        Fetch reads associated k-mers from FASTQ files
+    fkrtgs     Fetch reads associated k-mers from TGS FASTQ files
+    kbam       Extract reads associated k-mers from BAM files
+    addp       Annotate BAM with association p-values
+
+[1;33mAdditional Help:[0m
+    kmeria <command> -h     Show detailed help for specific command
+    Visit https://github.com/Sh1ne111/KMERIA for documentation
+
+#===========================================================================#
+#  Citation: If you use KMERIA, please cite our paper at                    #
+#         [https://doi.org/10.1038/s41588-026-02641-8]                      #
+#===========================================================================#
+

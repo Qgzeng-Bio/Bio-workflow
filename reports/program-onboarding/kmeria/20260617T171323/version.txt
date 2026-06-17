@@ -1,0 +1,19 @@
+=== kmeria --version ===
+KMERIA v2.0.4
+
+=== kmeria_wrapper.pl --version ===
+Unknown option: version
+Usage:
+    kmeria_wrapper.pl --step <step> [options]
+
+     Steps:
+        count            Count k-mers from FASTQ files using KMC
+        kctm             Build population-level k-mer matrices
+        filter           Filter raw k-mer matrices
+        m2b              Convert k-mer matrices to BIMBAM dosage format
+        asso             Conduct k-mer association study
+
+=== kmc (no --version, banner only) ===
+K-Mer Counter (KMC) ver. 3.2.1 (2022-01-04)
+Usage:
+ kmc [options] <input_file_name> <output_file_name> <working_directory>

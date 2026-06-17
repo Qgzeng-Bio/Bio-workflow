@@ -1,0 +1,207 @@
+NAME
+    kmeria_wrapper.pl - A parallel wrapper for KMERIA pipeline (v2.0.1)
+
+SYNOPSIS
+    kmeria_wrapper.pl --step <step> [options]
+
+     Steps:
+        count            Count k-mers from FASTQ files using KMC
+        kctm             Build population-level k-mer matrices
+        filter           Filter raw k-mer matrices
+        m2b              Convert k-mer matrices to BIMBAM dosage format
+        asso             Conduct k-mer association study
+        all              Run the complete KMERIA pipeline
+
+     Global Options:
+       --help|-h                    Show detailed help message
+       --threads|-t      [INT]      Number of threads per job [default: 16]
+       --step            [STR]      Pipeline step to run (required)
+       --scheduler|-s    [STR]      Job scheduler (local, slurm, sge, pbs) [default: local]
+       --samples         [FILE]     File containing list of samples (one per line)
+       --queue|-q        [STR]      Queue/Partition for job submission [default: share]
+       --memory|-m       [STR]      Memory per job [default: 32G]
+       --time            [STR]      Time limit for job [default: 720:00:00]
+
+     Command-specific options:
+
+     For 'count' (K-mer counting with KMC or kmeria count):
+       --input|-i        [DIR]      Directory with FASTQ/FASTA files
+       --output|-o       [DIR]      Output directory [default: 01_kmer_counts]
+       --kmer|-k         [INT]      K-mer size [default: 31]
+       --min-abund       [INT]      Minimum k-mer abundance (KMC only) [default: 4]
+       --max-abund       [INT]      Maximum k-mer abundance (KMC only) [default: 1000]
+       --batch-size|-b   [INT]      Number of samples per batch script [default: 4]
+   
+       KMC-specific options:
+       --use-kmc                    Use KMC instead of kmeria count
+       --kmc-memory      [INT]      Memory allocation for KMC in GB [default: 16]
+   
+       kmeria count-specific options (default):
+       --count-separate-strands     Count strands separately (no canonical)
+       -T|--text-output             Text output instead of binary
+       --partition-bits  [INT]      Partitioning bits [default: 16]
+       --compress-homopolymers      Compress homopolymers (experimental)
+
+     For 'kctm' (K-mer matrix construction):
+       --input|-i        [DIR]      Directory with sorted k-mer databases
+       --output|-o       [DIR]      Output directory [default: 02_kmer_matrices]
+       --kctm-batch      [INT]      Batch size for kctm processing [default: 10000]
+
+     For 'filter' (Matrix filtering):
+       --input|-i        [DIR]      Directory with k-mer matrices
+       --output|-o       [DIR]      Output directory [default: 03_filtered_matrices]
+       --max-abund       [INT]      Maximum k-mer abundance [default: 1000]
+       --missing         [FLOAT]    Missing ratio threshold [default: 0.6]
+       --ploidy|-p       [INT]      Genome ploidy [default: 4]
+       --depth-file|-d   [FILE]     Sample depth file (REQUIRED)
+
+     For 'm2b' (Matrix to BIMBAM conversion):
+       --input|-i        [DIR]      Directory with filtered matrices
+       --output|-o       [DIR]      Output directory [default: 04_bimbam]
+       --bgzf-threads    [INT]      Threads for BGZF compression [default: 16]
+       --sketch-size     [INT]      Number of k-mers for sampling [default: 8000000]
+       --depth-file|-d   [FILE]     Sample depth file for sample list generation
+
+     For 'asso' (Association analysis):
+       --input|-i        [DIR]      Directory with BIMBAM files
+       --output|-o       [DIR]      Output directory [default: 05_association]
+       --pheno           [FILE]     Phenotype file (REQUIRED)
+       --pheno-col|-n    [INT]      Phenotype column [default: 1]
+       --covar           [FILE]     Covariate file (if not provided, PCA will be calculated)
+       --kinship         [FILE]     Kinship matrix file (if not provided, will be calculated)
+       --use-bimbam-tools           Use bimbamAsso mode in kassoc (default: gemma)
+       --kinship-precision [INT]    Precision for kinship matrix [default: 10]
+       --output-precision  [INT]    Precision for association output [default: 5]
+
+DESCRIPTION
+    kmeria_wrapper.pl is a wrapper script for generating job scripts for the
+    KMERIA v2.0 pipeline. It generates bash scripts that can be manually
+    submitted to cluster job schedulers (SLURM, SGE, PBS) or executed
+    locally.
+
+    Key changes in v2.0.1: - **CRITICAL FIX**: Maintains consistent sample
+    order across all pipeline steps - Sample order is saved from count step
+    and reused in all downstream steps - Added verification checks to detect
+    sample order mismatches - Prevents genotype-phenotype association errors
+    due to sample order inconsistency
+
+WORKFLOW
+    The complete KMERIA pipeline consists of 5 steps:
+
+    1. count - Count k-mers from FASTQ/FASTA files (kmeria count by default,
+    or KMC with --use-kmc) 2. kctm - Build k-mer count matrices from count
+    results 3. filter - Filter matrices by abundance, ploidy, and missing
+    rate 4. m2b - Convert matrices to BIMBAM format and generate VCF/PLINK
+    files 5. asso - Perform association analysis with kinship correction
+    using kassoc
+
+EXAMPLES
+  Generate scripts for complete pipeline
+    perl kmeria_wrapper.pl --step all \ --input /data/fastq_files \ --output
+    /results/kmeria_analysis \ --samples sample.list \ --depth-file
+    sample_depth.tsv \ --pheno phenotypes.txt \ --threads 32 \ --memory 32G
+    \ --kmer 31 \ --min-abund 4 \ --max-abund 1000 \ --batch-size 4 \
+    --ploidy 4 \ --missing 0.6 \ --scheduler slurm \ --queue normal
+
+  Count k-mers using KMC (recommended)
+    perl kmeria_wrapper.pl --step count \ --input /data/fastq_files \
+    --output /results/01_kmer_counts \ --samples sample.list \ --threads 32
+    \ --kmer 31 \ --min-abund 4 \ --batch-size 4 \ --use-kmc \ --kmc-memory
+    16 \ --scheduler slurm
+
+IMPORTANT NOTES ON SAMPLE ORDER
+    This version (2.0.1) addresses a **CRITICAL** issue where sample order
+    could become inconsistent between steps, leading to incorrect
+    phenotype-genotype associations.
+
+    The fix works by: 1. Saving the sample order from the count step to
+    sample_order.txt 2. Using this file in kctm to maintain the exact same
+    order 3. Verifying order consistency in subsequent steps 4. Using the
+    original order for all downstream analyses
+
+    **IMPORTANT**: If you're using pre-existing count results, ensure the
+    samples are processed in the same order as your phenotype and depth
+    files!
+
+  Verifying Sample Order
+    After running the pipeline, you can verify sample order consistency:
+
+      # Check if sample order is consistent
+      diff 01_kmer_counts/sample_order.txt 02_kmer_matrices/kctm_sample_order.txt
+  
+      # Should show no differences if order is consistent
+
+  Sample Order Files
+    - **01_kmer_counts/sample_order.txt**: Original sample order from count
+    step - **02_kmer_matrices/kctm_sample_order.txt**: Sample order used in
+    kctm - **04_bimbam/tmp_sample.list**: Sample order used for VCF/PLINK
+    conversion - **05_association/sample.list**: Sample order used for
+    association analysis
+
+    All these files should contain samples in the SAME order!
+
+FILE FORMATS
+  Sample list file (--samples)
+Plain text file with one sample name per line (no header):
+  sample1
+  sample2
+  sample3
+    **IMPORTANT**: The order in this file will be preserved throughout the
+    entire pipeline!
+
+  Depth file (--depth-file)
+Tab-separated file with sample names and depth values:
+  sample1    45.2
+  sample2    52.8
+  sample3    38.9
+    **IMPORTANT**: Sample order should match the sample list file!
+
+  Phenotype file (--pheno)
+Tab or space-separated file with format:
+  sample1  1.5    0
+  sample2  2.3    1
+  sample3  1.8    1
+    **IMPORTANT**: Sample order should match the sample list file!
+
+TROUBLESHOOTING
+  Sample Order Mismatch
+    If you see warnings about sample order mismatch:
+
+    1. Check the sample_order.txt files in each step directory 2. Verify
+    your input files (sample list, depth file, phenotype file) have
+    consistent order 3. If using pre-existing count results, regenerate them
+    with the correct sample order 4. Use the verification commands:
+
+       diff 01_kmer_counts/sample_order.txt 02_kmer_matrices/kctm_sample_order.txt
+
+  Missing sample_order.txt
+    If sample_order.txt is missing from the count step:
+
+    1. The kctm step will fall back to alphabetical order (ls command) 2.
+    This may cause sample order mismatch 3. **Solution**: Re-run the count
+    step to generate sample_order.txt
+
+VERSION
+    Version 2.0.1 - Sample order consistency fix (2025)
+
+CHANGELOG
+    v2.0.1 (2025): - **CRITICAL FIX**: Ensures consistent sample order
+    across all pipeline steps - Added sample_order.txt generation in count
+    step - Modified kctm step to use sample_order.txt instead of ls output -
+    Added sample order verification in filter and subsequent steps -
+    Prevents mismatch between sample order in matrices and phenotype/depth
+    files - All downstream steps now use the original sample order from
+    count step
+
+    v2.0.0 (2025): - Added support for all kmeria count parameters (-C, -T,
+    -p, -c) - Updated filter step to use new compressed output format -
+    Enhanced m2b step with BGZF compression and statistics - Updated
+    association step to use kassoc tool
+
+AUTHOR
+    Updated for KMERIA v2.0.1 - Sample order consistency fix Original
+    concept based on KMERIA by Chen Shuai (chensss1209@gmail.com)
+
+SEE ALSO
+    KMERIA documentation: https://github.com/Sh1ne111/KMERIA
+

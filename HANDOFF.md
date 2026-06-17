@@ -1,6 +1,561 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-16 — survey/assembly 拆分 + 新增 evaluation playbook + scaffolding orient 步骤 + BUSCO geno 查证
+Last updated: 2026-06-17 — skill 优化: 通用 `program_onboard.py choose` 交互选择器 + onboarding 分层口径
+
+---
+
+## 2026-06-17 — skill 优化: program onboarding 交互与口径收敛
+
+### 背景 / 目标
+
+用户暂停 KMERIA 实测,优先优化 bio-workflow skill。核心问题是:未知软件接入时不能把 `probe`
+误说成"测试";需要把"安装位置 / 来源 / pilot 输入"做成可复用的交互式选择,并把当前进度分层报告清楚。
+
+### 已完成变更
+
+- `scripts/program_onboard.py`:
+  - 新增通用子命令 `choose <program>`。
+  - 记录三组选项:install location, source type, minimal pilot input。
+  - 真实终端优先 curses 上下键/Enter;非 TTY 或 `--plain` 时使用编号输入。
+  - 支持 `Type something` 自定义输入,`--print-options`,`--defaults`,`--default-source github`。
+  - 默认输出 `config/program-onboarding/<program_key>_choice.json`;项目外输出默认阻断,仅
+    `--allow-external-output` 供 smoke test。
+  - 修复 `install` 成功后打印 `capture` 下一步时引用未定义变量的问题。
+- `SKILL.md`:
+  - program-level route 增加 `python3 scripts/program_onboard.py choose <program_name>`。
+  - 明确当前聊天 UI 不能假设有原生弹窗;需要本地终端选择器或 `--plain` 兜底。
+  - 增加进度层级口径:
+    `L0 choice/intake`, `L1 probe`, `L2 install proposal`, `L3 installed+captured`,
+    `L4 pilot script/preflight`, `L5 pilot/run validated`, `L6 active card`。
+  - 明确不能把 `probe` 或 `plan-install` 描述为程序已可运行测试。
+- `references/program-cards/program-onboarding.md` / `README.md`:
+  - 同步 `choose` 命令和输出位置。
+  - 补 L0-L6 分层说明和 `--default-source github` 使用场景。
+
+### 验证 / 命令
+
+- `PYTHONPYCACHEPREFIX=/tmp/bio_workflow_pycache python3 -m py_compile scripts/program_onboard.py scripts/program_card_lookup.py scripts/validate_program_cards.py scripts/kmeria_onboarding_wizard.py`
+- `python3 scripts/program_onboard.py choose KMERIA --print-options --default-source github`
+- `python3 scripts/program_onboard.py choose KMERIA --defaults --default-source github --output /tmp/kmeria_choice_generic.json --allow-external-output`
+- `printf '\n\n\n' | python3 scripts/program_onboard.py choose BUSCO --plain --output /tmp/busco_choice_plain.json --allow-external-output`
+- `printf 'x\n' | python3 scripts/program_onboard.py choose BUSCO --plain --output /tmp/invalid_choice.json --allow-external-output`
+  - 按预期输出 `invalid choice: x`,不抛 Python traceback。
+- `python3 scripts/program_onboard.py choose KMERIA --defaults --output /tmp/blocked_choice.json`
+  - 按预期阻断:输出路径必须在 `config/` 下。
+- `python3 scripts/validate_program_cards.py`
+- `python3 scripts/validate_program_cards.py --check-drafts`
+- `python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .`
+
+### 当前结论
+
+- 现在未知程序接入的"交互确认"不是 KMERIA 专用脚本了;通用入口是
+  `python3 scripts/program_onboard.py choose <program>`。
+- `choose` 只记录选择,不安装、不 clone、不联网、不扫数据、不提交 SLURM。
+- 后续向用户汇报时必须说明当前 L0-L6 层级,避免把轻量探测说成实际运行测试。
+
+### Caveats / 下一步
+
+- `choose` 只解决确认项收集;真实 GitHub/source 安装仍要单独写 reviewed manual plan。
+- KMERIA 专用 `scripts/kmeria_onboarding_wizard.py` 仍保留,但通用流程应优先使用 `program_onboard.py choose KMERIA --default-source github`。
+- 后续可以把 `choose` 输出自动并入 evidence bundle,但当前版本先保持 project-local config,避免污染证据目录。
+
+---
+
+## 2026-06-17 — KMERIA onboarding 测试: GitHub source proposal-only
+
+### 背景 / 目标
+
+用户准备测试/接入 KMERIA: <https://github.com/Sh1ne111/KMERIA>。按 bio-workflow program-level route
+执行第三版 unknown-program onboarding:先查 registry/card,再本地轻量 probe,再基于 GitHub 官方文档生成
+proposal-only evidence,不安装、不 clone、不写 Conda env、不提交 SLURM。
+
+### 已完成动作
+
+- 新增 `scripts/kmeria_onboarding_wizard.py`:
+  - 解决当前聊天 UI 不能弹 `request_user_input` 选择框的问题。
+  - 在真实终端里优先使用 `curses` 上下键/Enter 菜单;不支持 TTY 时回退到编号输入。
+  - 选项含 `Type something` 自定义输入。
+  - 默认输出 `config/kmeria_onboarding_choice.json`,供下一步自动读取。
+  - 验证命令:
+    - `PYTHONPYCACHEPREFIX=/tmp/bio_workflow_pycache python3 -m py_compile scripts/kmeria_onboarding_wizard.py`
+    - `python3 scripts/kmeria_onboarding_wizard.py --print-options`
+    - `python3 scripts/kmeria_onboarding_wizard.py --defaults --output /tmp/kmeria_onboarding_choice.json`
+- `python3 scripts/program_card_lookup.py KMERIA`
+  - 返回 `Status UNKNOWN`;当前 registry 没有 KMERIA active card。
+- `python3 scripts/program_onboard.py probe KMERIA`
+  - evidence bundle: `reports/program-onboarding/kmeria/20260617T145205/`
+  - `intent.tsv`: `Status=UNKNOWN`
+  - `local_discovery.tsv`: `command -v KMERIA` 和 `command -v kmeria` 均未命中。
+  - Conda env 列表里发现已有 `/data9/home/qgzeng/anaconda3/envs/kmeriaenv`。
+- 窄范围检查已有 env:
+  - `ls -1 /data9/home/qgzeng/anaconda3/envs/kmeriaenv/bin`
+  - `test -x .../bin/kmeria`, `test -x .../bin/perl`, `test -x .../bin/kmc`
+  - 结论:该 env 不完整,没有 `kmeria`,没有 `perl`,没有 `kmc`;不能直接作为可运行 KMERIA 环境。
+- 浏览官方 GitHub/README/Wiki:
+  - KMERIA 最新 README 显示 v2.0.4 (2026-06-12)。
+  - 安装方式是 clone GitHub 仓库,用仓库 `kmeria_env.yaml` 建 env,设置 `LD_LIBRARY_PATH`,给
+    `bin/`, `external_tools/`, `bimbamAsso/` 加执行权限,再加入 `PATH`。
+  - 主入口推荐 `scripts/kmeria_wrapper.pl`;workflow 为 `count -> kctm -> filter -> m2b -> asso`。
+  - KMERIA GWAS 的 k-mer 不建议超过 31;`kmeria count` v2.0.4 虽支持 2-63,但 GWAS 场景仍需保守。
+- `python3 scripts/program_onboard.py plan-install KMERIA --package KMERIA --source github`
+  - evidence bundle: `reports/program-onboarding/kmeria/20260617T145326/`
+  - 写入 `install_proposal.json`, `install_proposal.md`, `intent.tsv`, `local_discovery.tsv`
+  - proposal 为 `github_proposal_only`;`Command=PROPOSAL_ONLY`;没有自动安装命令。
+- 安全门测试:
+  - `python3 scripts/program_onboard.py install --proposal reports/program-onboarding/kmeria/20260617T145326/install_proposal.json --yes`
+  - 按预期阻断: automatic install only supports `source_type=conda`;GitHub source 不会被本工具自动执行。
+
+### 当前结论
+
+- KMERIA 当前不能直接跑:PATH 没有 `kmeria`,已有 `kmeriaenv` 也不是完整运行环境。
+- KMERIA 不是普通 Conda 包接入;应走 GitHub source/manual install 流程,先确认安装位置,再 clone/建 env/设置 PATH。
+- 本次没有安装、没有 clone、没有联网下载数据、没有提交 SLURM job;只做了网页读取和本地轻量检查。
+- `SKILL.md` 里已有 "K-mer GWAS / KMERIA" 路由提示,但 registry/card 仍缺 KMERIA active card;后续应在真实 pilot 后补 draft/active card。
+
+### Caveats / 风险
+
+- 官方 wrapper 会生成 scheduler 脚本,可能自带 `--time`/queue/memory 参数;接入到本服务器时必须先审阅,不能直接提交。
+- KMERIA pipeline 对输入命名、sample list、depth file、phenotype/covariate 格式敏感;还没做输入 preflight。
+- `kmeria_env.yaml` 来自 GitHub raw,需要用户确认后才可用于建 env;真实安装会联网并写 Conda/env/tool path。
+- README/Wiki 文档存在版本变动;正式接入时应固定 commit/release,不要只依赖 moving `main`。
+
+### 下一步
+
+- 用户可先运行交互选择器确认安装/pilot 方案:
+  - `python3 scripts/kmeria_onboarding_wizard.py`
+  - 若终端不支持上下键菜单,用 `python3 scripts/kmeria_onboarding_wizard.py --plain`
+  - 生成后读取 `config/kmeria_onboarding_choice.json` 继续执行。
+- 确认后再执行:
+  1. clone 指定 release/commit 到确认路径
+  2. 用官方 `kmeria_env.yaml` 建 env 或修复已有 `kmeriaenv`
+  3. 设置 `LD_LIBRARY_PATH` 和 `PATH`,捕获 `kmeria --help`/`kmeria_wrapper.pl --help`
+  4. `capture` + `draft-card`
+  5. 用 1-2 个样本做最小 pilot,先验证 `count/kctm/filter/m2b/asso` 的格式链路
+  6. wrapper 生成的 SLURM 脚本必须先过 `slurm_preflight.sh`/`prepare_submission.sh`,再由用户确认是否提交。
+
+---
+
+## 2026-06-17 — program-card v3 hardening: proposal/path/evidence/draft 修复
+
+### 背景 / 目标
+
+根据系统性 review 修复第三版 onboarding 的安全和证据问题:proposal 不能靠字符串标记伪装成可信输入,
+evidence/draft 写入不能默认越过项目边界,失败的 help/version 不能升级成 `local_help`,大小写展示名要能命中
+小写 executable,draft 不能静默覆盖或越级声明 run 级证据。
+
+### 已完成修复
+
+- `scripts/program_onboard.py`:
+  - 新增项目路径边界校验。默认 evidence 只能写在 `reports/program-onboarding/`,draft 只能写在
+    `references/program-cards/drafts/`;`--allow-external-paths` 只给 `probe`/`capture`/`draft-card`
+    非安装 smoke 使用。
+  - `install` 要求 proposal 位于合法 evidence bundle 且文件名为 `install_proposal.json`;
+    proposal 内 `evidence_dir` 必须等于 proposal 所在目录,`install.log` 不再信任 JSON 重定向。
+  - `install` 从 proposal 字段重建 Conda argv,要求 `command_argv` 和 `commands` 完全一致;校验
+    env/package/version/channel token,禁止路径/option-like/shell 控制符绕过。
+  - `command_attempts.tsv` 记录所有 help/version 尝试;只有 exit code 0 且有输出时才写 `version.txt`/
+    `help.txt`,draft 才能使用 `local_help`。
+  - `probe BUSCO` 这类展示名会依次尝试原始名、normalized key、小写名,并在 `local_discovery.tsv`
+    记录每个候选。
+  - `draft-card` 默认不覆盖已有 draft;需要显式 `--force`,覆盖时输出 `Status OVERWRITTEN`。
+- `scripts/validate_program_cards.py --check-drafts`:
+  - draft 现在必须声明未登记、引用 evidence bundle,且不能包含 `local_run` 或 `project_history`。
+- 文档同步:
+  - `install-proposal-template.md` 补齐 `proposal_schema_version`/`created_by`/`command_argv`/
+    `program_name`/`evidence_dir`/`reuse_existing` 等实际必填字段。
+  - `evidence-bundle-schema.md` 补 `command_attempts.tsv`,明确失败 help/version 不算 `local_help`。
+  - `program-onboarding.md`,`README.md`,`SKILL.md` 补路径边界、draft 不覆盖和确认 gate 说明。
+
+### 验证 / 命令
+
+- 基础验证通过:
+  - `PYTHONPYCACHEPREFIX=/tmp/bio_workflow_pycache python3 -m py_compile scripts/program_onboard.py scripts/program_card_lookup.py scripts/validate_program_cards.py`
+  - `python3 scripts/validate_program_cards.py` → `Program card validation: PASS (4 active cards)`
+  - `python3 scripts/validate_program_cards.py --check-drafts` →
+    `Program card validation: PASS (4 active cards, 0 draft cards)`
+  - `python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .`
+    → `Skill is valid!`
+- 安全 smoke 已跑:
+  - `probe --out-root /tmp/...` 默认阻断;带 `--allow-external-paths` 的非安装 smoke 允许。
+  - PATH 里只有小写 `/tmp/.../busco` 时,`probe BUSCO` 成功命中。
+  - fake executable 的 help/version exit code 2 时,只生成 `command_attempts.tsv`,draft 为 `inferred`,
+    不写 `help.txt`/`version.txt`。
+  - fake executable 的 help/version exit code 0 时,draft 为 `local_help`,摘要显示真实输出而不是
+    `[stdout]`/`[stderr]`。
+  - 已有 draft 默认阻断;`--force` 后输出 `OVERWRITTEN`。
+  - 篡改 `command_argv` 的 proposal 即使带 `--yes` 也阻断。
+  - 篡改 `evidence_dir` 指向 `/tmp` 的 proposal 即使带 `--yes` 也阻断。
+  - 项目外 proposal path 带 `--yes` 也阻断。
+  - unsafe target env path 和已有 `base` env 默认阻断。
+  - 临时含 `local_run` 的 draft 被 `validate_program_cards.py --check-drafts` 拒绝。
+  - `program_card_lookup.py unknown_tool_example` 仍指向 `program_onboard.py probe unknown_tool_example`。
+- 本轮没有执行真实安装,没有联网下载,没有提交 SLURM job。repo 内 smoke artifacts 已清理;仅保留空的
+  `reports/program-onboarding/` 目录。
+
+### 当前结论
+
+- v3 onboarding 的执行面已从"proposal 字符串可信"收紧为"字段重建+完全一致校验"。
+- evidence grade 不再被失败 help/version 误升级。
+- draft promotion 仍是人工流程;validator 会拒绝 draft 中的 run/project 级证据。
+
+### Caveats / 下一步
+
+- `plan-install` 仍不联网查询包是否存在;它只是生成可审阅 proposal。
+- 真实安装仍需要用户显式确认并通过外部审批,因为会联网并写 Conda env/cache。
+- 工作区仍包含本轮之前已有的未提交/未跟踪改动;本次未回退这些无关改动。
+
+---
+
+## 2026-06-17 — program-card v3: unknown-program onboarding 工具链
+
+### 背景 / 目标
+
+把未知程序接入从手工 `program-onboarding.md` 流程推进到半自动工具链:先做便宜本地探测,再生成安装提案,
+用户确认后才允许 Conda/Mamba 安装,安装后捕获环境证据,最后生成 draft program card。核心安全边界不变:
+不默认联网、不默认安装、不写 `/data9/home/qgzeng/tools/`、不提交 SLURM、不扫大目录。
+
+### 已完成变更
+
+- `scripts/program_onboard.py`:新增统一入口,支持 5 个子命令:
+  `probe`, `plan-install`, `install`, `capture`, `draft-card`。
+  - `probe` 只做 `command -v`、显式路径、help/version 尝试、Conda/Mamba env 列表,证据写入
+    `reports/program-onboarding/<program_key>/<timestamp>/`。
+  - `plan-install` 只生成 `install_proposal.json` / `install_proposal.md`,默认独立 env:
+    `bio_<program_key>`。
+  - `install` 只接受本工具生成的 proposal,只正式支持 Conda/Mamba route,且无 `--yes` 必须阻断。
+  - `capture` 捕获 `which`/version/help/env proof。
+  - `draft-card` 写 `references/program-cards/drafts/<program_key>.md`,并复制到 evidence bundle
+    `card_draft.md`;不自动登记 `registry.tsv`。
+- `scripts/program_card_lookup.py`:未知程序分支从"只读 onboarding 文档"改为提示:
+  `python3 scripts/program_onboard.py probe <program>`。
+- `scripts/validate_program_cards.py`:新增 `--check-drafts`;active card 校验仍保持 registry-only,同时把
+  `install-proposal-template.md` 和 `evidence-bundle-schema.md` 视为参考文档而不是待登记 card。
+- `references/program-cards/install-proposal-template.md`:记录 proposal JSON 必填字段、默认 Conda 命令模板、
+  `install --yes` 执行门禁和 proposal-only source 类型。
+- `references/program-cards/evidence-bundle-schema.md`:记录 evidence bundle 文件布局、允许的轻量探测、
+  draft evidence grade 上限。
+- `references/program-cards/program-onboarding.md` / `references/program-cards/README.md` / `SKILL.md`:
+  接入第三版路径:lookup 未命中 → probe → plan-install → 用户确认 → install → capture → draft-card →
+  人工审阅和真实 pilot 后再 promotion/registry。
+
+### 验证 / 命令
+
+- `PYTHONPYCACHEPREFIX=/tmp/bio_workflow_pycache python3 -m py_compile scripts/program_onboard.py scripts/program_card_lookup.py scripts/validate_program_cards.py`
+  通过。
+- `python3 scripts/validate_program_cards.py` → `Program card validation: PASS (4 active cards)`。
+- `python3 scripts/validate_program_cards.py --check-drafts` →
+  `Program card validation: PASS (4 active cards, 0 draft cards)`。
+- `python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .`
+  → `Skill is valid!`。
+- 离线 smoke 已跑:
+  - `python3 scripts/program_onboard.py probe BUSCO`:当前 PATH 未发现 BUSCO,生成 `UNKNOWN` evidence bundle。
+  - `python3 scripts/program_onboard.py probe unknown_tool_example`:生成未知程序 evidence bundle。
+  - `python3 scripts/program_onboard.py plan-install unknown_tool_example --package unknown_tool_example --source conda`:
+    生成 proposal,未执行安装。
+  - `python3 scripts/program_onboard.py install --proposal <json>`:无 `--yes` 正常阻断,并打印 target env、
+    expected writes、network required、完整命令。
+  - `/tmp/program_onboard_fake_tool` fake executable:用 `capture` 捕获 version/help/env proof,再用
+    `draft-card` 生成 draft;`validate_program_cards.py --check-drafts` 对该 draft 通过。
+  - `--target-env /tmp/unsafe_env`:proposal 阶段阻断,因为 target env 不是简单 Conda env 名。
+  - `--target-env base`:默认阻断已有 env,提示需显式 `--reuse-existing`。
+  - `program_card_lookup.py unknown_tool_example`:未知程序下一步指向
+    `python3 scripts/program_onboard.py probe unknown_tool_example`。
+- smoke 生成的 `reports/program-onboarding/`, fake draft card, `scripts/__pycache__/` 已清理。
+- 本轮没有执行实际安装,没有联网下载,没有提交 SLURM job。
+
+### 当前结论
+
+- 第三版已把未知程序 onboarding 变成可探测、可提案、可确认执行、可留证据、可生成 draft card 的闭环。
+- 安装执行面目前故意很窄:只支持 Conda/Mamba proposal;container/source/GitHub/binary 只生成提案,不自动执行。
+- Draft card 默认最高只写 `local_help` 或 `inferred`;`local_run`/`project_history` 仍必须等真实 pilot/run 证明后人工升级。
+
+### Caveats / 风险
+
+- 工作区仍未提交,且包含本轮之前已有的未提交/未跟踪改动,包括多个 playbook、`agents/openai.yaml`,
+  `scripts/build_cqu_blobdir.py` 等;本次未回退这些无关改动。
+- `probe` 的 help/version 尝试是轻量启动测试,仍可能遇到个别工具启动慢或 flag 语义特殊;输出会被截断保存。
+- `plan-install` 不联网查询包是否存在;它生成的是安装提案,不是包可用性证明。
+- `install` 真正执行会联网并写 Conda env/package cache,仍需要用户在命令层面明确 `--yes` 和外部审批。
+
+### 下一步
+
+- 最终提交前再跑:
+  `PYTHONPYCACHEPREFIX=/tmp/bio_workflow_pycache python3 -m py_compile scripts/program_onboard.py scripts/program_card_lookup.py scripts/validate_program_cards.py`,
+  `python3 scripts/validate_program_cards.py --check-drafts`,以及
+  `python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .`。
+- 真实接入新程序时,按 `probe` → `plan-install` → 用户确认 → `install --yes` → `capture` →
+  `draft-card` 走完整链路;pilot 成功后再人工 promotion 到 active card 和 `registry.tsv`。
+
+---
+
+## 2026-06-17 — program-card v2: registry + lookup + validator
+
+### 背景 / 目标
+
+在 v1 "程序卡文档层" 之后推进第二版:让"我要跑某个程序"不只靠人工翻 Markdown,而是先用机器可查
+registry 做程序名/别名路由,再用 validator 保证每张 card 结构一致。仍保持安全边界:不安装、不联网、不提交
+SLURM、不扫大目录。
+
+### 已完成变更
+
+- `references/program-cards/registry.tsv`:新增程序卡索引,记录 `Program_Key` / `Display_Name` /
+  `Aliases` / `Card_Path` / `Modes` / `Status`。当前 4 张 active card:
+  `busco`, `minimap2-samtools`, `syri`, `biser`。
+- `scripts/program_card_lookup.py`:新增轻量查询入口。输入程序名或 alias 后返回匹配 card、支持 modes;
+  未收录程序返回 `UNKNOWN` 并指向 `references/program-cards/program-onboarding.md`。
+- `scripts/validate_program_cards.py`:新增结构校验器,检查 registry 表头、重复 key/alias、card 是否存在、
+  固定标题是否齐全、registry mode 是否写入 card、是否包含 evidence grade 和 resource-card 引用。
+- `SKILL.md`:program-level route 增加优先调用
+  `python3 scripts/program_card_lookup.py <program_name>`;修改 program cards 后要求跑
+  `python3 scripts/validate_program_cards.py`。
+- `references/program-cards/README.md`:把 `registry.tsv` 设为 authoritative card index,补 lookup/validator
+  使用方式。
+- `references/program-cards/template.md`:新增"新建 card 后必须登记 registry 并跑 validator"规则。
+- 两个新增 Python helper 已设为 executable,与现有 `scripts/` 风格一致。
+
+### 验证 / 命令
+
+- `python3 -m py_compile scripts/program_card_lookup.py scripts/validate_program_cards.py` 通过。
+- `python3 scripts/validate_program_cards.py` → `Program card validation: PASS (4 active cards)`。
+- `python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .`
+  → `Skill is valid!`。
+- `scripts/program_card_lookup.py BUSCO` → 命中 `references/program-cards/busco.md`,
+  modes=`genome,protein,transcriptome`。
+- `scripts/program_card_lookup.py minimap2` → 命中
+  `references/program-cards/minimap2-samtools.md`,返回 5 个 mode。
+- `scripts/program_card_lookup.py unknown_tool_example` → `Status UNKNOWN`,下一步为
+  `references/program-cards/program-onboarding.md`。退出码为 1,这是未知程序分支的预期行为。
+- 语法检查产生的 `scripts/__pycache__/` 已清理;最终 `find scripts -maxdepth 2 -type f -name '*.pyc' -print`
+  无输出。
+- 本轮没有提交 SLURM job,没有安装软件,没有联网下载。
+
+### 当前结论
+
+- 第二版已经把 program-level workflow 从"文档可读"推进到"可路由、可校验"。
+- 已知程序入口现在可先查 registry/card;未知程序会稳定落到 onboarding,不会直接安装或盲跑。
+- program card 新增/修改有了最小 CI 式本地检查:先登记 `registry.tsv`,再跑 `validate_program_cards.py`。
+
+### Caveats / 风险
+
+- 工作区仍未提交,且包含本轮之前已有的未提交改动:`HANDOFF.md`,多个 playbook,
+  `agents/openai.yaml`,新增 centromere/SD playbook,`scripts/build_cqu_blobdir.py` 等。
+- `program_card_lookup.py` 是轻量别名匹配,不是自然语言 intent classifier;复杂句子仍需 agent 先抽取程序名。
+- validator 只检查结构契约,不证明 card 内所有命令能跑;真实环境证据仍要靠 `local_help`/`local_run`/`project_history`
+  逐步升级。
+- 目前 registry 只有 4 个 active card;后续新增程序要同步补 registry。
+
+### 下一步
+
+- 最终提交前跑一次:
+  `python3 scripts/validate_program_cards.py` 和
+  `python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .`。
+- 可选补充 smoke:分别模拟 `我要跑 BUSCO`、`我要跑 SyRI`、未知程序三类 prompt,确认 agent 路由行为符合预期。
+- 后续新增程序卡时,先复制 `template.md`,再登记 `registry.tsv`,最后跑 validator。
+
+---
+
+## 2026-06-17 — focused review polish
+
+### 背景 / 目标
+
+对本轮未提交改动做最终 focused review,只看会导致 copy-paste 失败、配置契约不一致或旧坑残留的点。
+
+### 补充修复
+
+- `playbook-genome-quality-evaluation.md`:snailplot BUSCO 路径从旧 `busco_odb12/...` 对齐到当前 BUSCO
+  循环产物 `busco_embryophyta_odb12/run_embryophyta_odb12/full_table.tsv`;snailplot 小节标题改为
+  `Bonus`,避免和 read mapping 的 `## 5` 重号。
+- `playbook-centromere-chipseq.md`:补 `mkdir -p` 输出目录;把 `samtools index BAM1 BAM2` 拆成两条明确命令;
+  Stage B 改为 `for S in IP IN` 循环生成两份 CPM bigWig,不再保留不可执行的 `# + IN` 注释。
+- `SKILL.md`:centromere 路由改成 "primary-only filtering with no MAPQ cutoff",避免把 `bwa mem -a`
+  后又 `-F 2308` 的主分支误写成保留 secondary/multimapper 记录。
+- `playbook-segmental-duplications.md`:SD raw filter 从 `NF>=8` 收紧为 `NF>=14`,与实际 raw schema/输出字段一致。
+- `SKILL.md`/`HANDOFF.md`:quick_validate 命令统一为
+  `python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .`,因为该脚本无
+  executable bit,直接运行会 `Permission denied`。
+
+### 验证
+
+- `git diff --check` 通过。
+- `python3 -m py_compile scripts/build_cqu_blobdir.py` 通过。
+- `python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .` → `Skill is valid!`。
+- Focused pattern scan 未在当前 `SKILL.md` / `references/` / `scripts/` 中发现:
+  `samtools index BAM1 BAM2`,不可执行 `# + IN`,旧 `busco_odb12/run_embryophyta_odb12`,旧 snailplot `## 5`
+  重号,或 `multimappers kept` 过度简写。
+
+### 仍待办
+
+- 工作区仍未提交;下一步是检查最终 diff 后提交。
+
+---
+
+## 2026-06-17 — /code-review max 中小项 + B 批整合遗留修复
+
+### 背景 / 目标
+
+继续处理 `/code-review max` 的中/小项 #7-15,以及 2026-06-16 snailplot/centromere/SD 整合留下的 B 批核对项。
+
+### 已完成修复
+
+- **#7 BUSCO 覆盖风险**:`playbook-genome-quality-evaluation.md` 改为三套 lineage 循环分别输出
+  `busco_${LINEAGE}`,不再用单个 `-o busco_odb10 -f` 覆盖前一次结果。
+- **#8 scaffolding orient 过度声称**:`playbook-chromosome-scaffolding-cphasing.md` 明确 Cq3B 历史假易位主要来自
+  per-query RagTag/HiFi-only 样本;C-Phasing orient/name 只修 reference 个体本身,不能替代每次 SyRI 的 query
+  orientation check。并清掉"finishing via name.txt"旧说法。
+- **#9 phased haplotype BUSCO D 诊断**:`playbook-genome-assembly.md` 补充 hifiasm hap1/hap2 各自仍包含 A+B,
+  低 BUSCO D 不一定更好,可能是 over-purging/subgenome loss。
+- **#10 survey heterozygosity 交接**:`playbook-genome-survey.md` QC 表新增 heterozygosity 行,并说明从
+  GenomeScope2 `-p 4` model 记录;handoff 到 assembly 时带上该值。
+- **#11 mapping 99.74/99.80 口径**:`playbook-genome-quality-evaluation.md` 改为 primary ONT 99.74;hap1
+  ONT 99.74;hap2 ONT 99.80,不再写成"两个 hap 一样"。
+- **#12 Illumina mapping**:evaluation mapping 示例补 `bwa index Cqu_final.fa`,并把 `bwa mem ref R1 R2 |
+  flagstat` 改为 sort 后 `samtools flagstat illumina.bam`。
+- **#13 downsample FASTQ 扩展名**:`seqtk sample "$HIFI"` 输出改为 `${ID}_70x.fq.gz`,不再误标 `.fa.gz`。
+- **#14 SKILL 编号**:两条 SV 子路由改成 `⑥a`/`⑥b`,保留同属第 6 阶段但不再像重复编号。
+- **#15 survey 生物学锚**:survey 的 quinoa biological frame 加 QQ74-V2 N50 66.9 Mb / BUSCO ~98.4%。
+
+### B 批整合遗留
+
+- **snailplot 自洽**:已 vendor `scripts/build_cqu_blobdir.py`,playbook 改为 bundled helper,不再依赖真实项目脚本。
+- **BISER 列/坐标核对**:读取真实 LM134 `SDs_output` / `SD_out_filter`;确认 raw `SDs_output` chr2 在 `$4`,
+  canonical `SD_out_filter` 插入 `len1` 后 chr2 在 `$5`;长度为 `end-start`,不是 `+1`;`score<=10` 是项目
+  filter key,尾部 `ID=` 仅保留作 audit/provenance。
+- **centromere 坐标制**:读取真实 final BED/TSV;确认 final BED/TSV 是 0-based half-open,`length_bp=end-start`。
+  playbook 去掉 coordinate `〔verify〕`,保留 TRASH monomer 输入会被 `to_half_open()` 规范化的说明。
+- **quick_validate 来源**:确认不是漏提交脚本,而是 skill-creator 内置校验器;
+  `SKILL.md` 改为 `python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .`。
+
+### 验证
+
+- `python3 -m py_compile scripts/build_cqu_blobdir.py` 通过。
+- `scripts/build_cqu_blobdir.py` 用 `/tmp` 合成 seqkit/BUSCO 输入 smoke test 成功,生成 minimal BlobDir summary。
+- SD smoke:真实 `SDs_output` 前 100 行跑 playbook awk,首条 filtered 输出 `NF=15`,chr2 在 `$5`,len1/len2 为
+  `end-start`。
+- Centromere smoke:真实 final TSV 全部满足 `$4 == $3-$2`,bad_count=0。
+- `python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .` → `Skill is valid!`。
+- `git diff --check` 通过。
+
+### 仍待办
+
+- 本轮所有改动仍在工作区未提交;建议再跑一次 focused review 后提交。
+
+---
+
+## 2026-06-16 (cont.2) — /code-review max 红色高危项修复
+
+### 背景 / 目标
+
+按用户要求先处理 `/code-review max` 留下的"会失败/静默出错"红色 1-6 项,不扩展到中/小项和 B 批整合遗留。
+
+### 已完成修复
+
+- **scaffolding ↔ finishing 契约断裂**:
+  - `references/playbook-chromosome-scaffolding-cphasing.md` 明确 `cqu_chrom.oriented.fa` 是下游契约:
+    final `Cq*A/B` ID + 已按 reference 修正方向。
+  - `references/playbook-genome-finishing.md` 改为 reference 个体流程
+    `cqu_chrom.fa` → orient/name → `cqu_chrom.oriented.fa` → F2 → F3;F2 `get_gaps.py`
+    使用 `cqu_chrom.oriented.fa`;Step 6 改为 preserve final IDs/orientation,禁止再跑旧
+    `combined/name.txt` 的 `Chr01-18 -> Cq*A/B` 二次 rename。
+- **LAI 两处硬错误**:
+  - `gt ltrharvest` 增加 `-tabout`,避免默认 GFF3 被 `LTR_retriever -inharvest` 误解析。
+  - `LTR_retriever -infinder` 改为 `Cqu_final.fa.finder.combine.scn`,匹配
+    `LTR_FINDER_parallel -seq Cqu_final.fa` 的真实输出前缀。
+- **Merqury truth set 不一致**:
+  - evaluation 的 `read.meryl` 从 HiFi 改为 Illumina short reads(`sr_1.fq.gz sr_2.fq.gz`),
+    并显式说明与 finishing/NextPolish2 的 short-read truth-set 口径一致,不能把 HiFi-built
+    `read.meryl` 和 short-read QV 配方当同一结果引用。
+- **seqkit 静默失败风险**:
+  - `seqkit grep -n` 改为默认 ID 匹配(`seqkit grep -f flip.ids`),避免带描述 header 时裸 `flip.ids`
+    匹配 full name 失败。
+  - `seqkit replace` 增加 `-U`,并加 `comm` 预检:flip IDs 必须存在于 FASTA,rename old IDs 必须覆盖全部
+    chromosome IDs。这样漏 key 会在 rename 前失败,不会把 header 清空或让方向修复丢失。
+
+### 验证
+
+- `seqkit grep -h`:本机 v2.10.1 帮助确认默认 match sequence ID,`-n/--by-name` 才 match full name。
+- `seqkit replace -h`:本机 v2.10.1 帮助确认 `-U/--keep-untouch` 是 key 缺失时不改 sequence name。
+- 静态 grep 旧红项模式:未再匹配到 `seqkit grep -n`、缺 `.fa` 的 `Cqu_final.finder.combine.scn`、
+  HiFi-built Merqury `read.meryl` 注释、旧 finishing `Chr01-18 → ancestral` 复命名段。
+
+### 仍待办
+
+- `/code-review max` 的中/小项 #7-15 尚未处理。
+- B 批整合遗留仍待核对:是否 vendor `build_cqu_blobdir.py`;BISER 坐标/score/ID;centromere BED 坐标制;
+  centromere/SD smoke test;`quick_validate.py` 来源。
+- 本次新增 playbook/snailplot 改动 + 红项修复均未提交。
+
+---
+
+## 2026-06-16 (cont.) — snailplot 落地 + 基因组结构"伞"(centromere ChIP-seq + SDs)+ codex 修复
+
+### 背景 / 目标
+
+把三个跑通的真实流程整合进 skill,并新开"基因组结构"分析伞(在已完成+评估的基因组上做的下游结构分析):
+snailplot(评估的 bonus 轴)、着丝粒 CENH3 ChIP-seq 定位、片段重复 SD(BISER)。仅学习 LM134 单样本。
+
+### 已完成变更
+
+- **snailplot 落地**(`playbook-genome-quality-evaluation.md` §5 重写):真实流程**不是**经典 blobtools 三步,而是
+  `seqkit fx2tab` → 自建最小 BlobDir(项目脚本 `build_cqu_blobdir.py`,仅 size+BUSCO)→ **Rust `blobtk plot --view
+  snail`**。已验证可跑(18 seq / 1.27Gb / BUSCO embryophyta_odb12 2026)。dashboard / pitfall 同步更新。
+- **新增** `playbook-centromere-chipseq.md`(LM134 CENH3 ChIP-seq):`bwa mem -a` → samtools 过滤分支(主分支
+  repeatAware.primary = proper-pair primary,无 MAPQ 过滤)→ deeptools log2(IP/Input) → 域调用(log2≥1 / merge 5kb /
+  ≥5kb)→ MACS2(辅助)→ TRASH 40bp 单体 + HOR 评分 → 每条染色体着丝粒坐标(结构调用经 CENH3 确认/微调,仅 Cq7B 扩展)。
+- **新增** `playbook-segmental-duplications.md`(LM134 BISER):RepeatModeler+RepeatMasker `-xsmall` 软屏蔽 →
+  BISER v1.4(`--gc-heap 2G`,内存重 fat)→ 过滤(≥1kb / score≤10≈≥90% id / 18 chr)→ intra/inter + A2A/A2B/B2B 亚基因组
+  → NR 区域 + EDTA TE 组分。结果:14,464 对 → ~60.6Mb NR ≈ 4.7% 基因组。
+- **SKILL.md**:新增"Genome structure(基因组结构)伞"路由块(centromere / SDs);description 关键词加
+  segmental duplication / genome structure。
+
+### 复审 / 验证
+
+- **codex 只读 review**(scoped 到本批 4 处改动,显式禁扫 `2-C_quinoa` GB 目录;exit 0,只读 repo):报 10 条全采纳并修:
+  ① SDs intra/inter split `$5→$4`(我 Stage C 整行透传,chr2 在 $4)② 着丝粒 `bwa -a`+`-F 2308` 措辞订正(实为
+  primary-only 无 MAPQ 过滤,非"保留多比对")③ IP/IN 改 `for S in IP IN` 循环(原 `# + IN` 注释不可跑)④ 分支 BAM 补
+  `samtools index`(deeptools 需 .bai)⑤ 清理命令块字面省略号 ⑥ SDs `-o` 是输出**文件**,可写工作目录才是 `./results` 坑
+  ⑦ `bedtools merge` 加 `-i -`(本机 2.31.1 实测不加也读 stdin,仅可移植性)⑧ SDs TE 剥离占位行改伪代码 ⑨ snailplot 加
+  `mkdir -p results` ⑩ "clear results/" 软化为只删指定产物。SKILL.md 路由块 codex 判干净。
+
+### ⏳ 待办(明早一起处理)— 两批
+
+**A. `/code-review max` 发现(本地审 35b054f vs origin/main;15 条按严重度;原始记录)**
+
+> 更新:红色 1-6 已在 2026-06-16 (cont.2) 修复;中/小项 7-15 和 B 批整合遗留已在 2026-06-17 修复。
+
+🔴 会失败/静默出错(已修复):
+1. **scaffolding↔finishing 染色体 ID/方向契约断裂**:scaffolding 新 "orient & name" 出 `cqu_chrom.oriented.fa`(改名
+   Cq*A/B + 反向互补),但 finishing 仍按原始 Chr01-18 faidx + name.txt 改名且不反向互补 → 要么改名后 key 对不上,要么方向
+   修复被丢。(scaffolding:112-141 + finishing:184/242)— 最高影响
+2. LAI `-infinder Cqu_final.finder.combine.scn` 少 `.fa` → 应 `Cqu_final.fa.finder.combine.scn` → 文件找不到。(eval ~98)
+3. LAI `gt ltrharvest` 少 `-tabout` → 默认 GFF3,但 `-inharvest` 要 tabular → LTR_retriever 解析不了。(eval ~95)
+4. Merqury QV truth set 用 HiFi,但 finishing 用 Illumina 短读(Merqury 规范);两处引同一 QV → eval 配方复现不出。(eval:53)
+5. `seqkit grep -n` 匹配整条 header → 带描述的 header 用裸 flip.ids 会漏 → 染色体没反向互补 = 它要防的假 INVTR。(scaffolding ~138)
+6. `seqkit replace` 少 `-U` → rename.txt 漏 key 会把 header 清空成 `>`。(scaffolding ~140)
+
+🟠 中:
+7. BUSCO `-o busco_odb10` 写死 + `-f` → 三套 lineage 互相覆盖。(eval ~71)
+8. orient 步骤用在 SV 参考个体上,但出假易位的是 per-query 个体(HiFi-only/RagTag,没走 CPhasing)→ 过度声称(已软化)。(scaffolding ~144)
+
+🟡 小/内容/nit:
+9. 拆分丢了 "phased haplotype 低 duplication 才是意外" 诊断句(assembly)。
+10. heterozygosity 列为 survey→assembly 交接值但 survey 没给读数(survey ~125)。
+11. ONT hap2 99.80% 与正文 "99.74% 两个 hap" 不一致(eval ~165)。
+12. `bwa mem` 例子缺 `bwa index` 前置(eval ~115)。
+13. `seqtk sample $HIFI | gzip > *.fa.gz` 把 FASTQ 误标 .fa.gz(assembly:43)。
+14. SKILL.md 两条 ⑥ 连号像笔误(实为两个 SV 子 playbook,故意)(SKILL ~170)。
+15. survey 生物学框丢了 66.9Mb N50 / 98.4% BUSCO 锚(assembly 表里还在)(survey ~24)。
+
+**B. 本次整合遗留(原始记录)**
+
+> 更新:以下 B 批已在 2026-06-17 核对并修复;保留原始列表用于追溯。
+- snailplot 的 `build_cqu_blobdir.py` 是项目脚本(未进 repo):要不要 vendor 进 `bio-workflow/scripts/`(去硬编码路径)让 playbook 自洽可跑?
+- BISER 坐标系 / `score` 与 `ID=` 确切含义、≥1kb 用 `end-start` 还是 `+1`:对真实 `SDs_output` 核一眼。
+- 着丝粒最终 BED 的 0-based/1-based 约定(playbook 已标 verify),发表前确认。
+- centromere/SDs 命令是从子代理读到的脚本提炼的,建议跑一遍单步 smoke test 再定稿(尤其 SD 列布局 $4/$5、HOR 脚本参数)。
+- `quick_validate.py`:SKILL.md:531 与旧 HANDOFF 都引用它,但 repo 现在找不到该文件 → 确认是 Claude Code 内置校验器还是漏提交脚本。
+
+**未提交(历史记录;后续已扩大为 2026-06-17 顶部所列全部改动)**:本次 4 处改动(snailplot 重写、2 个新 playbook、SKILL umbrella + codex 10 修)均在工作区**未提交**,
+等明早 review 后再连同 A 批一起决定提交策略。
 
 ---
 
@@ -108,7 +663,7 @@ finishing F2、`scripts/fill_gap_from_spanning_alignment.py`)做两轮 codex 只
 ### 验证
 
 ```bash
-quick_validate.py .                          # Skill is valid!
+python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .   # Skill is valid!
 grep -oE 'playbook-[a-z-]+\.md' SKILL.md     # 5 条 playbook 路由
 # SURVIVOR / svim-asm / pysam gap-fill 脚本均跑了受控小实验,结果与预期一致
 ```
@@ -156,7 +711,7 @@ grep -oE 'playbook-[a-z-]+\.md' SKILL.md     # 5 条 playbook 路由
 ### 验证 / 命令
 
 ```bash
-quick_validate.py .            # Skill is valid!
+python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .   # Skill is valid!
 grep -oE 'playbook-[a-z-]+\.md' SKILL.md | sort -u   # 4 条 playbook 路由
 git ls-remote --heads origin   # 远端可达，main=adce445，本地无分叉 → 直接 fast-forward push
 ```

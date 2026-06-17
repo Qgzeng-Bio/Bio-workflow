@@ -1,0 +1,19 @@
+Field	Value
+Status	VALIDATED_END_TO_END
+Schema	program_onboarding.v3
+Program	KMERIA
+Program_Key	kmeria
+Level_Reached	L5_pilot_validated
+Card_Promoted_To_Active	references/program-cards/kmeria.md
+Registry_Updated	references/program-cards/registry.tsv
+Source_Project	/data9/home/qgzeng/projects/2-C_quinoa/10-population_structure/4-kmer-GWAS
+Pilot_Job_Id	845807
+Pilot_Sample_Count	8
+Pilot_Wall_Total	~3h end-to-end (count→postgwas)
+Full_Run_Job_Id	846422
+Full_Run_Array_Tasks_Completed	50/50
+Full_Run_Sample_Count	418 (in progress: count batch 1 of 9)
+Pilot_Result	results/pilot/postgwas/Rect_Manhtn.PH_pilot_pseudo.png
+Threshold_File	results/pilot/postgwas/PH_thresholds.txt
+Captured_At	2026-06-17T18:19:11+08:00
+Captured_By	bio-workflow program_onboard manual session

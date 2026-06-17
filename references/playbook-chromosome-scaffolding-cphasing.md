@@ -134,19 +134,28 @@ Read the dot plot — each query chromosome maps to one reference chromosome:
 ```bash
 # 2) build maps from the dot plot, then apply with seqkit (real project pattern)
 #    flip.ids: the ORIGINAL Chr0x IDs on the anti-diagonal (one/line) — flip BEFORE renaming so they still match
-#    rename.txt: <oldID>\t<refID> per line — must cover all 18 (an unmatched key blanks the ID; seqkit replace -U keeps it)
-seqkit grep   -n -f flip.ids cqu_chrom.fa | seqkit seq -r -p > flipped.fa       # -r -p = reverse-complement
-seqkit grep -v -n -f flip.ids cqu_chrom.fa > kept.fa
-cat kept.fa flipped.fa | seqkit replace -p '^(\S+)' -r '{kv}' -k rename.txt \
-    | seqkit sort -N > cqu_chrom.oriented.fa     # sort -N = natural ID order; if reference order differs, sort by a reference_order.ids list
+#    rename.txt: <oldID>\t<refID> per line — must cover all 18 final chromosomes
+seqkit seq -n -i cqu_chrom.fa | sort > cqu_chrom.ids
+sort flip.ids > flip.sorted.ids
+cut -f1 rename.txt | sort > rename.old.sorted.ids
+comm -23 flip.sorted.ids cqu_chrom.ids | awk 'NF{bad=1; print "flip ID missing from FASTA: "$0 > "/dev/stderr"} END{exit bad}'
+comm -23 cqu_chrom.ids rename.old.sorted.ids | awk 'NF{bad=1; print "FASTA ID missing from rename.txt: "$0 > "/dev/stderr"} END{exit bad}'
+seqkit grep   -f flip.ids cqu_chrom.fa | seqkit seq -r -p > flipped.fa       # default grep matches ID, not full header
+seqkit grep -v -f flip.ids cqu_chrom.fa > kept.fa
+cat kept.fa flipped.fa | seqkit replace -U -p '^(\S+)' -r '{kv}' -k rename.txt \
+    | seqkit sort -N > cqu_chrom.oriented.fa     # final Cq*A/B IDs + fixed orientation; hand this to gap-fill/polish
 ```
 
+`cqu_chrom.oriented.fa` is the downstream contract: final chromosome IDs (`Cq1A`...`Cq9B`) and reference-matched
+orientation are already applied. Later finishing steps must preserve these IDs; do **not** run a second
+`Chr01-18 -> Cq*A/B` rename or regenerate chromosomes from the pre-orientation `cqu_chrom.fa`.
+
 **Why this is not optional:** a chromosome left in the wrong orientation does **not** error — it silently
-surfaces downstream as a **fake two-segment translocation / INVTR** in SyRI (exactly the Cq3B reverse-complement
-saga in `playbook-variant-synteny-syri.md`, where QQ74/Javi had to be rc-corrected *after* the fact). Fixing
-name + orientation here, against the reference, **prevents this class of artifact for this assembly** — it does
-not replace the **per-comparison** SyRI orientation check downstream. 〔Exact MUMmer flags + the rename/flip-map building
-are the standard recipe — ground them against your real run before relying on specific values.〕
+surfaces downstream as a **fake two-segment translocation / INVTR** in SyRI. The archived Cq3B examples in
+`playbook-variant-synteny-syri.md` were mostly **per-query RagTag/HiFi-only accessions**, not the Pore-C
+C-Phasing reference itself; this step fixes the reference individual's C-Phasing output only. It does **not**
+replace the **per-comparison** SyRI orientation check for every query genome. 〔Exact MUMmer flags + the
+rename/flip-map building are the standard recipe — ground them against your real run before relying on specific values.〕
 
 ## Resources & right-sizing  ⚠️
 
@@ -170,7 +179,7 @@ The run used `--partition=fat --cpus-per-task=32 --mem=300G`, but **peak memory 
 
 - For an **allotetraploid**, CPhasing yields **18 gametic chromosome groups** (clean diagonal blocks);
   the chromosome **names + orientation come from the synteny dot-plot step above** (CPhasing's Chr01–18
-  IDs/orientation are arbitrary), and the 9A/9B subgenome IDs are finalized at finishing via `name.txt`. Off-diagonal signal between a Chr-A and its homeolog Chr-B is expected to be *low*
+  IDs/orientation are arbitrary), producing final `Cq*A/B` IDs before finishing. Off-diagonal signal between a Chr-A and its homeolog Chr-B is expected to be *low*
   (diverged subgenomes); strong A↔B bleed would flag mis-assignment.
 - Anchored length ≈ the input primary length (here exactly equal) → no contigs lost; an anchoring
   rate well below ~90% means many contigs stayed unplaced (check contig sizes / Pore-C coverage).

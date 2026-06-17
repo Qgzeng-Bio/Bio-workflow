@@ -21,7 +21,8 @@ Two stages, **each its own SLURM job**:
 ## Biological frame (quinoa) — the anchors that separate "wrong" from "expected"
 
 *Chenopodium quinoa* is an **allotetraploid, AABB, 2n = 4x = 36** (18 haploid chromosomes: 9 A + 9 B). Published
-chromosome-scale reference **QQ74-V2**: **1.326 Gb** total (A subgenome **530.6 Mb**, B subgenome **669.5 Mb**).
+chromosome-scale reference **QQ74-V2**: **1.326 Gb** total (A subgenome **530.6 Mb**, B subgenome **669.5 Mb**),
+chromosome-scale **N50 66.9 Mb**, BUSCO about **98.4 %**.
 
 - **Survey size ≠ assembly size — relate them through ploidy.** GenomeScope2 `-p 4` reports a "Genome Haploid
   Length" on the order of **one monoploid chromosome set** (~**0.5 Gb** observed, ≈ a single subgenome A 0.53 Gb).
@@ -102,6 +103,7 @@ per-sample status table (idempotent).
 |---|---|---|
 | GenomeScope2 `-p 4` model fit | sanity, not a hard bar — much below the run's level signals a bad k-mer model → re-sweep `-l` | ~90.7–92.1% |
 | Monoploid size (p4 "haploid length") | ~one subgenome (~0.5–0.65 Gb); cross-check vs A/B subgenome sizes | ~0.49–0.51 Gb |
+| Heterozygosity | report the GenomeScope2 `-p 4` estimate per sample; no fixed quinoa benchmark in this distilled run | record from `*_model.txt` |
 | Smudgeplot ploidy | dominant smudge = **AABB**, with the **allotetraploid signature `aaab < aabb`** (autotetraploid would be `aaab > aabb`) | all 10 = AABB |
 
 > **Smudgeplot caveat:** high repetitiveness + low heterozygosity can fake an AABB smudge from repetitive k-mer
@@ -122,7 +124,7 @@ per-sample status table (idempotent).
 
 Carry forward to `playbook-genome-assembly.md`: **(1)** genome size / coverage (vs ~1.33 Gb — sets the optional
 downsampling decision), **(2)** ploidy = **AABB** (predicts the assembly's high BUSCO duplication and the
-hap-sum ≈ 2× primary check), **(3)** heterozygosity. The survey→assembly→QC interpretation thread is the reason
+hap-sum ≈ 2× primary check), **(3)** heterozygosity estimate from the GenomeScope2 `-p 4` model. The survey→assembly→QC interpretation thread is the reason
 these two playbooks are tightly cross-linked.
 
 ## How this maps onto the bio-workflow safety layer

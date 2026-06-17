@@ -1,0 +1,17 @@
+Field	Value
+Status	INSTALLED
+Schema	program_onboarding.v3
+Program	KMERIA
+Program_Key	kmeria
+Repo	https://github.com/Sh1ne111/KMERIA.git
+Commit	7c891be41bc673eb0da5496cd974eded6198f476
+README_Version	v2.0.4 (2026-06-12)
+Wrapper_Version	v2.0.1 (per kmeria_wrapper.pl --help)
+Install_Path	/data9/home/qgzeng/tools/kmeria/v2.0.4_7c891be
+Conda_Env	kmeriaenv
+Conda_Env_Path	/data9/home/qgzeng/anaconda3/envs/kmeriaenv
+Activate_Script	/data9/home/qgzeng/tools/kmeria/v2.0.4_7c891be/activate.sh
+Build_Mode	Option_1_prebuilt_binary
+Captured_At	2026-06-17T17:13:24+08:00
+Captured_By	bio-workflow program_onboard manual session
+Level_Reached	L3_installed_and_captured

@@ -10,14 +10,14 @@
 
 ## Two finishing paths (know which you're on)
 
-- **Reference individual** (had Pore-C): assembly → **CPhasing scaffold** → **F2 gap-fill** →
+- **Reference individual** (had Pore-C): assembly → **CPhasing scaffold + orient/name** → **F2 gap-fill** →
   **F3 polish** → `Cqu_final.fa` (the finished reference; merged QV ~**63.2**, per-haplotype QV **66.9 / 65.8**).
 - **Pangenome accessions** (HiFi-only, no 3C): assembly → **F1 RagTag against `Cqu_final.fa`** →
   dotplot + LAI QC. (RagTag is reference-based scaffolding — the substitute for de-novo Hi-C/Pore-C
   when you only have a reference + contigs.)
 
-So F1 (RagTag) needs a finished reference, which F2+F3 produce. Order on the reference: F2 → F3.
-Order on accessions: F1 only.
+So F1 (RagTag) needs a finished reference, which F2+F3 produce. Order on the reference:
+C-Phasing `cqu_chrom.fa` → orient/name to `cqu_chrom.oriented.fa` → F2 → F3. Order on accessions: F1 only.
 
 ---
 
@@ -79,10 +79,11 @@ lm411 LAI logs absent — re-run those two). Non-fatal conda `GLIBCXX` warning a
 
 ### Step 1 — find gaps
 
-`get_gaps.py` scans a FASTA for `N+` runs → GFF3 (`seqid . gap start end . . . Name=gap<i>;size=<len>`):
+`get_gaps.py` scans a FASTA for `N+` runs → GFF3 (`seqid . gap start end . . . Name=gap<i>;size=<len>`).
+Use the already oriented/renamed chromosome FASTA from the C-Phasing playbook:
 
 ```bash
-python get_gaps.py Cqu_chrom.fa >> gaps.gff3      # these gaps were 100 bp placeholder N-runs from scaffolding
+python get_gaps.py cqu_chrom.oriented.fa >> gaps.gff3      # these gaps were 100 bp placeholder N-runs from scaffolding
 ```
 
 ### Path A — TGS-GapCloser on a ~200 kb window
@@ -178,12 +179,14 @@ So the telomere is recovered by **overlap-extension with donor reads/contigs**; 
 supplied some of those donor contigs (its independent ONT assembly reached ends that hifiasm +
 CPhasing missed). HiFi telomere reads are an equally valid donor source.
 
-### Step 6 — combine + rename to subgenome IDs
+### Step 6 — combine, preserve final chromosome IDs, then hand to polish
 
-Merge all `*_gapfree.fa` + telomere-extended chromosomes → `cqu_combined.fa`, then **rename
-Chr01–18 → ancestral subgenome IDs** via `combined/name.txt` — the CPhasing chromosome order mapped
-to the A/B subgenomes by synteny (e.g. `Chr01→Cq1B`, `Chr04→Cq3B`; 9 `Cq*A` + 9 `Cq*B`) — and sort →
-`Cqu_rename_sort.fa` → hand to F3.
+Merge all `*_gapfree.fa` + telomere-extended chromosomes → `Cqu_gapsfilled.fa`, preserving the
+`Cq*A/B` IDs and orientations from `cqu_chrom.oriented.fa`, then sort/validate and hand that FASTA to F3.
+Do **not** apply the legacy `combined/name.txt` `Chr01-18 -> Cq*A/B` rename after F2 if the input already
+came from `cqu_chrom.oriented.fa`: doing so either misses every key (final IDs no longer match `Chr01-18`)
+or discards the reverse-complement fixes made during scaffolding. If you only have old `Chr01-18` gap-fill
+artifacts, run the scaffolding orient/name step once first, then use those final IDs consistently through F2/F3.
 
 ### Resources & state
 

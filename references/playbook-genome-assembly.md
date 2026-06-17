@@ -40,7 +40,7 @@ time/memory (an optimization, not a required step; uses the coverage number from
 ```bash
 # OPTIONAL — only when coverage is much higher than ~70x
 # fraction = target_x / observed_x   (e.g. 0.38 to take ~70x from ~184x)
-seqtk sample -s100 "$HIFI" <fraction> | gzip > "${ID}_70x.fa.gz"
+seqtk sample -s100 "$HIFI" <fraction> | gzip > "${ID}_70x.fq.gz"
 ```
 
 ### Exact commands
@@ -124,9 +124,11 @@ BUSCO lineage = **`eudicots_odb10`** (2,326 orthologs; more specific than embryo
 - **N50 ~70 Mb on ~1.3 Gb** = chromosome-scale (matches the published 66.9 Mb). The `p_utg` N50 ~10 Mb shows the
   graph before phasing — the jump to ~70 Mb is what bubble-collapse + ONT buy you.
 - **BUSCO C ~98%, D ~94%**: near-complete gene space; duplication = the two subgenomes, exactly as the survey's
-  AABB call predicts. **Three-way consistency check** (closes the survey↔assembly loop): survey ploidy (AABB) ↔
-  BUSCO duplication (~94%) ↔ hap1+hap2 ≈ 2× primary ≈ 2C. If these disagree, stop and investigate (contamination,
-  mis-ploidy, under-purged haplotigs).
+  AABB call predicts. Hifiasm hap1/hap2 are phased parental sets that each still contain A+B, so **low BUSCO D
+  in a haplotype is not automatically better**; it can mean over-purging or subgenome loss. **Three-way
+  consistency check** (closes the survey↔assembly loop): survey ploidy (AABB) ↔ BUSCO duplication (~94%) ↔
+  hap1+hap2 ≈ 2× primary ≈ 2C. If these disagree, stop and investigate (contamination, mis-ploidy,
+  under-purged haplotigs, or over-purged haplotypes).
 - **Subgenome sanity**: primary ≈ A+B (1.31 ≈ 0.53+0.67+unplaced); a primary far from ~1.3 Gb is suspect.
 
 This QC is the *first* look; the systematic, full quality scoring (QV, LAI, mapping rate, complete telomere audit)

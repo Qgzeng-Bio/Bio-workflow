@@ -1,0 +1,30 @@
+{
+  "proposal_schema_version": "program_onboarding.v3",
+  "created_by": "bio-workflow program_onboard.py",
+  "program_key": "kmeria",
+  "program_name": "KMERIA",
+  "package_name": "KMERIA",
+  "version_spec": "",
+  "source_type": "github",
+  "install_method": "github_proposal_only",
+  "target_env": "bio_kmeria",
+  "channels": [
+    "conda-forge",
+    "bioconda",
+    "defaults"
+  ],
+  "commands": [],
+  "command_argv": [],
+  "expected_writes": [
+    "No automatic writes are defined by third-version onboarding."
+  ],
+  "network_required": true,
+  "risk_notes": [
+    "This source type is proposal-only in program_onboard.py.",
+    "Review official installation instructions and confirm target paths before any manual action.",
+    "Do not write under /data9/home/qgzeng/tools/ without separate confirmation."
+  ],
+  "reuse_existing": false,
+  "created_at": "2026-06-17T14:53:28+08:00",
+  "evidence_dir": "/data9/home/qgzeng/projects/3-Biotools_create/bio-workflow/reports/program-onboarding/kmeria/20260617T145326"
+}

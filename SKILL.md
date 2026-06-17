@@ -1,6 +1,6 @@
 ---
 name: bio-workflow
-description: "规划、接管、实现、提交前检查、监控和验收 qgzeng 个人分析服务器上的生物信息学工作流。Use when working under /data9/home/qgzeng/projects on quinoa genomics, assembly, annotation, repeat, pan-genome, RNA-seq, GWAS, SNP/INDEL/SV, synteny, centromere, plotting, SLURM scripts, Singularity/Conda environments, raw-data downloads, CPU/memory estimation, job arrays, failure diagnosis, project resume/takeover, result validation, or reproducible reports. This skill emphasizes server-specific safety: no broad filesystem scans, no compute on admin2/login nodes, no wasteful CPU or memory requests, no external proxy for raw-data downloads, and no default SLURM --time except debug-style jobs when needed."
+description: "规划、接管、实现、提交前检查、监控和验收 qgzeng 个人分析服务器上的生物信息学工作流。Use when working under /data9/home/qgzeng/projects on quinoa genomics, assembly, annotation, repeat, pan-genome, RNA-seq, GWAS, SNP/INDEL/SV, synteny, centromere, segmental duplication, genome structure, program-level tool execution, plotting, SLURM scripts, Singularity/Conda environments, raw-data downloads, CPU/memory estimation, job arrays, failure diagnosis, project resume/takeover, result validation, or reproducible reports. This skill emphasizes server-specific safety: no broad filesystem scans, no compute on admin2/login nodes, no wasteful CPU or memory requests, no external proxy for raw-data downloads, and no default SLURM --time except debug-style jobs when needed."
 ---
 
 # Bio-workflow
@@ -156,6 +156,88 @@ Minimum next actions:
 Do not write `reports/workflow_status.tsv` automatically. The audit script only
 prints a suggested TSV row; write the status file only after user confirmation.
 
+## Program-level requests
+
+Use this route before Task routing when the user mainly names a program or tool
+instead of a complete biological task, for example "我要跑 BUSCO", "run SyRI", or
+"帮我用 minimap2 比对".
+
+1. Normalize the program name and check `references/program-cards/`.
+   Prefer the registry helper when available:
+
+   ```bash
+   python3 scripts/program_card_lookup.py <program_name>
+   ```
+
+2. If a matching card exists, read `references/program-cards/README.md` and the
+   card. Confirm `mode`, input type, output target, and result goal before writing
+   commands.
+3. If no card exists, read `references/program-cards/program-onboarding.md` and
+   collect missing choices with a terminal selector when install location, source,
+   or pilot inputs are not yet fixed:
+
+   ```bash
+   python3 scripts/program_onboard.py choose <program_name>
+   ```
+
+   In this chat UI, do not rely on native pop-up controls being available. For a
+   local terminal flow, use `choose` with curses/arrow keys, or `--plain` for
+   numbered prompts; it writes `config/program-onboarding/<program_key>_choice.json`.
+
+   Then start third-version onboarding with:
+
+   ```bash
+   python3 scripts/program_onboard.py probe <program_name>
+   ```
+
+   If installation is needed, generate a proposal first, stop for user
+   confirmation, then install only from the generated proposal:
+
+   ```bash
+   python3 scripts/program_onboard.py plan-install <program_name> --package <package> --source conda
+   python3 scripts/program_onboard.py install --proposal <install_proposal.json> --yes
+   python3 scripts/program_onboard.py capture <program_name> --evidence-dir <evidence_dir>
+   python3 scripts/program_onboard.py draft-card <evidence_dir>
+   ```
+
+   Do not install, download, write under `/data9/home/qgzeng/tools/`, submit
+   SLURM, scan broadly, write onboarding evidence outside the project, or
+   overwrite draft cards without explicit confirmation.
+4. For any program-level run, follow this order: environment discovery -> input
+   dialogue -> parameter confirmation -> script generation -> safety preflight ->
+   user-confirmed submit/run -> acceptance checks.
+   Report the current level honestly:
+   `L0=choice/intake`, `L1=probe`, `L2=install proposal`, `L3=installed+captured`,
+   `L4=pilot script/preflight`, `L5=pilot/run validated`, `L6=active card`.
+   Do not describe `probe` or `plan-install` as testing that the program can run.
+5. Use `references/software-resource-cards.md` for resource estimates and
+   `references/validation-checklists.md` for shared acceptance gates. Do not copy
+   those checks into the card unless the tool has extra acceptance rules.
+6. Use the SLURM safety layer for generated jobs: `scripts/gen_sbatch.sh`,
+   `scripts/slurm_preflight.sh`, `scripts/prepare_submission.sh`, and after user
+   confirmation `scripts/submit_and_log.sh`.
+7. If the user gives a full analysis objective rather than only a program name, use
+   the relevant playbook below first, then load any program card needed for tool
+   details.
+8. After capture, keep the generated card in `references/program-cards/drafts/`
+   until a human review and a successful local pilot/run justify promotion. Only
+   then move it to the active card path, register it in `registry.tsv`, and use
+   `local_run` or `project_history` evidence.
+
+Known first cards:
+
+- `references/program-cards/busco.md`
+- `references/program-cards/minimap2-samtools.md`
+- `references/program-cards/syri.md`
+- `references/program-cards/biser.md`
+
+After editing program cards or the registry, run:
+
+```bash
+python3 scripts/validate_program_cards.py
+python3 scripts/validate_program_cards.py --check-drafts
+```
+
 ## Task routing
 
 Pick the narrowest route before reading detailed references or writing scripts.
@@ -167,8 +249,13 @@ Pick the narrowest route before reading detailed references or writing scripts.
 - **③ Chromosome scaffolding:** for Pore-C / Hi-C / polyploid, start from `references/playbook-chromosome-scaffolding-cphasing.md` (C-Phasing; pick `-n` by allo-/auto-polyploidy; anchoring + contact-map QC + Juicebox curation; then a synteny dot-plot to orient & rename chromosomes to a reference). For short-read Hi-C via 3D-DNA, read the `Juicer and 3D-DNA` card. Confirm enzyme/layout and require contact-map review criteria.
 - **④ Gap-fill & polish (genome finishing):** read `references/playbook-genome-finishing.md` — RagTag reference-based scaffolding (+ dot-plot & LAI QC) for accessions without 3C; TGS-GapCloser+ONT manual per-gap gap filling; NextPolish2+HiFi polishing with merqury QV. Polishing is optional (whole-genome when ONT was used, or local around filled gaps).
 - **⑤ Genome quality evaluation (post-finishing QC):** read `references/playbook-genome-quality-evaluation.md` — systematic scoring across six orthogonal axes: QUAST (contiguity), Merqury QV (base accuracy), BUSCO (gene space), LAI (repeat space), read mapping rate (concordance), tidk telomeres (chromosome ends), plus an optional BlobToolKit snail plot. Run on the primary + both haplotypes; mind the allotetraploid caveat (high BUSCO Duplicated is expected) and quote per-haplotype QV. Quinoa acceptance numbers included.
-- **⑥ SV calling — structural variation & synteny (assembly-vs-assembly):** start from `references/playbook-variant-synteny-syri.md` — SyRI SV calling (minimap2 `-ax asm5 --eqx` → `syri -F S -k`) in two topologies (chained multi-genome plotsr panorama vs all-to-reference → SURVIVOR population SV set → hotspots), with the chromosome-orientation fix and the mandatory SVLEN+SVTYPE VCF patch, plus quinoa acceptance numbers. For per-tool detail use the `SyRI`, `MUMmer and plotsr`, and `minimap2` cards. For adding orthogonal read+assembly evidence on top of SyRI, see the high-confidence multi-caller playbook below; graph-based complex SV via Swave is out of scope.
-- **⑥ SV calling — high-confidence (multi-caller consensus):** read `references/playbook-high-confidence-sv-multicaller.md` — orthogonal SV calling with SyRI + SVIM-asm (assembly) + Sniffles2 (reads) on one reference, uniformly normalized and SURVIVOR-merged per sample (`1000 1 1 0 0 50` — type-concordant union with SUPP_VEC), where read∩assembly cross-support is the high-confidence axis. Call `svcall` env binaries by absolute path (never `micromamba run`); SVIM-asm needs ~96G. (Method draft — run in progress.)
+- **⑥a SV calling — structural variation & synteny (assembly-vs-assembly):** start from `references/playbook-variant-synteny-syri.md` — SyRI SV calling (minimap2 `-ax asm5 --eqx` → `syri -F S -k`) in two topologies (chained multi-genome plotsr panorama vs all-to-reference → SURVIVOR population SV set → hotspots), with the chromosome-orientation fix and the mandatory SVLEN+SVTYPE VCF patch, plus quinoa acceptance numbers. For per-tool detail use the `SyRI`, `MUMmer and plotsr`, and `minimap2` cards. For adding orthogonal read+assembly evidence on top of SyRI, see the high-confidence multi-caller playbook below; graph-based complex SV via Swave is out of scope.
+- **⑥b SV calling — high-confidence (multi-caller consensus):** read `references/playbook-high-confidence-sv-multicaller.md` — orthogonal SV calling with SyRI + SVIM-asm (assembly) + Sniffles2 (reads) on one reference, uniformly normalized and SURVIVOR-merged per sample (`1000 1 1 0 0 50` — type-concordant union with SUPP_VEC), where read∩assembly cross-support is the high-confidence axis. Call `svcall` env binaries by absolute path (never `micromamba run`); SVIM-asm needs ~96G. (Method draft — run in progress.)
+**Genome structure (基因组结构) — the "umbrella": analyses run on a finished, evaluated genome (not part of the linear de-novo pipeline):**
+
+- **Centromere localization (CENH3 ChIP-seq + TRASH/HOR):** read `references/playbook-centromere-chipseq.md` — CENH3 IP-vs-input ChIP-seq mapped repeat-aware (`bwa mem -a`, then primary-only filtering with no MAPQ cutoff for the main branch) → deepTools log2(IP/Input) → CENH3 domains (log2 ≥ 1, merge 5 kb, ≥ 5 kb) → cross-validate with TRASH 40-bp satellite monomers + HOR; output = per-chromosome centromere coordinates (structural call confirmed/adjusted by CENH3). Single reference (LM134 → `Cqu_final.fa`); two envs (`cenh3_chipseq` + ModDotPlot venv).
+- **Segmental duplications (BISER):** read `references/playbook-segmental-duplications.md` — RepeatModeler+RepeatMasker `-xsmall` soft-mask → BISER v1.4 (`--gc-heap 2G`, memory-heavy `fat`) → filter (≥ 1 kb, `score ≤ 10` ≈ ≥ 90 % id, 18 chr) → intra/inter split + A2A/A2B/B2B subgenome class → non-redundant SD regions + EDTA TE composition. Single reference (LM134); ~60.6 Mb NR ≈ 4.7 % genome.
+
 - **Annotation:** read `BRAKER and MAKER`, `EDTA`, `RepeatModeler`, `BUSCO`, and `validation-checklists.md`; confirm repeat masking and evidence naming.
 - **RNA-seq:** read `fastp, FastQC, and MultiQC`, `STAR`, and `featureCounts`; confirm strandedness, paired-end naming, and index reuse.
 - **Read-based / population SNP·INDEL·SV:** read `bcftools and GATK`; confirm reference compatibility and chromosome names before calling.
@@ -528,9 +615,9 @@ Always save plotting data, code, and parameters. Report what the figure proves a
 
 `SKILL.md` is the single official entry point — the skill loader reads only this file.
 
-Run `quick_validate.py` after structural changes and `bash -n` for any bundled shell
-script changes. For `scripts/slurm_preflight.sh`, test at least one passing script
-and one failing script before trusting the rule changes.
+Run `python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .` after
+structural changes and `bash -n` for any bundled shell script changes. For `scripts/slurm_preflight.sh`, test
+at least one passing script and one failing script before trusting the rule changes.
 
 ## Default response shape
 
