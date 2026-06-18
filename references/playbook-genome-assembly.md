@@ -134,6 +134,13 @@ BUSCO lineage = **`eudicots_odb10`** (2,326 orthologs; more specific than embryo
 This QC is the *first* look; the systematic, full quality scoring (QV, LAI, mapping rate, complete telomere audit)
 is the dedicated `playbook-genome-quality-evaluation.md`, run after finishing.
 
+### Evaluation contract
+- Required report fields: BUSCO `C/S/D/F/M` with `lineage+mode+db_version`; QUAST/faidx N50 labeled `contig_N50` (this stage produces contigs, not scaffolds); per-haplotype size + survey-derived ploidy.
+- Comparator: `references/project-anchors.yaml` (quinoa V2 N50 70.1 Mb / BUSCO 99.7% embryophyta_odb12) first.
+- Invalid comparisons: BUSCO across lineages (`ASM_BUSCO_002` BLOCK); claiming "better assembly" from a single haplotype's lower D when subgenomes might be lost (`ASM_BUSCO_003` NOTE).
+- Silent traps: hifiasm hap1/hap2 each still hold A+B subgenomes — low D in a haplotype is not automatically a quality win, it can be over-purging. The three-way check (survey ploidy ↔ BUSCO duplication ↔ hap1+hap2 ≈ 2× primary) is the gate.
+- Claim allowed only if: three-way consistency holds AND contig N50 is labeled as such AND BUSCO numbers carry lineage provenance. Polish/QV claims belong to the evaluation playbook, not here.
+
 ---
 
 ## How this maps onto the bio-workflow safety layer

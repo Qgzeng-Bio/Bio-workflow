@@ -197,6 +197,13 @@ python3 scripts/build_cqu_blobdir.py \
 | Telomere ends | →2·#chr | 36/36 | 〔run〕 | 〔run〕 |
 | Snail plot | visual | ✓ `Cqu_final.snail.svg` | — | — |
 
+### Evaluation contract
+- Required report fields: every BUSCO number with `lineage+mode+db_version+busco_version+n_busco`; every QV with `k+read_db_type+coverage+truth_set_independence`; every LAI with `total_LTR_RT_pct+intact_LTR_RT_pct`; every N50 labeled `contig_N50` vs `scaffold_N50`.
+- Comparator: `references/project-anchors.yaml` (quinoa_v2_reference_frame) first, then close-species public assemblies; absolute-only judgment is not acceptable for publication-grade claims.
+- Invalid comparisons: BUSCO across different lineages (`ASM_BUSCO_002` BLOCK); QV across different `read_db_type`/`k` (`ASM_QV_002` BLOCK); LAI grade across organisms outside the method's plant scope (`ASM_LAI_002` WARN); contig vs scaffold N50 mixed (`ASM_N50_001` BLOCK).
+- Silent traps: HiFi-built `read.meryl` (this project's evaluation Merqury) gives QV that is NOT independent of the assembly — finishing-stage NextPolish2 Merqury uses Illumina, the two QV protocols are different and not directly rankable (`ASM_QV_003` WARN). BUSCO high + LAI low does not mean "whole-genome complete" — gene-space and repeat-space are orthogonal axes (`ASM_REPEAT_001` WARN). LAI is method-applicable only when LTR content meets thresholds (`ASM_LAI_001` BLOCK).
+- Claim allowed only if: all six dashboard rows are filled with their provenance fields, no BLOCK rule fires in `scripts/check_result_contract.py`, and any WARN is carried into the narrative as an explicit caveat.
+
 ## How this maps onto the bio-workflow safety layer
 
 1. **Design** here → run the six core metrics on `primary + hap1 + hap2`; snail plot only if a figure is wanted.

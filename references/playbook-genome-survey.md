@@ -118,6 +118,13 @@ per-sample status table (idempotent).
 - Report as a **HiFi-based survey** (error/het models differ from Illumina).
 - On failure read BOTH the array log and the per-sample tool logs.
 
+### Evaluation contract
+- Required report fields: GenomeScope2 `-p 4` model fit %, monoploid (haploid) length, heterozygosity per sample, Smudgeplot dominant smudge label.
+- Comparator: cross-organism survey numbers are not directly portable; use within-project consistency (10 quinoa samples all → AABB) instead of absolute thresholds.
+- Invalid comparisons: GenomeScope p2 vs p4 outputs (different parameterizations); Smudgeplot ploidy claim alone vs combined evidence.
+- Silent traps: high-repeat + low-het genomes can fake an AABB smudge (Fragaria iinumae case) — Smudgeplot label without GenomeScope p4 + known biology cross-check is unsafe; survey k-mer size affects model fit and is not interchangeable with the assembly's k.
+- Claim allowed only if: GenomeScope p4 + Smudgeplot + known organism biology agree on ploidy AND the GenomeScope `-p 4` model line includes the heterozygosity estimate that the next stage will inherit.
+
 ---
 
 ## Handoff to the next stage

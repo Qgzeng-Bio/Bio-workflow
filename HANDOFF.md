@@ -1,10 +1,128 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-17 — skill 优化: 通用 `program_onboard.py choose` 交互选择器 + onboarding 分层口径
+Last updated: 2026-06-18 — L4 Evidence-to-Claim Control Plane(Phase 1 合约 + Phase 2 闸门)
+
+---
+
+## 2026-06-18 — L4 Evidence-to-Claim Control Plane: Phase 1 + Phase 2
+
+### 背景 / 目标
+
+L1–L3(接入控制 / 执行安全 / 领域大脑)已成型。下一步问题是:跑出来一堆数字
+之后,模型怎么知道"这个 claim 能下、那个不能"。和 GPT Pro 沟通后达成共识:
+**不要做生信百科**——通用解读、综合推理、写作交给模型;skill 负责本地事实、
+证据口径、无效比较拦截、silent traps、claim gates。把这一层命名为
+**Evidence-to-Claim Control Plane(L4)**,而不是 Interpretation layer。
+
+本轮落地 Phase 1(合约层)+ Phase 2(claim 闸门脚本)。Phase 3 采集器 /
+Phase 4 故事 bundle 等合约稳定后再上。
+
+### 已完成变更
+
+**Phase 1 — 合约层**
+
+- 新增 `references/interpretation-rules.tsv`:14 条机器可读规则,9 列
+  (`rule_id metric condition severity claim_constraint action authority
+  scope source`)。覆盖 BUSCO 三条 + Merqury QV 三条 + LAI 两条 + BUSCO×LAI
+  正交一条 + N50 两条 + KMERIA 两条 + SV 一条。`severity` 取
+  `BLOCK / WARN / SUGGEST / NOTE` 四档。`authority` 不做线性排序,改用
+  authority+scope 二维。
+- 新增 `references/project-anchors.yaml`:quinoa V2 reference frame
+  (Cqu_final / hap1 / hap2 真实数字,带 `scope: quinoa_project`)。
+  qv_protocol 字段明确记录 read_db_type=hifi、k=21、independence=false
+  ——这正是 evaluation 阶段 Merqury(`/data9/.../7-Genome-evalution/1-QV/qv.sh`
+  实测确认)和 finishing 阶段 NextPolish2 用 Illumina truth set 的差异点,
+  防止后续把两组 QV 数字混用。
+- 新增 5 个 playbook 的 `### Evaluation contract` 小节,固定 5 行 schema
+  (Required report fields / Comparator / Invalid comparisons /
+  Silent traps / Claim allowed only if):
+  - `playbook-genome-quality-evaluation.md`(主战场)
+  - `playbook-genome-assembly.md`
+  - `playbook-genome-survey.md`
+  - `playbook-chromosome-scaffolding-cphasing.md`
+  - `playbook-genome-finishing.md`
+- `SKILL.md` 新增 `## Result claims: source-of-truth policy` 小节
+  (位于 Task routing 之后、Workflow 之前):
+  - 权威顺序:本地 manifest > 项目 anchor(scope 内)> 方法论文/官方文档 > 模型常识
+  - 规则强度 BLOCK / WARN / SUGGEST / NOTE 的行为定义
+  - routing 指向 `scripts/check_result_contract.py`(按需运行,不每次进 context)
+
+**Phase 2 — claim 闸门**
+
+- 新增 `references/result-manifest-schema.md`:`result_manifest.yaml`
+  字段契约,字段据真实 quinoa 输出(BUSCO `short_summary.specific.*`、
+  Merqury `result_*.qv` 5 列 TSV、LAI `*.fa.out.LAI` 7 列 TSV、QUAST
+  `report.tsv`)设计而非凭空。
+- 新增 `scripts/check_result_contract.py`(388 行):
+  - 输入 `result_manifest.yaml` + `interpretation-rules.tsv` + `project-anchors.yaml`
+  - 14 个 rule 各对应一个 Python check 函数(不做通用 DSL,可读可改)
+  - 输出 `Field<TAB>Value` 短报告,分块 `BLOCKED / WARNINGS / NOTES / MISSING`
+  - exit code 0=PASS / 1=WARN / 2=BLOCK
+  - NOTE 不闸门(只是 provenance reminder),WARN/MISSING 才升级 status
+
+### 验证 / 命令
+
+四个真实 quinoa 数字编出来的 fixture(全部端到端通过):
+
+| Fixture | 触发 | STATUS | exit |
+|---|---|---|---|
+| A_pass | 单 assembly 全 provenance 齐全 | PASS | 0 |
+| B_warn | BUSCO C 99.7% + LAI 8.4(`ASM_REPEAT_001` WARN)、HiFi independence=false(`ASM_QV_003` WARN) | WARN | 1 |
+| C_block | 不同 lineage(`ASM_BUSCO_002` BLOCK)+ 不同 read_db_type(`ASM_QV_002` BLOCK) | BLOCK | 2 |
+| D_missing | 故意删 lineage/mode/db_version/k/read_db_type/total_LTR_RT_pct/intact_LTR_RT_pct | WARN | 1 |
+
+回归命令:
+
+```bash
+python3 scripts/validate_program_cards.py                    # PASS (5 active)
+python3 scripts/validate_program_cards.py --check-drafts     # PASS (5 active, 0 drafts)
+/data9/home/qgzeng/anaconda3/bin/python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .   # Skill is valid!
+PYTHONPYCACHEPREFIX=/tmp/bio_workflow_pycache python3 -m py_compile scripts/check_result_contract.py scripts/validate_program_cards.py scripts/program_card_lookup.py scripts/program_onboard.py scripts/menu.py
+```
+
+工具引用真实路径:`/data9/home/qgzeng/projects/2-C_quinoa/7-Genome-evalution/{0-QUAST,1-QV,2-BUSCO,3-LAI}` 实地勘探确认了输出文件名与列结构(bounded ls/read,未做广扫)。`1-QV/qv.sh` 第 13 行确认 evaluation 用 HiFi reads 建 read.meryl,与 finishing 阶段的 short-read truth 不可比 —— 这条事实进了 anchors `qv_protocol.independence: false` 与 `interpretation-rules.tsv ASM_QV_003`。
+
+### 当前结论
+
+- L4 已经从"概念"做成"可执行 claim 闸门":跑完 evaluation 之后,
+  `python3 scripts/check_result_contract.py --manifest …` 给一段短报告,
+  下游 LLM 不用再凭记忆决定哪些 claim 能下。
+- skill 不替模型说生物学结论;skill 只挡"会让 claim 静默错"的 4 类问题:
+  缺 provenance、跨口径比较、silent trap、anchor 越界。
+- 现有 5 张 program card 的 evidence grade 不动,继续管"本地事实"轴;
+  新的 interpretation-rules.tsv 用 authority+scope+strength 二维独立体系。
+
+### Caveats / 风险
+
+- 14 条规则只是首批;遇到下一类生物学场景(annotation 完整性、SNP-GWAS
+  cross-check 等)再扩。规则增加时 `check_result_contract.py` 必须同步加
+  对应函数(`CHECKS` 字典),validator 会在缺函数时打 WARN 不沉默。
+- `result_manifest.yaml` 当前是手工或上游产生;Phase 3 `collect_metrics.py`
+  做完后才能从原始输出自动产 manifest。
+- KMERIA / SV 三条规则依赖 manifest 里的 `kmeria` / `sv` 顶层块 —— manifest
+  schema 在那两块尚未真实跑过(留到 Phase 3 接入时补)。
+- ASM_LAI_002 是 NOTE 级,只要有 LAI 块就触发,不闸门 —— 是有意为之
+  (永远提醒不要跨物种用 LAI 等级),不算"误报"。
+
+### 交付物
+
+新增:
+- `references/interpretation-rules.tsv`(15 行,14 规则)
+- `references/project-anchors.yaml`(quinoa V2 reference frame)
+- `references/result-manifest-schema.md`
+- `scripts/check_result_contract.py`(executable)
+
+改动:
+- `SKILL.md`(+ `## Result claims: source-of-truth policy`,~22 行)
+- 5 个 playbook 各 `+### Evaluation contract`(每个 7 行)
+- `HANDOFF.md`(本条目)
+
+不改 conda env、不联网、不广扫数据目录、不提交 SLURM job。
 
 ---
 
 ## 2026-06-17 — skill 优化: program onboarding 交互与口径收敛
+
 
 ### 背景 / 目标
 

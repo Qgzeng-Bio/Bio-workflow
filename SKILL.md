@@ -264,6 +264,26 @@ Pick the narrowest route before reading detailed references or writing scripts.
 - **Download:** use section 10 first; avoid `proxychains`, `http_proxy`, `https_proxy`, and `all_proxy` for raw-data downloads unless confirmed.
 - **Plotting/reporting:** use section 12 and the figure checks in `references/validation-checklists.md`.
 
+## Result claims: source-of-truth policy
+
+Before publication-grade or decision-changing claims, treat the skill's interpretation layer as constraints, not as biological conclusions. Authority order, highest first:
+
+1. **Local manifest / observed tool output for this run** (the actual files produced).
+2. **Project anchors** — `references/project-anchors.yaml` (only within their declared `scope`, e.g. `quinoa_project`).
+3. **Method papers / official tool docs** for the metric's applicability and provenance fields.
+4. **Model common knowledge** (last; never overrides 1–3 silently).
+
+Rule strengths in `references/interpretation-rules.tsv` (loaded on demand, not into every context):
+
+- `BLOCK` — do NOT make the constrained claim unless higher-grade local evidence invalidates the rule. State the rule_id and what would lift it.
+- `WARN` — claim is allowed only with the explicit caveat carried into the narrative.
+- `SUGGEST` — next-step hint; not evidence by itself.
+- `NOTE` — provenance reminder; report the field.
+
+When a result manifest exists, run `python3 scripts/check_result_contract.py --manifest <result_manifest.yaml>` before any publication-grade or downstream-biology claim. Treat its `BLOCKED CLAIMS` as veto and its `WARNINGS` as required caveats. Never silently downgrade or override a rule — if model knowledge contradicts a rule, present both and state the dependency.
+
+The contract details per stage live in each playbook's `### Evaluation contract` block.
+
 ## Workflow
 
 ### 1. Define the task

@@ -197,6 +197,13 @@ The run used `--partition=fat --cpus-per-task=32 --mem=300G`, but **peak memory 
   still activates and the pipeline runs. Don't treat it as a failure.
 - **Juicebox curation is a real step** — budget time for it; the auto AGP is a draft.
 
+### Evaluation contract
+- Required report fields: chromosome count, anchoring rate (% of input contigs placed), `scaffold_N50` (label as scaffold, not contig), Hi-C/Pore-C contact-map review status, AGP curation status (auto vs Juicebox-reviewed).
+- Comparator: organism's known karyotype (quinoa: 2n=4x=36 → 18 gametic groups) AND `references/project-anchors.yaml` quinoa V2 anchoring ~96.9%.
+- Invalid comparisons: scaffold N50 vs contig N50 from earlier stages (`ASM_N50_001` BLOCK); CPhasing default Chr01–18 IDs across runs (orientation+name only become canonical Cq*A/B after the synteny orient step).
+- Silent traps: scaffolding can inflate N50 via false Hi-C joins — N50 jump alone is not validation (`ASM_N50_002` WARN). Off-diagonal A↔B contact in the heatmap is expected low; strong A↔B bleed flags mis-assignment, not a quality win.
+- Claim allowed only if: chromosome count matches the karyotype AND contact-map heatmap was inspected (clean diagonal) AND AGP is either Juicebox-reviewed or explicitly labeled "auto, not curated" AND scaffold N50 is labeled `scaffold_N50`.
+
 ## How this maps onto the bio-workflow safety layer
 
 1. **Design** with this playbook → pick `-n` by polyploid type; pick Pore-C vs Hi-C flag; set enzyme.

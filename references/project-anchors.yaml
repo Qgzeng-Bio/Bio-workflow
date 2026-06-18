@@ -1,0 +1,70 @@
+# Project anchors — local facts that must not be re-derived from model memory.
+#
+# Each anchor names a project + assembly version. `scope` MUST be set so
+# check_result_contract.py does not apply quinoa-specific numbers to other
+# organisms. Update only after re-running and recording new evidence.
+
+quinoa_v2_reference_frame:
+  scope: quinoa_project
+  organism: Chenopodium quinoa
+  ploidy: allotetraploid_disomic   # 2n=4x=36, 18 chromosomes Cq1A..Cq9B
+  reference_path: /data9/home/qgzeng/projects/2-C_quinoa/7-Genome-evalution
+
+  assemblies:
+    Cqu_final:
+      role: primary_merged
+      contigs: 18
+      total_length_bp: 1_271_319_056
+      contig_N50_bp: 70_111_769
+      gaps_per_100kb: 0.00
+      busco_C_pct: 99.7        # embryophyta_odb12, mode=genome
+      busco_D_pct: 96.4        # high D expected: A+B subgenomes co-resolved
+      qv: 63.2366              # see qv_protocol below — HiFi truth set, NOT independent
+      lai: 16.09
+
+    Cqu_final_rename_hap1:
+      role: phased_haplotype
+      qv: 66.9251
+      lai: 10.28
+
+    Cqu_final_rename_hap2:
+      role: phased_haplotype
+      qv: 65.8                 # rounded; HANDOFF F3 also reports 65.8
+      lai: 9.99
+
+  busco_protocol:
+    lineage: embryophyta_odb12
+    mode: genome
+    db_creation_date: 2025-07-01
+    busco_version: 6.0.0
+    n_busco: 2026
+
+  qv_protocol:                 # IMPORTANT: do not conflate with finishing-stage NextPolish2 QV
+    tool: merqury
+    k: 21
+    read_db_type: hifi          # built from cqu_hifi_70x.fa.gz, NOT illumina
+    read_db_path: /data9/home/qgzeng/projects/2-C_quinoa/7-Genome-evalution/1-QV/read.meryl
+    independence: false         # rule ASM_QV_003 applies — same reads as assembly input
+    note: >
+      The finishing-stage Merqury QV inside 5-Gaps_filling/ uses a separate
+      Illumina-derived read.meryl for NextPolish2 polishing decisions; those
+      numbers are NOT directly comparable with the evaluation HiFi-truth QV
+      reported above.
+
+  lai_protocol:
+    tool: LTR_retriever
+    note: >
+      Per-window 1Mb LAI; first row of *.out.LAI is whole_genome.
+      Quinoa V2 is plant_genome; rule ASM_LAI_001/002 applicability is satisfied.
+
+  comparators:
+    - name: V1_QQ74
+      contig_N50_bp: 66_900_000
+      busco_pct: 98.4
+      role: prior_release_baseline
+
+  notes: >
+    hap1 and hap2 each still contain A+B subgenomes (hifiasm primary split
+    by haplotype, not by subgenome). Low BUSCO D in a haplotype is NOT
+    automatically "better" — it can indicate over-purging / subgenome loss.
+    See playbook-genome-assembly Stage C for the cross-check.

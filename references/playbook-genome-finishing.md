@@ -272,6 +272,13 @@ merqury.sh read.meryl Cqu_final_rename_hap2.fa result_hap2
 | F3 polish | **merqury QV** | Q40 ok, **Q50+ T2T-grade** | **66.9 / 65.8** (gold) |
 | F3 polish | k-mer completeness | high; low false-dup | 〔record from merqury〕 |
 
+### Evaluation contract
+- Required report fields: F1 dot-plot status, per-sample LAI with `total_LTR_RT_pct/intact_LTR_RT_pct`, gap count + intentional-skip list, F3 Merqury QV with `k+read_db_type` (this stage's NextPolish2 Merqury uses Illumina short-read truth set, distinct from the evaluation playbook's HiFi-built read.meryl).
+- Comparator: `references/project-anchors.yaml` quinoa V2 (hap1 QV 66.9, hap2 QV 65.8 — but those are from the HiFi-truth evaluation Merqury, not the finishing-stage Illumina-truth one; do not cross-reference numerically).
+- Invalid comparisons: finishing-stage QV vs evaluation-stage QV (`ASM_QV_002` BLOCK — different `read_db_type`); LAI grade as cross-organism quality grade (`ASM_LAI_002` WARN).
+- Silent traps: Merqury inputs MUST be Illumina (NextPolish2 contract); the legacy `yak count -b37` two-positional-arg gotcha (R1 fed twice ≠ R1+R2) is a recurring fail mode — both files must be the merged stream `<(zcat R1 R2)`. F2 gap "filled" status without `get_gaps.py` re-verification can be optimistic.
+- Claim allowed only if: dot-plot collinearity is clean AND gap count is verified by `get_gaps.py` re-run AND polish QV cites both `k` and `read_db_type=illumina` AND any LAI grade carries the LTR-content provenance.
+
 ## How this maps onto the bio-workflow safety layer
 
 1. **Design** here → pick F1 (accession, has reference) vs F2→F3 (reference individual); pick polish scope.
