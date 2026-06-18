@@ -1,14 +1,29 @@
-# Playbook — Chromosome scaffolding of a (poly)ploid assembly with C-Phasing + Pore-C
+# Playbook — Chromosome scaffolding (C-Phasing for 3C-data; RagTag for reference-only)
 
-> **Status: DRAFT for review.** Distilled from a completed, **verified-successful** quinoa run
-> (`4-scaffolding/2-Cphasing/3-primary-ctg`): the HiFi+ONT primary (`cqu_primary.fa`) scaffolded
-> into 18 chromosomes with Pore-C, then reconciled with the literature (sources at the bottom).
-> Style: flexible.
+> **Status: DRAFT for review.** Distilled from completed, **verified-successful** quinoa runs
+> (`4-scaffolding/2-Cphasing/3-primary-ctg` for Route A; `4-scaffolding/4-Ragtag` for Route B),
+> reconciled with the literature (sources at the bottom). Style: flexible.
 >
 > **Stage 3 (scaffolding)**, downstream of the assembly playbook
 > (`playbook-genome-assembly.md`): its **input is the `*_primary.fa`** that playbook
 > produces. Design here; submit via the executor trio (`gen_sbatch` → `prepare_submission` →
 > `submit_and_log`).
+
+## Two routes (pick by data, not by convenience)
+
+| Have | Use | Why |
+|---|---|---|
+| **3C data** (Pore-C / Hi-C / HiFi-C) for this individual | **Route A — C-Phasing** | de novo, no reference assumption; built for polyploids |
+| **No 3C data** but a **chromosome-scale reference** of the same/near species | **Route B — RagTag** | reference-based scaffolding; inherits the reference's structural choices |
+| Neither | — | Stop. Cannot reach chromosome scale honestly. |
+
+Route A produces the **finished reference individual** (then F2 gap-fill + F3 polish in the
+finishing playbook). Route B is the path **pangenome accessions** take to chromosome scale once
+the reference exists.
+
+---
+
+## Route A — C-Phasing (3C data, de novo)
 
 ## When to use & what it does
 
@@ -196,13 +211,75 @@ The run used `--partition=fat --cpus-per-task=32 --mem=300G`, but **peak memory 
   (GLIBCXX_3.4.29 not found)` is **non-fatal noise** (the broken base conda) — the `cphasing` env
   still activates and the pipeline runs. Don't treat it as a failure.
 - **Juicebox curation is a real step** — budget time for it; the auto AGP is a draft.
+- **Route B: RagTag propagates the reference's structure** — real SV in the accession can be
+  flattened; always read the dot plot. LAI lm270/lm411 were not finished — re-run.
 
-### Evaluation contract
+### Evaluation contract — Route A (C-Phasing)
 - Required report fields: chromosome count, anchoring rate (% of input contigs placed), `scaffold_N50` (label as scaffold, not contig), Hi-C/Pore-C contact-map review status, AGP curation status (auto vs Juicebox-reviewed).
 - Comparator: organism's known karyotype (quinoa: 2n=4x=36 → 18 gametic groups) AND `references/project-anchors.yaml` quinoa V2 anchoring ~96.9%.
 - Invalid comparisons: scaffold N50 vs contig N50 from earlier stages (`ASM_N50_001` BLOCK); CPhasing default Chr01–18 IDs across runs (orientation+name only become canonical Cq*A/B after the synteny orient step).
 - Silent traps: scaffolding can inflate N50 via false Hi-C joins — N50 jump alone is not validation (`ASM_N50_002` WARN). Off-diagonal A↔B contact in the heatmap is expected low; strong A↔B bleed flags mis-assignment, not a quality win.
 - Claim allowed only if: chromosome count matches the karyotype AND contact-map heatmap was inspected (clean diagonal) AND AGP is either Juicebox-reviewed or explicitly labeled "auto, not curated" AND scaffold N50 is labeled `scaffold_N50`.
+
+---
+
+## Route B — RagTag (reference-based, no 3C)
+
+### When & decision
+
+Use when you have **contigs + a chromosome-scale reference** of the same/near species, and **no 3C
+data** for this accession. Reference-guided ordering/orientation into chromosomes. (If you *do*
+have Pore-C/Hi-C, prefer Route A — RagTag inherits the reference's structural assumptions, including
+any errors there.)
+
+The reference for this project is `Cqu_final.fa`, which itself was finished via Route A → F2
+gap-fill → F3 polish (see `playbook-genome-finishing.md`). RagTag is therefore the path
+**pangenome accessions** take to chromosome scale once the reference exists.
+
+### Command (verbatim)
+
+```bash
+conda activate assembly          # ragtag v2.1.0, minimap2 v2.30
+ragtag.py scaffold <reference.fa> <accession_primary.fa> -t 24 -C -r -u
+# internally: minimap2 -x asm5
+```
+
+Flag meanings (authoritative — note these, they shape the AGP):
+
+- `-C` — concatenate unplaced contigs into a single `chr0`.
+- `-r` — **infer** gap sizes from the alignment (default would be fixed 100 bp gaps); bounded by
+  `-g`/`-m` (min/max).
+- `-u` — add a suffix to unplaced-sequence headers.
+
+Outputs: `ragtag_output/ragtag.scaffold.fasta` (+ `.agp`, `.confidence.txt`). Then rename
+`Cq{N}{A/B}_RagTag` → `Cq{N}{A/B}` (`rename.sh` + `seqkit replace --kv-file rename.txt`).
+
+### QC
+
+```bash
+# 1) Dot plot vs reference (visual collinearity)
+minimap2 -cx asm5 -t 24 <reference.fa> <ragtag.chrom.fa> > acc.paf
+awk 'BEGIN{OFS="\t"} {sub(/_RagTag.*/,"",$1); print}' acc.paf > acc_rename.paf  # strip _RagTag suffix, KEEP the Cq..A/B name
+Rscript ~/tools/dotPlotly/pafCoordsDotPlotly.R -i acc_rename.paf -o acc -s -l -x
+# 2) LAI — LTR Assembly Index (repeat-space contiguity), via LTR_FINDER_parallel + LTR_retriever
+```
+
+- **Dot plot**: want a clean diagonal per chromosome (query vs reference); off-diagonal / broken
+  diagonals = mis-orders, inversions, or real structural variation — inspect, don't auto-trust.
+- **LAI** (Ou et al. 2018): **< 10 draft, 10–20 reference, > 20 gold**. Reports assembly of the
+  repeat/intergenic space, complementary to BUSCO (genic) and QUAST (contiguity).
+
+### Resources & state
+
+`fat`, 24 CPU, 100 G. **Run state: 10/10 scaffolded + dot-plotted; LAI completed 8/10** (lm270,
+lm411 LAI logs absent — re-run those two). Non-fatal conda `GLIBCXX` warning as usual.
+
+### Evaluation contract — Route B (RagTag)
+- Required report fields: dot-plot collinearity status, LAI value with `total_LTR_RT_pct+intact_LTR_RT_pct`, `scaffold_N50` (label as scaffold), reference identity used (commit/version of `Cqu_final.fa`), unplaced contig fraction.
+- Comparator: the reference itself (per-chromosome alignment) and `references/project-anchors.yaml` quinoa V2.
+- Invalid comparisons: RagTag scaffold structure as evidence of **novel** structural variation in this accession (it inherits the reference, so SVs vs reference are NOT discoverable here — only via SyRI / SVIM-asm / Sniffles2); LAI grades as cross-organism quality grade (`ASM_LAI_002` NOTE).
+- Silent traps: RagTag will happily place contigs with weak alignment — `*.confidence.txt` must be reviewed before claiming chromosome assignment. A clean dot-plot does NOT mean the accession actually matches the reference biology; it means RagTag could lay it down on the reference scaffold (which is exactly what it is paid to do). Real structural divergence shows up in SyRI later, not here.
+- Claim allowed only if: dot-plot is clean per chromosome AND `*.confidence.txt` was inspected AND LAI applicability satisfied (`ASM_LAI_001`) AND any structural-claim is deferred to the SV-calling stage.
 
 ## How this maps onto the bio-workflow safety layer
 
@@ -226,3 +303,7 @@ The run used `--partition=fat --cpus-per-task=32 --mem=300G`, but **peak memory 
 - Haplotype vs subgenome in polyploids — "Haplotype-Resolved Assembly in Polyploid Plants" review,
   https://pmc.ncbi.nlm.nih.gov/articles/PMC12192169/ ; hifiasm FAQ (contig modules are diploid-designed),
   https://hifiasm.readthedocs.io/en/latest/faq.html
+- RagTag — Alonge et al., *Genome Biol* 2022; https://github.com/malonge/RagTag/wiki/scaffold
+  (`-C` concat unplaced→chr0, `-r` infer gap sizes, `-u` suffix unplaced).
+- LAI — Ou, Chen & Jiang, *NAR* 2018, 46:e126 (draft <10 / reference 10–20 / gold >20);
+  large-scale plant assessment, *AoB Plants* 2023.

@@ -1,71 +1,27 @@
-# Playbook — Genome finishing: reference scaffolding (RagTag) · gap filling · polishing
+# Playbook — Genome finishing: gap filling · polishing
 
 > **Status: DRAFT for review.** Distilled from completed, **verified-successful** quinoa runs
-> (`4-scaffolding/4-Ragtag`; `5-Gaps_filling/{2-gaps_filling,6-gaps_filling_primary,4-Polish}`),
-> reconciled with the literature (sources at bottom). Style: flexible. Gap-filling was **manual /
-> semi-automated** — the **judgment-heavy** parts are flagged honestly, not dressed up as a clean recipe.
+> (`5-Gaps_filling/{2-gaps_filling,6-gaps_filling_primary,4-Polish}`), reconciled with the
+> literature (sources at bottom). Style: flexible. Gap-filling was **manual / semi-automated** —
+> the **judgment-heavy** parts are flagged honestly, not dressed up as a clean recipe.
 >
-> Downstream of assembly (`playbook-genome-assembly.md`) and Hi-C/Pore-C scaffolding
-> (`playbook-chromosome-scaffolding-cphasing.md`). Design here; submit via the executor trio.
+> Downstream of assembly (`playbook-genome-assembly.md`) and scaffolding
+> (`playbook-chromosome-scaffolding-cphasing.md`, both Route A C-Phasing and Route B RagTag).
+> Design here; submit via the executor trio.
 
-## Two finishing paths (know which you're on)
+## Scope (this playbook covers F2 + F3 only)
 
-- **Reference individual** (had Pore-C): assembly → **CPhasing scaffold + orient/name** → **F2 gap-fill** →
-  **F3 polish** → `Cqu_final.fa` (the finished reference; merged QV ~**63.2**, per-haplotype QV **66.9 / 65.8**).
-- **Pangenome accessions** (HiFi-only, no 3C): assembly → **F1 RagTag against `Cqu_final.fa`** →
-  dotplot + LAI QC. (RagTag is reference-based scaffolding — the substitute for de-novo Hi-C/Pore-C
-  when you only have a reference + contigs.)
+`Cqu_final.fa` (the project's finished reference) is produced by:
 
-So F1 (RagTag) needs a finished reference, which F2+F3 produce. Order on the reference:
-C-Phasing `cqu_chrom.fa` → orient/name to `cqu_chrom.oriented.fa` → F2 → F3. Order on accessions: F1 only.
+1. C-Phasing scaffold + orient/name → `cqu_chrom.oriented.fa` *(Route A in scaffolding playbook)*
+2. **F2 gap-fill** (this playbook)
+3. **F3 polish** (this playbook)
 
----
+Reference-based scaffolding via RagTag — what pangenome accessions use when they have no 3C data —
+is **not** finishing; it lives in the scaffolding playbook as Route B.
 
-## Stage F1 — Reference-based scaffolding (RagTag)
-
-### When & decision
-
-Use when you have **contigs + a chromosome-scale reference** of the same/near species, and **no 3C
-data** for this accession. Reference-guided ordering/orientation into chromosomes. (If you *do*
-have Pore-C/Hi-C, prefer de-novo CPhasing — RagTag inherits the reference's structural assumptions.)
-
-### Command (verbatim)
-
-```bash
-conda activate assembly          # ragtag v2.1.0, minimap2 v2.30
-ragtag.py scaffold <reference.fa> <accession_primary.fa> -t 24 -C -r -u
-# internally: minimap2 -x asm5
-```
-
-Flag meanings (authoritative — note these, they shape the AGP):
-
-- `-C` — concatenate unplaced contigs into a single `chr0`.
-- `-r` — **infer** gap sizes from the alignment (default would be fixed 100 bp gaps); bounded by
-  `-g`/`-m` (min/max).
-- `-u` — add a suffix to unplaced-sequence headers.
-
-Outputs: `ragtag_output/ragtag.scaffold.fasta` (+ `.agp`, `.confidence.txt`). Then rename
-`Cq{N}{A/B}_RagTag` → `Cq{N}{A/B}` (`rename.sh` + `seqkit replace --kv-file rename.txt`).
-
-### QC
-
-```bash
-# 1) Dot plot vs reference (visual collinearity)
-minimap2 -cx asm5 -t 24 <reference.fa> <ragtag.chrom.fa> > acc.paf
-awk 'BEGIN{OFS="\t"} {sub(/_RagTag.*/,"",$1); print}' acc.paf > acc_rename.paf  # strip _RagTag suffix, KEEP the Cq..A/B name
-Rscript ~/tools/dotPlotly/pafCoordsDotPlotly.R -i acc_rename.paf -o acc -s -l -x
-# 2) LAI — LTR Assembly Index (repeat-space contiguity), via LTR_FINDER_parallel + LTR_retriever
-```
-
-- **Dot plot**: want a clean diagonal per chromosome (query vs reference); off-diagonal / broken
-  diagonals = mis-orders, inversions, or real structural variation — inspect, don't auto-trust.
-- **LAI** (Ou et al. 2018): **< 10 draft, 10–20 reference, > 20 gold**. Reports assembly of the
-  repeat/intergenic space, complementary to BUSCO (genic) and QUAST (contiguity).
-
-### Resources & state
-
-`fat`, 24 CPU, 100 G. **Run state: 10/10 scaffolded + dot-plotted; LAI completed 8/10** (lm270,
-lm411 LAI logs absent — re-run those two). Non-fatal conda `GLIBCXX` warning as usual.
+For the reference individual order is: scaffolded `cqu_chrom.oriented.fa` → F2 → F3.
+For the accessions order is: RagTag (in the scaffolding playbook) → no F2/F3 by default.
 
 ---
 
@@ -266,31 +222,27 @@ merqury.sh read.meryl Cqu_final_rename_hap2.fa result_hap2
 
 | Stage | Metric | Bar | Quinoa observed |
 |---|---|---|---|
-| F1 RagTag | dot-plot collinearity | clean per-chr diagonal | ✓ (10 samples) |
-| F1 RagTag | **LAI** | >10 reference, >20 gold | 〔record per-sample LAI from `*.finder.combine.scn`〕 |
 | F2 gaps | gaps remaining | ≈0 (note intentional skips) | most filled; **Chr04 left open** |
 | F3 polish | **merqury QV** | Q40 ok, **Q50+ T2T-grade** | **66.9 / 65.8** (gold) |
 | F3 polish | k-mer completeness | high; low false-dup | 〔record from merqury〕 |
 
 ### Evaluation contract
-- Required report fields: F1 dot-plot status, per-sample LAI with `total_LTR_RT_pct/intact_LTR_RT_pct`, gap count + intentional-skip list, F3 Merqury QV with `k+read_db_type` (this stage's NextPolish2 Merqury uses Illumina short-read truth set, distinct from the evaluation playbook's HiFi-built read.meryl).
+- Required report fields: gap count + intentional-skip list, F3 Merqury QV with `k+read_db_type` (this stage's NextPolish2 Merqury uses Illumina short-read truth set, distinct from the evaluation playbook's HiFi-built read.meryl).
 - Comparator: `references/project-anchors.yaml` quinoa V2 (hap1 QV 66.9, hap2 QV 65.8 — but those are from the HiFi-truth evaluation Merqury, not the finishing-stage Illumina-truth one; do not cross-reference numerically).
-- Invalid comparisons: finishing-stage QV vs evaluation-stage QV (`ASM_QV_002` BLOCK — different `read_db_type`); LAI grade as cross-organism quality grade (`ASM_LAI_002` WARN).
+- Invalid comparisons: finishing-stage QV vs evaluation-stage QV (`ASM_QV_002` BLOCK — different `read_db_type`).
 - Silent traps: Merqury inputs MUST be Illumina (NextPolish2 contract); the legacy `yak count -b37` two-positional-arg gotcha (R1 fed twice ≠ R1+R2) is a recurring fail mode — both files must be the merged stream `<(zcat R1 R2)`. F2 gap "filled" status without `get_gaps.py` re-verification can be optimistic.
-- Claim allowed only if: dot-plot collinearity is clean AND gap count is verified by `get_gaps.py` re-run AND polish QV cites both `k` and `read_db_type=illumina` AND any LAI grade carries the LTR-content provenance.
+- Claim allowed only if: gap count is verified by `get_gaps.py` re-run AND polish QV cites both `k` and `read_db_type=illumina`. (RagTag dot-plot/LAI claims live in the scaffolding playbook's Route B contract.)
 
 ## How this maps onto the bio-workflow safety layer
 
-1. **Design** here → pick F1 (accession, has reference) vs F2→F3 (reference individual); pick polish scope.
-2. **Generate** with `gen_sbatch.sh` (RagTag `--mem 100G`; gap-fill per-gap `--mem ~64–300G` 〔right-size, see below〕; polish `--mem 300G`, forward `${SLURM_CPUS_PER_TASK}` to `-t`).
+1. **Design** here → reference individual only (F2 then F3); pangenome accessions take RagTag in the scaffolding playbook, not this one. Pick polish scope.
+2. **Generate** with `gen_sbatch.sh` (gap-fill per-gap `--mem ~64–300G` 〔right-size, see below〕; polish `--mem 300G`, forward `${SLURM_CPUS_PER_TASK}` to `-t`).
 3. **Gate** with `prepare_submission.sh`; for many per-gap jobs use a SLURM **array** + `%N` cap, mind the 200/100/600 quota.
 4. **Submit + record** with `submit_and_log.sh --yes`.
-5. **Validate** with the table above + `resource_usage_audit.sh` — gap-fill/RagTag mem was almost certainly **over-requested** (the CPhasing 300G→25G lesson likely repeats here; measure and right-size).
+5. **Validate** with the table above + `resource_usage_audit.sh` — gap-fill mem was almost certainly **over-requested** (the CPhasing 300G→25G lesson likely repeats here; measure and right-size).
 
 ## Pitfalls
 
-- RagTag: it **propagates the reference's structure** — real SV in the accession can be flattened;
-  always read the dot plot. LAI lm270/lm411 were not finished — re-run.
 - Gap-filling is **manual and partial** — budget time, expect some gaps to stay open (Chr04), keep
   the `--racon`→`--ne` fallback in mind, and don't assume the extraction/rename is fully scripted.
 - Polish: **NextPolish2 (HiFi) ≠ NextPolish v1 (Illumina config)** — don't run the legacy `run.cfg`
@@ -301,12 +253,11 @@ merqury.sh read.meryl Cqu_final_rename_hap2.fa result_hap2
   against an R1-only filter; passing R1 twice drops R2. Either bug yields an incomplete k-mer truth set.
 - QV is computed from **short reads** (the accurate truth set) via merqury — keep a clean Illumina library for this.
 
+(RagTag-specific pitfalls — reference structure propagation, dot-plot reading — live in the
+scaffolding playbook's Route B section.)
+
 ## Sources
 
-- RagTag — Alonge et al., *Genome Biol* 2022; https://github.com/malonge/RagTag/wiki/scaffold
-  (`-C` concat→chr0, `-r` infer gap sizes, `-u` suffix unplaced).
-- LAI — Ou, Chen & Jiang, *NAR* 2018, 46:e126 (draft <10 / reference 10–20 / gold >20);
-  large-scale plant assessment, *AoB Plants* 2023.
 - TGS-GapCloser — Xu et al., *GigaScience* 2020; https://github.com/BGI-Qingdao/TGS-GapCloser
 - NextDenovo — Hu et al., *Genome Biol* 2024 (ONT de-novo assembler; here only a *source of donor
   contigs* for overlap-extending telomere ends — not the extension mechanism);
