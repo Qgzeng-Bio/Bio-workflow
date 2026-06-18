@@ -1,6 +1,204 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-18 — L4 Evidence-to-Claim Control Plane(Phase 1 合约 + Phase 2 闸门)
+Last updated: 2026-06-18 — L4 上线 + RagTag 归位 + 公开"已知设计弱点"清单
+
+---
+
+## 2026-06-18 — Self-assessment 与"已知设计弱点"清单
+
+### 背景 / 目标
+
+L1–L4 全部完成、RagTag 归到 scaffolding 后,做一次诚实的 self-assessment,
+把还没做、但**确实是设计层(不是纯工程化)**的弱点显式记下来,避免下一次
+session 误以为 skill 已经完工。
+
+### Self-score(2026-06-18)
+
+| 维度 | 分 | 说明 |
+|---|---|---|
+| 设计成熟度 | 8.5 | L1-L4 四层架构清晰;authority 二维 + 规则强度 4 档已对齐 GPT review |
+| 实际可用性 | 8.0 | quinoa 项目从 survey 到 SV 全跑通,KMERIA 也跑通 |
+| 安全防护 | 9.0 | preflight + triage + 闸门三件套 + claim gate |
+| 领域知识真实性 | 8.5 | 11 playbook 全部锚到真项目数字,非脑补 |
+| 可维护性 | 7.0 | 有 3 个 validator,但**没有自动化测试**;改规则只能手跑 fixture |
+| 跨场景适应性 | 7.0 | scope 字段已就位,但实测只跑过 quinoa 一种异源四倍体 |
+| 完整性 | 6.5 | Phase 3 collect_metrics.py / Phase 4 render_story_bundle.py 未做;14 条规则覆盖窄 |
+
+**综合 8.0 / 10**。个人单项目用得很顺;离工业级跨项目 skill 还差一档。
+
+### 已知设计弱点(按性价比从高到低)
+
+下面 5 条**不是**纯工程化欠账(测试 / 多项目验证 / 采集器),而是
+设计层面真实存在的提升点。补上其中 1–2 条会让用户感受到"质变",不补
+则当前体系仍能工作但有具体盲区。
+
+#### W1. 反馈环没闭环(最大问题)
+
+skill 是单向流:agent 跑分析 → checker 拦下 BAD claim。但 skill 自己
+**永远不知道自己有没有错过 BAD claim**(false negative),也不知道哪条
+规则**误报最多**(false positive)。
+
+具体缺:
+- agent 实际下了什么 claim、跑了什么 sbatch,没有机器可读日志被回收
+- 没有"过去 N 次 ASM_QV_002 触发了几次、几次被覆盖、几次事后证明是误报"
+- HANDOFF.md 是人工 journal,不是 skill 能机读的
+
+**修法**:让 `submit_and_log.sh` 已经在写的 `run_record.tsv` 多记一列
+`checker_status`,每个有效 manifest 跑完追加到 `reports/claim_audit.tsv`。
+3 个月后回看,这张 TSV 就是规则优化的金矿。
+
+**价值**:skill 从"我守门"升级到"我能学守门"。
+
+#### W2. 规则之间没拓扑
+
+现在 14 条规则是扁平列表,每条独立跑。但规则之间有依赖:
+- `ASM_BUSCO_001`(缺 provenance) 触发时,`ASM_BUSCO_002`(跨 lineage 比较)
+  的 BLOCK 其实没必要再算
+- `ASM_REPEAT_001`(BUSCO × LAI 正交) 依赖前两类规则都过
+- `KMERIA_001`(pilot incomplete) 触发时 `KMERIA_002`(hit overlap) 的 claim
+  根本不应该到达
+
+后果:输出会同时报多条相关 issue,模型读起来嘈杂,容易抓不到根因。
+
+**修法**:`interpretation-rules.tsv` 加一列 `requires`(rule_id 列表);
+checker 按 DAG 拓扑序跑,前置 BLOCK 时下游 silently skip。
+
+**价值**:输出从"全部 dump"变成"先告诉你最深的根因"。
+
+#### W3. evidence grade 体系还分裂
+
+现在:
+- `program-cards/*.md` 用**线性** grade(`project_history > local_run >
+  local_help > official_doc > github_readme > inferred`)
+- `interpretation-rules.tsv` 用**二维**(`authority + scope + strength`)
+
+当时为了避免 churn,我没 retrofit 5 张现有 card。诚实讲这是技术债,
+不是设计选择。
+
+后果:agent 读到 card 里的 `project_history` 和 rule 里的 `project_history`,
+两者含义其实不同(card 里 = "项目历史观察";rule 里 = "这条规则的权威来源是
+项目历史")。模型遇到双源冲突时分不清。
+
+**修法**:program-card 加 `scope` 字段(目前隐含全是 `general_genomics`),
+或把 card 的 grade 也改成二维。半天工作,但要改 5 张 card。
+
+**价值**:skill 内部 evidence 词汇统一,不再有"两套真理"。
+
+#### W4. AI 能利用 skill 的程度还很低(自动触发缺失)
+
+现在 agent **每次开会话都重读** SKILL.md + 相关 playbook,但:
+- 没有"这次会话里我已经知道哪些 anchor"的运行时记忆
+- claim 闸门只在被显式调用时触发,模型不会主动想到"啊我刚说了 QV 比较,
+  该跑 checker 了"
+- `interpretation-rules.tsv` 是按需读的,但模型不知道按需的边界 — 经常
+  在该读时没读
+
+具体观察:你直接 `claude` 跑分析,默认不会主动调
+`scripts/check_result_contract.py`,要我提示。这层"自动触发"目前靠
+SKILL.md 的自然语言规则,不靠机器约束。
+
+**修法**:
+- 在 SKILL.md 加**触发短语库**("publication-grade claim"/"compare across"/
+  "report Methods" → 必跑 checker)
+- claim 闸门做成 hook,模型一旦输出某些模式就被拦截要求先 verify
+
+**价值**:从"工具有但要记得用"变成"该用时自动到位"。
+
+#### W5. 没有 "UNCERTAIN" 状态
+
+checker 现在 4 种状态:`PASS / WARN / BLOCK / MISSING`,但缺一个:
+`UNCERTAIN` — 规则没覆盖的领域。
+
+例子:跑 annotation,manifest 里有 BRAKER 输出。checker 看不懂(没有
+annotation 规则),返回 PASS 加几条 MISSING。模型读到 PASS 就敢下 claim,
+但其实 skill **根本不该有意见**。
+
+**修法**:`scope` 字段反向用 — manifest 声明 `analysis_type: annotation`,
+checker 发现没有匹配的 rule,显式输出 `STATUS: UNCERTAIN`,该领域不在
+合约层覆盖范围。
+
+**价值**:skill 从"我永远有意见"变成"我知道自己不知道"。
+等真扩到 annotation/RNA-seq 时再上,当前 quinoa 主线不需要。
+
+### 工程化欠账(不计入设计弱点,但顺手记下来)
+
+不修也行,修了能更省事:
+
+- **没有自动化测试**:改规则只能手跑 4 个 fixture。该有
+  `tests/test_check_result_contract.py` + pre-commit hook,~2 小时。
+- **第二个真实项目验证缺失**:所有 anchor 都来自 quinoa。下次跑别的物种
+  会暴露隐含的"quinoa 假设"。**这是真要等到再开新项目时才能补**,
+  靠想象补不出来。
+- **Phase 3 `collect_metrics.py` 未做**:result_manifest.yaml 现在要手编。
+  从真实 BUSCO/Merqury/LAI/QUAST 输出自动产 manifest,~4-6 小时。Phase 2.1
+  schema 里已经预留字段。
+- **Phase 4 `render_story_bundle.py` 未做**:论文 Methods/Table1/Limitations
+  自动产数据。等真要发表时再做。
+
+### 优先级建议(下一个 session 启动时参考)
+
+按"修了之后这个 skill 真变了一档"排:
+
+1. **W1 反馈环** — 一行 TSV 字段 + 一段 audit 写入,~2 小时,价值最大
+2. **W4 自动触发** — SKILL.md 加触发短语库,~30 分钟,直接见效
+3. **W2 规则拓扑** — 等规则数到 25+ 再做,现在 14 条还看得清
+4. **W3 evidence grade 统一** — 等下一次大改 program-card 时顺手
+5. **W5 UNCERTAIN** — 等真扩 annotation 时再上
+
+不要把 5 条都堆到一次会话做 — 会过度工程化,且会破坏现在已经稳的部分。
+
+### 当前结论
+
+8 分的 skill 不是"做完了",而是"够用了 + 知道下一步在哪"。
+这条 entry 就是那个"知道下一步在哪"。
+
+---
+
+## 2026-06-18 — RagTag 从 finishing 移到 scaffolding
+
+### 背景 / 目标
+
+把"基于参考的 scaffolding"(RagTag)放在 finishing playbook 里是按
+"工作流哪一步用"分类的妥协,不是按"它做什么"分类。RagTag 实际就是
+scaffolding,只是 reference-based 不是 3C-based。
+
+### 已完成变更
+
+- `playbook-chromosome-scaffolding-cphasing.md` 现在是 scaffolding 伞,
+  包含两条路:
+  - **Route A** C-Phasing(3C data,de novo) — 原内容
+  - **Route B** RagTag(reference-based,无 3C) — 从 finishing 搬来
+  - 各自带独立的 `### Evaluation contract`(Route A vs Route B)
+  - Route B 合约明确:RagTag 继承参考结构,因此**新颖 SV 的 claim 不能
+    在这里下**,必须等 SV-calling 阶段
+- `playbook-genome-finishing.md` 缩成只覆盖 F2 gap-filling + F3 polishing
+  - 删除 `## Stage F1 — Reference-based scaffolding (RagTag)` 整段
+  - 删除 QC table 里两行 F1 RagTag
+  - 删除 RagTag 专属 Pitfall(已搬到 scaffolding 的 Gotchas)
+  - 删除 RagTag + LAI 的 Sources(已搬到 scaffolding 的 Sources)
+  - 顺便清理一处重复的 TGS-GapCloser source 条目
+- `SKILL.md`
+  - 第 3 阶段 routing:明说 Route A vs Route B,以及"Route A 产出参考个体,
+    Route B 是 pangenome accessions 走的路"
+  - 第 4 阶段 routing:明说 "reference-individual only",accessions 的
+    scaffolding 在第 3 阶段
+
+### 验证
+
+- `validate_program_cards.py --check-drafts` → PASS (5 active, 0 drafts)
+- `quick_validate.py .` → Skill is valid!
+- `### Evaluation contract` 数量:scaffolding=2(Route A + Route B),
+  finishing=1(F2+F3)
+- 工作树外其他 RagTag 引用都正常(只是 upstream/input 提示,不需要改)
+
+### Caveats
+
+- HANDOFF.md 早期 entry 里仍提到 "F1 RagTag" — 那是 journal 历史记录,
+  反映当时状态,不动是对的
+
+### 提交
+
+commit `b1949c8`,已推 GitHub `main`。
 
 ---
 
