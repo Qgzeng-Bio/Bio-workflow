@@ -4,6 +4,21 @@ Use these checklists as a compact acceptance gate for qgzeng bioinformatics
 workflows. Keep evidence concrete: paths, counts, job IDs, versions, and short log
 snippets. Do not treat a zero exit code as enough.
 
+## Core bioinformatics closure checklist
+
+- Confirm input paths, sample IDs, genome/reference versions, coordinate systems,
+  and chromosome naming before interpreting results.
+- Avoid heavy compute on login/admin nodes; use SLURM or a confirmed compute node
+  for real workloads.
+- Validate key intermediate files are non-empty and have expected columns, formats,
+  record counts, coordinate ranges, and indexes.
+- Record commands, parameters, environments, versions, manifests, and output
+  locations in a handoff or report.
+- Check representative outputs manually or with summary statistics before claiming
+  biological conclusions.
+- Report failures, skipped steps, accepted warnings, and remaining uncertainty
+  explicitly.
+
 ## Resume checklist
 
 - First classify the project with `references/resume-protocol.md` before planning
@@ -130,6 +145,32 @@ snippets. Do not treat a zero exit code as enough.
   mineral accumulation, subgenome differentiation, structural variation, and
   pangenome variability when relevant.
 
+## Centromere and CENH3 checklist
+
+- IP/Input pairing, genome size source, mapping branch, dedup status, and MAPQ
+  policy are recorded.
+- CENH3 domains are called from log2(IP/Input) signal, not from MACS2 peaks alone;
+  MACS2 is treated as auxiliary support.
+- TRASH/CEN40 density, HOR-like blocks, CENH3 domains, final BED intervals, and
+  `.fai` chromosome lengths use the same coordinate convention and chromosome names.
+- Final boundary changes are reviewed on genome-wide plots and labeled as confident,
+  curated, rescue, discordant, or no-clear-signal.
+- HOR scoring is rerun after final BED boundary changes; old BED-filtered monomer
+  and HOR tables are not reused silently.
+
+## Synteny checklist
+
+- GFF feature IDs, CDS FASTA record IDs, BED column 4 IDs, and selected isoform
+  policy are compatible.
+- Prepared `.bed`, `.uniq.bed`, and `.cds` files are non-empty and have expected
+  record counts before JCVI ortholog calls.
+- Anchor, screened anchor, lifted anchor, and block counts are recorded, including
+  the chosen `--cscore`, `--minspan`, and working directory.
+- `seqids`, `layout`, `plot.bed`, and microsynteny `layout.txt` are checked against
+  generated prefixes and anchors rather than invented from memory.
+- Karyotype or microsynteny figures are non-empty and visually checked for swapped
+  genomes, missing chromosomes, or label/layout mismatches.
+
 ## Figure acceptance checklist
 
 - Arial or acceptable sans-serif font is used consistently.
@@ -147,6 +188,6 @@ snippets. Do not treat a zero exit code as enough.
 
 - Keep `SKILL.md` as the single official entry point (the skill loader reads only this file).
 - Run quick validation:
-  `python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py /data9/home/qgzeng/projects/3-Biotools_create/bio-workflow`.
+  `python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py /data9/home/qgzeng/.codex/skills/<skill-folder>`.
 - For script changes, run `bash -n` and at least one representative positive and
   negative test.
