@@ -1,6 +1,156 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-18 — L4 上线 + RagTag 归位 + 公开"已知设计弱点"清单
+Last updated: 2026-06-18 — W4 触发短语库 + W1 反馈环 claim_audit.tsv
+
+---
+
+## 2026-06-18 — W4 自动触发短语库 + W1 claim audit 反馈环
+
+### 背景 / 目标
+
+按本日早些时候 self-assessment 列出的"已知设计弱点"清单(W1–W5)的优先级
+建议,先做最高性价比的两条:**W4(自动触发,~30 min)** + **W1(反馈环,
+~2 hr)**。其他三条(W2 拓扑 / W3 evidence grade 统一 / W5 UNCERTAIN 状态)
+按 self-assessment 警告暂不做,避免过度工程化。
+
+驱动方式:Claude Code 主导 + `codex exec` 实施 + `codex exec -s read-only`
+两轮复审(REVIEW ONLY 压 stop-hook,HANDOFF 快照还原兜底)。
+
+### 已完成变更
+
+**W4 — Auto-trigger phrases for the claim checker**
+
+- `SKILL.md` 在 `## Result claims: source-of-truth policy` 末尾新增
+  `### Auto-trigger phrases for the claim checker` 子段。
+- 触发四类(中英双轨):publication / decision-grade language;
+  cross-comparator language(BUSCO_002/QV_002/LAI_002 直接对应);
+  headline metric claims;cross-scope mixing。
+- 显式 "When NOT to trigger":避免把 `--help` 文本、调试 SLURM 失败、
+  manifest schema 讨论、同一回答内重复同 manifest 误识别为触发。
+- "compare across" 经 round-1 review 收紧:必须配合具体 metric / asm /
+  lineage / haplotype / biological comparison 才触发,纯字符串不算。
+- 文末显式要求:checker 跑完后必须调
+  `bash scripts/log_claim_audit.sh --manifest <path> --job-id <id_or_NA>`
+  把这次 checker 输出固化到 audit TSV(连接到 W1)。
+
+**W1 — claim_audit.tsv + Checker_Status_AtSubmit**
+
+- 新增 `scripts/log_claim_audit.sh`(可执行,154 行):
+  - 调 `scripts/check_result_contract.py`,捕获 stdout + exit code,交叉
+    校验 STATUS 行与 exit code 一致(PASS↔0 / WARN↔1 / BLOCK↔2),不一致
+    标 PARSE_ERROR 并 exit 3。
+  - 解析 `BLOCKED:` / `WARNINGS:` 段的 rule_id,按 awk section parser 严
+    格停在下一个段头/空行,不外溢到 NOTES/MISSING/"ALL RULES SATISFIED"。
+  - 追加一行到 `reports/claim_audit.tsv`(9 列严格 schema:Timestamp /
+    Job_ID / Manifest_Path / Manifest_SHA256 / Status / Block_Rules /
+    Warn_Rules / Note / Outcome=TBD)。`Outcome=TBD` 由人工 3 个月后回看
+    标记 CONFIRMED / FALSE_POSITIVE / FALSE_NEGATIVE / OVERRIDDEN_OK。
+  - 自动选 PyYAML-capable python(`/data9/home/qgzeng/anaconda3/bin/python3`
+    优先,fallback `python3`),调用方可用 `--python` 强制覆盖。
+  - 显式 5 档 exit codes (`--help` 内文档化):0 PASS / 1 WARN / 2 BLOCK /
+    3 PARSE_ERROR / 4 INFRA_ERROR(usage / missing yaml / unreadable
+    manifest / TSV header malformed)。机器可读,上游 case 直接映射。
+  - 表头按 noclobber 单写者假设(注释明示并发 caller 需外部 flock,
+    out-of-scope),已存在的 audit TSV 列数不为 9 时 fail-closed。
+- `scripts/submit_and_log.sh` 改造:
+  - 新增 **独立** flag `--claim-manifest <path>`(result_manifest.yaml),
+    不与既有 `--manifest`(array sample TSV,转给 gate)混淆。Round-1
+    review 抓到这条:codex 第一次实现合并了两个 flag,语义破坏,人工修。
+  - run-record schema 从 9 列扩到 10 列,新增 `Checker_Status_AtSubmit`。
+  - 一次性 idempotent migration:旧 9 列 record 自动加 `\tNA` 升级为 10
+    列;未知 header 拒绝提交;tmp file 单写者假设(注释明示)。
+  - **提交前 prevalidate** `--claim-manifest`(round-1 finding):文件不
+    存在或不可读直接 exit 1,不进 sbatch。这样 `MANIFEST_MISSING` 只在
+    极罕见 TOCTOU race 才会出现,正常使用永远闸住。
+  - 提交后 audit_rc → checker_status 走专属 exit code mapping,无字符串
+    grep,新增 `INFRA_ERROR` / `AUDIT_ERROR` 两档透出。
+  - record path 用 `record="$_rec_norm"` 规范化绝对路径(round-1 finding)。
+
+### 验证 / 命令
+
+四个真实 quinoa 数字编出来的 fixture 端到端通过(同 2026-06-18 早些时候
+L4 fixture):
+
+```bash
+PY=/data9/home/qgzeng/anaconda3/bin/python3
+bash -n scripts/log_claim_audit.sh
+bash -n scripts/submit_and_log.sh
+$PY /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .
+$PY scripts/validate_program_cards.py
+$PY scripts/validate_program_cards.py --check-drafts
+```
+
+`/tmp/bio_audit_fixtures/` 4 manifest:
+
+| Fixture | 触发 | Checker STATUS | log_claim_audit rc |
+|---|---|---|---|
+| A_pass | 单 assembly 全 provenance 齐全 | PASS | 0 |
+| B_warn | BUSCO C=99.7 + LAI=8.4(`ASM_REPEAT_001` WARN);read_db_type=hifi independence=false(`ASM_QV_003` WARN) | WARN | 1 |
+| C_block | 跨 lineage(`ASM_BUSCO_002` BLOCK)+ 跨 read_db_type(`ASM_QV_002` BLOCK) | BLOCK | 2 |
+| D_missing | 故意删 lineage / mode / db_version / k / read_db_type | WARN(MISSING) | 1 |
+
+`submit_and_log.sh --claim-manifest` 集成测试(`/tmp/bio_submit_test/` 假
+sbatch shim,**未提交真实 SLURM**):
+
+- 旧 9 列 record 一次提交后正确迁移成 10 列,旧行尾补 `\tNA`,新行尾追加
+  `PASS`/`WARN`/`BLOCK`/`MANIFEST_MISSING`/`PARSE_ERROR`/`INFRA_ERROR`。
+- `--claim-manifest /tmp/NEVER.yaml --yes` 在 sbatch 之前 fail,exit 1,
+  不污染 record。
+- `bash scripts/log_claim_audit.sh --python /usr/bin/python3 --manifest
+  A_pass.yaml` 走老 python(无 yaml)→ rc=3 PARSE_ERROR(checker 输出
+  SyntaxError stderr,STATUS 行缺失)。
+- `bash scripts/log_claim_audit.sh --manifest /tmp/NONEXISTENT.yaml`
+  → rc=4 INFRA_ERROR。
+- 无 `--claim-manifest` 路径行为完全不变(`Checker_Status_AtSubmit=NA`)。
+
+### Codex 复审
+
+Round 1(`codex exec -s read-only`,scoped 4 文件,禁扫 `2-C_quinoa`):
+8 条发现 → 全部 ack/fix:
+- finding 1+2:用专属 exit codes 取代 stderr grep
+- finding 5:record path 规范化
+- finding 7:claim manifest pre-validation
+- finding 8:cross-comparator trigger qualifier
+- finding 6:operator-trust boundary 文档化
+- finding 3+4:并发竞态接受为 out-of-scope,加注释明示假设
+
+Round 2 复审:8/8 CLOSED,VERDICT 全绿,无新发现。HANDOFF.md 经 snapshot
++ trap 还原兜底,两轮 review 后保持 pristine。
+
+### Caveats
+
+- `MANIFEST_MISSING` 仍可能在 prevalidation 与 sbatch 之间 TOCTOU race 时
+  出现(用户故意删文件),保留作 defense-in-depth。
+- `reports/claim_audit.tsv` 的并发写入用 noclobber + ${record}.tmp,假设
+  单写者(单 SLURM 提交节奏);需要并发 caller 必须外部 flock。
+- 测试用的 4 个 fixture 在 `/tmp/bio_audit_fixtures/`,不入版本(临时夹具)。
+  真实项目首次跑时应该手编一个真实 manifest,跑 log_claim_audit.sh,看这
+  条 audit row 长什么样。
+- 不动 conda env / 不联网 / 不广扫数据目录 / 不提交真实 SLURM。codex
+  漫扫 `2-C_quinoa` 风险通过 prompt 显式禁止 + scope 到 4 文件规避(参考
+  memory `codex-review-no-broad-dir-scan`)。
+
+### 交付物
+
+新增:
+- `scripts/log_claim_audit.sh`(executable)
+
+改动:
+- `SKILL.md`(+ `### Auto-trigger phrases for the claim checker`,~46 行)
+- `scripts/submit_and_log.sh`(+ `--claim-manifest`,+ 10 列迁移,+ exit-code
+  driven status mapping,+ pre-validation;~70 行净增)
+- `HANDOFF.md`(本条目)
+
+不改 `scripts/check_result_contract.py` 本体(W1+W4 都不要求改)。
+
+### 下一步
+
+- 真实项目跑出 result_manifest.yaml 时,首次用 `submit_and_log.sh
+  --claim-manifest <path> --yes`,看 audit TSV 第一行。
+- 3 个月后人工把 `Outcome=TBD` 的行标 CONFIRMED / FALSE_POSITIVE 等;
+  这就是 W1 设计上要回收的"哪条规则误报最多"金矿。
+- W2(规则拓扑)等规则数到 25+ 再考虑;W3 evidence grade 统一 / W5
+  UNCERTAIN 等下一次大改时再上。
 
 ---
 

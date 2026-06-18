@@ -284,6 +284,57 @@ When a result manifest exists, run `python3 scripts/check_result_contract.py --m
 
 The contract details per stage live in each playbook's `### Evaluation contract` block.
 
+### Auto-trigger phrases for the claim checker
+
+The checker (`scripts/check_result_contract.py`) is cheap to run and the only
+machine guard against silent claim drift. Treat the following patterns as
+**hard auto-triggers** — when any appears in the user's request OR in your
+own draft response, run the checker against the relevant `result_manifest.yaml`
+BEFORE finalizing the answer. Do not rely on memory of a previous checker run
+in the same session; rerun if the manifest path changed.
+
+**Publication / decision-grade language**
+
+- "publication-grade" / "publication grade" / "for the manuscript" / "report Methods" / "Table 1"
+- 中文：发表 / 论文 Methods / 投稿 / 正式报告
+
+**Cross-comparator language** (these are exactly what BUSCO_002, QV_002, LAI_002 guard)
+
+These trigger only when paired with concrete result metrics, assemblies, lineages,
+haplotypes, or a stated biological comparison. Pasted tool `--help` text or
+unrelated chit-chat with the same phrase does NOT count.
+
+- "compare across <samples|assemblies|lineages|haplotypes>", "better than <named asm>",
+  "best assembly", "vs hap1/hap2", "vs the previous version", "improved over",
+  "outperforms <named asm>"
+- 中文：比之前好 / 比 hap1 高 / 跨 lineage / 跨 haplotype / 跨样本比较（必须配合具体指标或装配名）
+
+**Headline metric claims**
+
+- "QV improvement", "BUSCO went up", "LAI grade", "completeness reaches",
+  "reference-quality assembly", "T2T-level", "telomere-to-telomere"
+- 中文：QV 提升 / BUSCO 提升 / LAI 等级 / 完整性达到 / 参考级 / T2T 级
+
+**Cross-scope mixing** (anchors out of declared scope)
+
+- A non-quinoa species name appears together with numbers from
+  `references/project-anchors.yaml`'s `quinoa_project` scope (or vice versa).
+
+**When NOT to trigger** (avoid alarm fatigue)
+
+- Pure tool-usage questions ("how do I run BUSCO?") — no claim is being made.
+- Debugging a SLURM failure — no biological claim yet.
+- Listing files / manifest schema discussion — no claim is being made.
+- Repeating an already-checked result inside the same answer with the same
+  manifest path.
+
+**After running the checker**
+
+Always also call `bash scripts/log_claim_audit.sh --manifest <path> --job-id <id_or_NA>`
+so the run is appended to `reports/claim_audit.tsv`. The audit TSV is what makes
+the feedback loop closeable: 3 months later, the operator can label which
+findings were real and which rules were noise.
+
 ## Workflow
 
 ### 1. Define the task
