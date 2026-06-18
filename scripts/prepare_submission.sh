@@ -81,9 +81,9 @@ if [[ -n "$conc" && ! "$conc" =~ ^[1-9][0-9]*$ ]]; then
     exit 2
 fi
 
-# --- locate sibling helpers across the project dir and the global skill dir ----
+# --- locate sibling helpers in the project scripts dir -------------------------
 self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-helper_dirs=("$self_dir" "$HOME/.claude/skills/bioinformatics-analysis-workflow/scripts")
+helper_dirs=("$self_dir")
 
 find_helper() {
     local name="$1" d

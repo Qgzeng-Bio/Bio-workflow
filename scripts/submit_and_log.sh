@@ -84,9 +84,7 @@ record="$_rec_norm"  # use the normalized absolute path everywhere downstream
 self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 proj_root="$(cd "$self_dir/.." && pwd)"
 gate=""
-for d in "$self_dir" "$HOME/.claude/skills/bioinformatics-analysis-workflow/scripts"; do
-    [[ -x "$d/prepare_submission.sh" ]] && { gate="$d/prepare_submission.sh"; break; }
-done
+[[ -x "$self_dir/prepare_submission.sh" ]] && gate="$self_dir/prepare_submission.sh"
 [[ -n "$gate" ]] || { echo "ERROR | prepare_submission.sh not found; refusing to submit without the gate" >&2; exit 1; }
 
 # --- minimal #SBATCH parser (for the run record) ------------------------------

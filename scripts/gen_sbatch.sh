@@ -122,9 +122,7 @@ fi
 # --- locate slurm_preflight.sh ------------------------------------------------
 self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 pf=""
-for d in "$self_dir" "$HOME/.claude/skills/bioinformatics-analysis-workflow/scripts"; do
-    [[ -x "$d/slurm_preflight.sh" ]] && { pf="$d/slurm_preflight.sh"; break; }
-done
+[[ -x "$self_dir/slurm_preflight.sh" ]] && pf="$self_dir/slurm_preflight.sh"
 [[ -n "$pf" ]] || { echo "ERROR | slurm_preflight.sh not found; cannot guarantee preflight-clean output" >&2; exit 1; }
 
 # --- build the script into a temp file ----------------------------------------
