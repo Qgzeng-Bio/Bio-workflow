@@ -174,6 +174,7 @@ blockers=()
 warnings=()
 input_line="(跳过 / skipped — 未提供 --input-list)"
 preflight_line="(未运行)"
+resource_line="(未运行; slurm_preflight.sh 未产生资源判断)"
 task_line="(无 manifest / array)"
 quota_line="(未运行)"
 output_line="(未指定 --output)"
@@ -219,6 +220,23 @@ else
         blockers+=("preflight 报 FAIL (硬阻断): $preflight_line")
     elif [[ "$pf_warn" -gt 0 ]]; then
         warnings+=("preflight 有 $pf_warn 个 WARN, 提交前需逐条解释")
+    fi
+    resource_hits="$(printf '%s\n' "$pf_out" | grep -E '^(PASS|WARN|FAIL) \| Resource sanity:' || true)"
+    if [[ -n "$resource_hits" ]]; then
+        resource_line="$(
+            printf '%s\n' "$resource_hits" \
+                | awk '
+                    {
+                        sub(/^[A-Z]+ \| Resource sanity: /, "")
+                        if (NR == 1) out = $0
+                        else out = out "; " $0
+                    }
+                    END { print out }
+                '
+        )"
+    else
+        resource_line="未见 Resource sanity 输出; 只能确认资源指令存在, 不能代表资源合理"
+        warnings+=("资源判断缺失: slurm_preflight.sh 未输出 Resource sanity")
     fi
 fi
 
@@ -318,7 +336,7 @@ else
     # Decide on the stable machine-readable STATUS marker, not exit code or wording:
     # squeue socket errors abort check_quota before any STATUS prints -> fall through to WARN.
     if printf '%s\n' "$cq_out" | grep -q '^STATUS=SUBMIT_LIMIT_EXCEEDED'; then
-        blockers+=("直接提交会超 QOS 已提交上限 (200); 改用 scripts/submit_chunked.sh 分块提交")
+        blockers+=("直接提交会超 QOS 已提交上限 (200); 先 dry-run scripts/submit_chunked.sh 分块计划, 确认后用 --yes 提交; chunked 提交器会为每块重跑 prepare_submission.sh/submit_and_log.sh 门禁")
         [[ -n "$quota_line" ]] || quota_line="预计已提交超 200 上限"
         quota_line="$quota_line  [✗ 超提交上限, 需分块]"
     elif printf '%s\n' "$cq_out" | grep -q '^STATUS=OK'; then
@@ -329,7 +347,7 @@ else
         # never prints STATUS=) cannot silently turn a real over-limit into a soft WARN.
         # A squeue failure mid-run can also exit 1; in that ambiguous case a safety gate
         # must fail closed (block), not proceed.
-        blockers+=("配额预演退出码=1 (check_quota.sh 契约: =超提交上限) 但缺 STATUS= 标记; 可能是旧版 check_quota.sh 或 squeue 中途失败。保守阻断: 先同步 scripts/check_quota.sh 或在可访问 SLURM 的会话手动核对配额, 超限时用 scripts/submit_chunked.sh 分块")
+        blockers+=("配额预演退出码=1 (check_quota.sh 契约: =超提交上限) 但缺 STATUS= 标记; 可能是旧版 check_quota.sh 或 squeue 中途失败。保守阻断: 先同步 scripts/check_quota.sh 或在可访问 SLURM 的会话手动核对配额, 超限时用 scripts/submit_chunked.sh dry-run 分块计划后再 --yes 提交")
         [[ -n "$quota_line" ]] || quota_line="配额预演 exit=1 (疑似超限或 check_quota.sh 过旧)"
         quota_line="$quota_line  [✗ exit=1, 保守阻断]"
     else
@@ -364,7 +382,11 @@ if [[ -n "$output_dir" ]]; then
         output_line="$output_dir 存在但不是目录"
         warnings+=("--output 不是目录: $output_dir")
     else
-        n_out="$(find "$output_dir" -mindepth 1 -maxdepth 1 2>/dev/null | head -n 50 | wc -l | tr -d ' ')"
+        n_out=0
+        while IFS= read -r -d '' _out_entry; do
+            n_out=$(( n_out + 1 ))
+            [[ "$n_out" -ge 50 ]] && break
+        done < <(find "$output_dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null)
         if [[ "$n_out" -gt 0 ]]; then
             output_line="$output_dir 已有内容 (顶层 ≥$n_out 项), 提交可能覆盖已有结果"
             warnings+=("输出目录非空, 确认不会覆盖既有结果: $output_dir")
@@ -387,6 +409,7 @@ printf '[脚本]   preflight %s\n' "$preflight_line"
 printf '[任务]   %s\n' "$task_line"
 printf '[资源]   partition=%s  cpus-per-task=%s  mem=%s\n' \
     "${req_part:-NA}" "${req_cpus:-NA}" "${req_mem:-NA}"
+printf '[资源判断] %s\n' "$resource_line"
 printf '[配额]   %s\n' "$quota_line"
 printf '[输出]   %s\n' "$output_line"
 printf '[时间]   %s\n' "$(get_sbatch_value '--time' '-t' >/dev/null 2>&1 && echo '⚠️ 含 #SBATCH --time, 确认是否需要' || echo '无 #SBATCH --time')"

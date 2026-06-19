@@ -31,7 +31,8 @@ Options:
   --cmd 'COMMAND'      the tool command line; use "$THREADS" for thread count
   --chdir DIR          #SBATCH --chdir (rejected if protected)
   --time WALLTIME      only with --partition debug, or together with --allow-time
-  --allow-time         allow --time on non-debug partitions (adds ALLOW_TIME_DIRECTIVE)
+  --allow-time         allow --time on non-debug partitions (adds a marker that
+                       slurm_preflight.sh will WARN on, not silently PASS)
   --out FILE           write here (non-protected); refuses to overwrite without --force
   --force              allow overwriting --out
   -h, --help           show this help
@@ -140,7 +141,7 @@ trap 'rm -f "$tmp"' EXIT
     [[ -n "$array" ]] && echo "#SBATCH --array=$array"
     [[ -n "$chdir" ]] && echo "#SBATCH --chdir=${chdir%/}"
     if [[ -n "$walltime" ]]; then
-        [[ "$partition" != "debug" ]] && echo "# ALLOW_TIME_DIRECTIVE (user-confirmed walltime on $partition)"
+        [[ "$partition" != "debug" ]] && echo "# ALLOW_TIME_DIRECTIVE (operator-marked walltime on $partition; preflight still requires explicit user confirmation)"
         echo "#SBATCH --time=$walltime"
     fi
     echo ''

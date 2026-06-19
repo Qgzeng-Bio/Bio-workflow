@@ -16,7 +16,11 @@ check_quota.sh — 检查 SLURM 配额占用 (默认用户=当前用户)
 EOF
 }
 
-USER_NAME="$(whoami)"
+USER_NAME="${SLURM_USER:-${USER:-}}"
+if [[ -z "$USER_NAME" ]]; then
+  USER_NAME="$(whoami 2>/dev/null || true)"
+fi
+[[ -n "$USER_NAME" ]] || { echo "无法确定当前用户名; 请用 -u 指定" >&2; exit 2; }
 MAX_SUBMIT=200; MAX_RUNNING=100; MAX_CPU=600
 ADD_JOBS=0; ADD_CPUS=0; CONC=0
 

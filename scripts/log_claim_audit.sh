@@ -16,10 +16,10 @@ Defaults:
   --job-id  NA
   --note    ""
 
-Path safety: --audit / --rules / --anchors / --checker accept absolute paths
-without restriction (operator-trust boundary). The default --audit lives under
-the project's reports/ dir. If you point --audit elsewhere, you own the side
-effects (mkdir -p of parents, header creation).
+Path safety: --audit must resolve inside this project and must not target
+/data9/home/qgzeng/data or /data9/home/qgzeng/tools. The default audit file
+lives under reports/. --rules / --anchors / --checker may be absolute read-only
+paths.
 
 Audit TSV schema:
   Timestamp
@@ -92,6 +92,26 @@ resolve_path() {
     fi
 }
 
+normalize_target_path() {
+    local path="$1" norm
+    command -v realpath >/dev/null 2>&1 || return 1
+    norm="$(realpath -m -- "$path" 2>/dev/null)" || return 1
+    [[ "$norm" == /* ]] || return 1
+    case "$norm" in */../*|*/.. ) return 1 ;; esac
+    printf '%s\n' "$norm"
+}
+
+is_protected_path() {
+    local p="${1%/}"
+    [[ "$p" == /data9/home/qgzeng/data || "$p" == /data9/home/qgzeng/data/* \
+       || "$p" == /data9/home/qgzeng/tools || "$p" == /data9/home/qgzeng/tools/* ]]
+}
+
+is_project_path() {
+    local p="${1%/}" root="${proj_root%/}"
+    [[ "$p" == "$root" || "$p" == "$root"/* ]]
+}
+
 [[ -n "$manifest" ]] || { echo "ERROR | --manifest is required" >&2; exit 4; }
 
 manifest="$(resolve_path "$manifest")"
@@ -99,6 +119,18 @@ audit_tsv="$(resolve_path "$audit_tsv")"
 rules="$(resolve_path "$rules")"
 anchors="$(resolve_path "$anchors")"
 checker="$(resolve_path "$checker")"
+audit_tsv="$(normalize_target_path "$audit_tsv")" || {
+    echo "ERROR | --audit cannot be safely normalized: $audit_tsv" >&2
+    exit 4
+}
+is_project_path "$audit_tsv" || {
+    echo "ERROR | --audit must stay inside the project: $audit_tsv" >&2
+    exit 4
+}
+is_protected_path "$audit_tsv" && {
+    echo "ERROR | --audit targets a protected path: $audit_tsv" >&2
+    exit 4
+}
 
 [[ -r "$manifest" ]] || { echo "ERROR | manifest missing or unreadable: $manifest" >&2; exit 4; }
 if [[ "$job_id" != "NA" && ! "$job_id" =~ ^[0-9]+(_[0-9]+)?$ ]]; then

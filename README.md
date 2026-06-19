@@ -88,7 +88,7 @@ scripts/submit_and_log.sh --script align.sbatch --manifest config/samples.tsv --
 | `parallelization_audit.sh` | detect serial independent-task bottlenecks and un-forwarded CPUs; recommend an array structure, `%N` cap, and template |
 | `resource_usage_audit.sh` | after a pilot, parse `/usr/bin/time -v` + `sacct` to right-size `--cpus-per-task` / `--mem` / array concurrency |
 | `check_quota.sh` | show QOS occupancy (200/100/600) and dry-run whether a batch would exceed the submit cap |
-| `submit_chunked.sh` | submit a large array in chunks that stay under the submit cap |
+| `submit_chunked.sh` | dry-run or submit a large array through per-chunk scripts stored in the current project and re-entering `submit_and_log.sh` |
 | `check_inputs.sh` | input inventory + integrity (exists / readable / non-empty / gzip magic / format sniff / optional pairing) |
 
 ## Resume & failure triage

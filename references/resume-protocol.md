@@ -44,6 +44,19 @@ Bounded manual evidence sources:
 - `reports/`: acceptance reports and `workflow_status.tsv`.
 - `tmp/`: only for clues; never treat tmp output as final success.
 
+Default takeover is read-only and narrow: inspect only `config/`, `scripts/`,
+`logs/`, `reports/`, `results/`, and explicit `data/` symlinks or manifests. If
+the input location is unknown, ask for the exact path, manifest, filename pattern,
+or a user-approved bounded search root. Do not walk upward from the project or
+recursively scan parent directories, project collections, or `$HOME` to infer
+missing biological inputs.
+
+When evidence shows a strategy switch or downgrade, state that explicitly instead
+of collapsing it into generic success or failure. Examples include installation
+completed with warnings, an older route abandoned after a failed pull/solve, a
+fallback route now in use, or a pilot submitted after an earlier setup failure.
+Record the evidence path, obsolete route, active route, and next action.
+
 ## State definitions
 
 ### Input_ready
@@ -88,7 +101,12 @@ Bounded manual evidence sources:
 
 **Next entry**
 
-- Run `scripts/slurm_preflight.sh --script <script>`.
+- Run `scripts/prepare_submission.sh --script <script>` with the known
+  manifest/input/output paths whenever available.
+- Use `scripts/slurm_preflight.sh --script <script>` only as a fallback when
+  inputs/outputs are still unknown.
+- Include a `🧮 资源判断` covering CPU, memory, partition, array concurrency,
+  and whether those resources fit the tool/input scale.
 - Explain any `WARN` and treat any `FAIL` as a blocker.
 
 **Common risks**
@@ -221,7 +239,8 @@ Column rules:
 - `Stage`: one of `Input_ready`, `Script_ready`, `Queued_or_running`, `Failed`,
   `Complete_unvalidated`, or `Analysis_ready`.
 - `Status`: short machine-readable status such as `Needs_planning`,
-  `Needs_preflight`, `Running`, `Needs_triage`, `Needs_validation`, or `Validated`.
+  `Needs_preflight`, `Running`, `Needs_triage`, `Needs_validation`, `Validated`,
+  `completed_with_warnings`, `abandoned_with_reason`, or `failed_blocking`.
 - `Evidence_Path`: most important file/log/report supporting the state.
 - `Job_ID`: SLURM job ID or `NA`.
 - `Exit_Code`: SLURM or process exit code, or `NA`.

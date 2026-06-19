@@ -17,7 +17,7 @@ Before substantive work:
 2. Read `/data9/home/qgzeng/.codex/memories/slurm_preferences.md`.
 3. Read the nearest `AGENTS.md` in the current directory or parent directories.
 4. If any required file is missing, state the missing item briefly and continue with available context.
-5. Reply in Chinese by default, with conclusion first and compact status markers.
+5. Reply according to `user_output_format_preferences.md`; if it has no stronger preference, Chinese is the default for this user.
 
 ## Server safety boundaries
 
@@ -32,7 +32,7 @@ Use these lightweight probes freely when they answer the task:
 - `ls -lh`, `wc -l`, `head`, `tail`, `file` on explicit files
 - `du -sh <explicit_project_or_output_path>` only for user-specified paths
 
-Do not run broad scans such as `find /data9`, `find /data9/home/qgzeng`, unbounded `find` on large roots, `du -sh /data9/*`, `ls -R` on large directories, or full-file decompression/streaming over large FASTQ/BAM/VCF files unless the task requires it and the cost is explained. Ask for an exact target path or propose a bounded command when information may require a large scan.
+Do not run broad scans such as `find /data9`, `find /data9/home/qgzeng`, unbounded `find` on large roots, `du -sh /data9/*`, `ls -R` on large directories, or full-file decompression/streaming over large FASTQ/BAM/VCF files unless the task requires it and the cost is explained. When the target is an unknown file, multi-file biological input, or data inventory, do not use recursive `find`/`grep`/`rg` to discover it by default. Ask for an exact path, manifest, filename pattern, or user-approved bounded root plus max depth. Targeted `rg`, `grep`, or `find -maxdepth` remain acceptable for explicit paths, small code/config/log directories, and known script or report targets.
 
 Treat `admin2` as a login/admin node. On `admin2`, run only planning, script edits, syntax checks, light metadata checks, and SLURM control commands. Do not run aligners, assemblers, sorters, repeat annotation, pangenome tools, compression/decompression over large files, or full-data QC directly on `admin2`. If a command may use more than one CPU, run for more than about 3 minutes, stream large genomic files, or produce large output, route it through SLURM or ask before an interactive compute allocation.
 
@@ -83,10 +83,13 @@ Keep `SKILL.md` as the routing hub. Load detailed references only when their tas
 - `references/resume-protocol.md`: use when taking over, checking, recovering, or validating an existing project. It defines project states, forbidden actions, and the `workflow_status.tsv` contract.
 - `references/software-resource-cards.md`: use when estimating resources or writing commands for known tools. It gives per-tool modes, memory drivers, parallelism, red flags, and acceptance notes.
 - `references/resource-feedback.md`: use for CPU/memory sizing, pilot or benchmark interpretation, partition choice, array concurrency, resource down-tuning, and serial-to-array audits. It supports `scripts/resource_usage_audit.sh` and `scripts/parallelization_audit.sh`.
-- `references/executor-safety.md`: use for SLURM generation, preflight, submit gates, array templates, and run recording. It supports `scripts/gen_sbatch.sh`, `scripts/slurm_preflight.sh`, `scripts/prepare_submission.sh`, and `scripts/submit_and_log.sh`.
+- `references/executor-safety.md`: use for SLURM generation, preflight, submit gates, chunked array submission, array templates, and run recording. It supports `scripts/gen_sbatch.sh`, `scripts/slurm_preflight.sh`, `scripts/prepare_submission.sh`, `scripts/submit_and_log.sh`, and `scripts/submit_chunked.sh`.
 - `references/validation-checklists.md`: use before interpreting completed results, before figures, before SLURM submission, after failures, and when a task has domain-specific acceptance gates.
 - `references/operations-reporting.md`: use for failure monitoring details, raw-data downloads, qp mode, and plotting/reporting handoff details.
 - `references/result-manifest-schema.md`, `references/interpretation-rules.tsv`, and `references/project-anchors.yaml`: use with `scripts/check_result_contract.py` when a result claim may affect a paper, downstream biology, or decision.
+- `references/playbook-genome-annotation.md`: use for repeat annotation, evidence preparation, gene model prediction, functional annotation, release packaging, and annotation QC.
+- `references/playbook-repeat-annotation.md`: use for TRF, RepeatModeler, EDTA, DeepTE refinement, RepeatMasker, solo LTR, TE density, TEsorter, and RT-domain repeat phylogeny workflows.
+- `references/playbook-pangene-batch-annotation.md`: use for multi-accession or pan-gene genome annotation batches with per-sample directories, EviAnn, BRAKER3, AUGUSTUS, TransDecoder, SPALN3, and BUSCO/GFF3 aggregation.
 - `references/program-cards/README.md` and specific cards: use when the request starts from a program/tool name.
 - `references/program-cards/program-onboarding.md`: use only when no active card exists or the program needs discovery/proposal/capture.
 
@@ -125,7 +128,7 @@ Use this fixed response shape for resume work:
 Minimum next actions:
 
 - `Input_ready`: define missing manifests, methods, and success criteria.
-- `Script_ready`: run `scripts/slurm_preflight.sh --script <file>` and ask before `sbatch`.
+- `Script_ready`: run `scripts/prepare_submission.sh --script <file>` when inputs/outputs are known, or `scripts/slurm_preflight.sh --script <file>` as the fallback. Always report a `🧮 资源判断` covering CPU, memory, partition, array concurrency, and whether the requested resources are justified by input size/tool behavior before asking about `sbatch`.
 - `Queued_or_running`: monitor with `squeue`/`sacct`; do not edit scripts or resubmit while active.
 - `Failed`: run `scripts/slurm_failure_triage.sh --jobid <id>` or `--err <file>`, then propose the smallest fix.
 - `Complete_unvalidated`: run result acceptance from `references/validation-checklists.md` before biological interpretation.
@@ -144,13 +147,15 @@ Use this route before task routing when the user mainly names a program or tool 
    ```
 
 2. If a matching card exists, read `references/program-cards/README.md` and the card. Confirm mode, input type, output target, and result goal before writing commands.
-3. If no card exists, read `references/program-cards/program-onboarding.md` and collect missing choices when install location, source, or pilot inputs are not fixed:
+3. If no card exists, read `references/program-cards/program-onboarding.md` and collect missing choices when install location, source, or pilot inputs are not fixed. If official Docker/Singularity/Apptainer images exist, prefer the container route before attempting a Conda `environment.yml` solve:
 
    ```bash
    python3 scripts/program_onboard.py choose <program_name>
+   # When official container docs exist:
+   python3 scripts/program_onboard.py choose <program_name> --default-source container
    ```
 
-   In this chat UI, do not assume native pop-up controls. For local terminal use, run `choose` with curses/arrow keys, or `--plain`; it writes `config/program-onboarding/<program_key>_choice.json`.
+   In this chat UI, do not assume native pop-up controls. For local terminal use, run `choose` with curses/arrow keys, or `--plain`; it writes `config/program-onboarding/<program_key>_choice.json` under the current project by default. Use `--project-root <dir>` when invoking it from another directory.
 
 4. Start third-version onboarding with:
 
@@ -158,9 +163,10 @@ Use this route before task routing when the user mainly names a program or tool 
    python3 scripts/program_onboard.py probe <program_name>
    ```
 
-   If installation is needed, generate a proposal first, stop for user confirmation, then install only from the generated proposal:
+   If installation is needed, generate a proposal first, stop for user confirmation, then install only from the generated proposal. For official container routes, create a proposal-only record first and do not pull/build/run the image until a separate reviewed plan is confirmed:
 
    ```bash
+   python3 scripts/program_onboard.py plan-install <program_name> --package <official_image_uri_or_tag> --source container
    python3 scripts/program_onboard.py plan-install <program_name> --package <package> --source conda
    python3 scripts/program_onboard.py install --proposal <install_proposal.json> --yes
    python3 scripts/program_onboard.py capture <program_name> --evidence-dir <evidence_dir>
@@ -171,7 +177,7 @@ Use this route before task routing when the user mainly names a program or tool 
 
 5. For any program-level run, follow: environment discovery -> input dialogue -> parameter confirmation -> script generation -> safety preflight -> user-confirmed submit/run -> acceptance checks. Report the level honestly: `L0=choice/intake`, `L1=probe`, `L2=install proposal`, `L3=installed+captured`, `L4=pilot script/preflight`, `L5=pilot/run validated`, `L6=active card`. Do not describe `probe` or `plan-install` as testing that the program can run.
 6. Use `references/software-resource-cards.md` for resource estimates and `references/validation-checklists.md` for shared acceptance gates. Do not copy shared checks into cards unless a tool has extra acceptance rules.
-7. Use the SLURM safety layer for generated jobs: `scripts/gen_sbatch.sh`, `scripts/slurm_preflight.sh`, `scripts/prepare_submission.sh`, and after user confirmation `scripts/submit_and_log.sh`. Read `references/executor-safety.md` for executor details.
+7. Use the SLURM safety layer for generated jobs: `scripts/gen_sbatch.sh`, `scripts/slurm_preflight.sh`, `scripts/prepare_submission.sh`, and after user confirmation `scripts/submit_and_log.sh`. For arrays that exceed the submit cap, use `scripts/submit_chunked.sh` only as the safe chunked wrapper; it must re-enter the same submit gate. Read `references/executor-safety.md` for executor details.
 8. If the user gives a full analysis objective rather than only a program name, use the relevant playbook below first, then load program cards for tool details.
 9. After capture, keep generated cards in `references/program-cards/drafts/` until human review and a successful local pilot/run justify promotion. Only then move to the active card path, register it in `registry.tsv`, and use `local_run` or `project_history` evidence.
 
@@ -181,6 +187,7 @@ Known first cards:
 - `references/program-cards/minimap2-samtools.md`
 - `references/program-cards/syri.md`
 - `references/program-cards/biser.md`
+- `references/program-cards/kmeria.md`
 
 After editing program cards or the registry, run:
 
@@ -210,7 +217,8 @@ Pick the narrowest route before reading detailed references or writing scripts.
 
 Other routes:
 
-- **Annotation:** read `BRAKER and MAKER`, `EDTA`, `RepeatModeler`, `BUSCO`, and `references/validation-checklists.md`.
+- **Repeat annotation and masking:** read `references/playbook-repeat-annotation.md`; then use `EDTA`, `RepeatModeler`, `RepeatMasker`, `TRF`, `TEsorter`, `BUSCO`, and figure/checklist references as needed.
+- **Annotation:** read `references/playbook-genome-annotation.md`; for multi-accession/pan-gene batches also read `references/playbook-pangene-batch-annotation.md`; then use the relevant software cards.
 - **RNA-seq:** read `fastp, FastQC, and MultiQC`, `STAR`, and `featureCounts`; confirm strandedness, paired-end naming, and index reuse.
 - **Read-based / population SNP-INDEL-SV:** read `bcftools and GATK`; confirm reference compatibility and chromosome names.
 - **Pangenome/orthology:** read `OrthoFinder`, `PanGenie`, and search-tool cards; estimate database/output growth and array concurrency.
@@ -278,10 +286,14 @@ If key biological or experimental information is missing, list missing items ins
 Inspect only explicit inputs. Prefer metadata and indexes over reading full files:
 
 - FASTQ: use file sizes and file names first; avoid full decompression unless needed.
-- FASTA: use `.fai` if present; creating a new index writes a file, so state impact first.
+- FASTA: use `.fai` if present; creating a new index writes a file, so state impact first. For multi-genome input builders, do not stream full FASTA bodies on login/admin nodes just to count bases; use existing indexes/metadata, or route the indexing/counting cost through a confirmed SLURM precheck.
 - BAM/CRAM: use `.bai/.crai` and `samtools idxstats` only when indexes exist and the tool is available.
 - VCF/BCF: use header, tabix index, and small targeted regions when possible.
 - GFF/GTF/BED/TSV: use `head`, `wc -l`, and format-specific sanity checks on explicit files.
+
+For unknown or multi-file inputs, build the inventory from a user-provided manifest,
+explicit paths, or a user-approved bounded search plan. Do not recursively scan
+project roots, parent directories, or `$HOME` to infer biological inputs.
 
 Stop and warn if files are missing, empty, inconsistent, damaged, or biologically ambiguous.
 
@@ -312,7 +324,7 @@ Read `references/resource-feedback.md` for:
 - array concurrency
 - serial-to-array audits
 
-Read `references/software-resource-cards.md` when the task involves minimap2, samtools sort, SyRI, OrthoFinder, EDTA, RepeatModeler, STAR, featureCounts, PanGenie, BLAST, DIAMOND, HMMER-family searches, hifiasm, Juicer/3D-DNA, BRAKER/MAKER, bcftools/GATK, fastp/FastQC/MultiQC, MUMmer/plotsr, BUSCO, QUAST, KMERIA, or BISER. Use cards as starting points, then adjust with explicit input size, queue state, and `sacct`.
+Read `references/software-resource-cards.md` when the task involves minimap2, samtools sort, SyRI, OrthoFinder, EDTA, HiTE/panHiTE, Nextflow workflow drivers, RepeatModeler, STAR, featureCounts, PanGenie, BLAST, DIAMOND, HMMER-family searches, hifiasm, Juicer/3D-DNA, BRAKER/MAKER, bcftools/GATK, fastp/FastQC/MultiQC, MUMmer/plotsr, BUSCO, QUAST, KMERIA, or BISER. Use cards as starting points, then adjust with explicit input size, queue state, and `sacct`.
 
 When uncertain, propose a small pilot or benchmark before the full run. Do not keep high CPU requests because a template used them.
 
@@ -360,13 +372,21 @@ scripts/prepare_submission.sh --script <slurm_script> [--manifest <manifest.tsv>
 
 Hard blockers include preflight `FAIL`, missing/empty inputs, bundled-template manifest headers, protected `--output`, and quota submit-cap overrun. Warnings include preflight `WARN`, non-empty output directories, and unknown quota/header status.
 
+Every SLURM script review must include a simple resource assessment, even when the user only asks for "review". Do not stop at "CPU/memory directives exist". In the answer, include `🧮 资源判断` with:
+
+- whether `--cpus-per-task`, `--mem`, and `--partition` match the tool class and input size
+- whether the tool can use the requested CPUs
+- whether memory is unknown, too low, too high, or requires a pilot
+- whether array concurrency fits per-task memory and disk/database pressure
+- whether `normal` vs `fat/fat2` follows the `<200G` / `>=200G` rule
+
 If unavailable, run:
 
 ```bash
 scripts/slurm_preflight.sh --script <slurm_script>
 ```
 
-Treat any `FAIL` as a blocker and `WARN` as an item to explain before submission. If preflight warns about serial independent tasks or high CPUs not being passed to the tool, run:
+Treat any `FAIL` as a blocker and `WARN` as an item to explain before submission. Lightweight resource-sanity WARNs are not proof of failure, but they must be answered with evidence, a smaller pilot, or a corrected request. If preflight warns about serial independent tasks or high CPUs not being passed to the tool, run:
 
 ```bash
 scripts/parallelization_audit.sh --script <slurm_script> --manifest <manifest.tsv> --mode auto
@@ -377,6 +397,16 @@ Submit only after user confirmation. For confirmed submission and run records, u
 ```bash
 scripts/submit_and_log.sh --script <slurm_script> [gate options] [--record FILE] [--yes]
 ```
+
+For arrays that exceed the submit cap, do not call `sbatch --array` directly.
+Use the dry-run-first chunked wrapper:
+
+```bash
+scripts/submit_chunked.sh -s <slurm_script> -N <tasks> -k <chunk_size> -j <cap> [gate options] [--yes]
+```
+
+It must materialize per-chunk scripts under the current project by default and
+delegate to `submit_and_log.sh`.
 
 ### 8. Monitor and diagnose
 
@@ -415,7 +445,7 @@ When slimming or reorganizing this skill, preserve behavior before reducing line
 - program-level route through program cards and onboarding
 - task routing to playbooks and software cards
 - result-claim gate through `check_result_contract.py`, auto-trigger phrases, and `log_claim_audit.sh`
-- SLURM safety layer through `gen_sbatch.sh`, `slurm_preflight.sh`, `prepare_submission.sh`, and `submit_and_log.sh`
+- SLURM safety layer through `gen_sbatch.sh`, `slurm_preflight.sh`, `prepare_submission.sh`, `submit_and_log.sh`, and `submit_chunked.sh`
 - validation gate through `references/validation-checklists.md`
 
 If content is moved out of `SKILL.md`, ensure the destination reference is linked from `Reference routing map`, from a task route, or from the relevant workflow step. Do not create orphan references.
@@ -439,7 +469,10 @@ After source edits that should affect Codex runtime behavior, sync the installed
 
 ## Default response shape
 
-Use a compact Chinese structure:
+Use this compact Chinese structure only when the user's memory or the current
+request asks for a compact workflow/status response. Do not enforce it when
+`user_output_format_preferences.md` or the user's latest instruction prefers a
+different style.
 
 ```text
 📌 结论

@@ -8,6 +8,7 @@ scripts. It supports `scripts/gen_sbatch.sh`, `scripts/slurm_preflight.sh`,
 ## Contents
 
 - Generate robust scripts
+- Workflow engines
 - Preflight gate
 - Arrays and submission
 
@@ -34,6 +35,11 @@ set -euo pipefail
 With `pipefail`, diagnostic preview pipelines can fail whole jobs. Avoid
 unguarded `ls ... | head`, `find ... | head`, or `tool ... | head`. If preview
 output is only diagnostic, guard it with `|| true` or write a bounded loop.
+
+Do not use recursive `find`, `grep`, or `rg` inside run scripts to discover
+unknown biological inputs. Input lists must come from an explicit manifest,
+explicit paths, or a user-approved bounded search root with filename pattern and
+max depth. Targeted code/config/log checks are fine; hidden data discovery is not.
 
 For SLURM scripts:
 
@@ -68,6 +74,26 @@ echo "[INFO] CPUs: ${SLURM_CPUS_PER_TASK:-NA} | Workdir: $(pwd)"
 
 Do not include `#SBATCH --time` in this skeleton.
 
+## Workflow engines
+
+For Nextflow, Snakemake, WDL/Cromwell, or similar workflow engines, do not judge
+the workflow by the outer driver SLURM script alone. Review both layers:
+
+- driver resources: launcher `#SBATCH` CPUs, memory, partition, logs, and whether
+  it mostly schedules work rather than doing the heavy computation itself
+- executor config: SLURM executor, queue/partition mapping, `queueSize` or
+  submit concurrency, retry behavior, and any local executor fallback
+- process resources: per-process `cpus`, `memory`, time directives if present,
+  containers/environments, and whether thread variables are passed to tools
+- paths and reports: `workDir`, publish/output directories, trace/report/timeline
+  files, and cleanup behavior
+
+Pre-submit reporting must separate driver resources from child process resources.
+For example, `2 CPU / 8G` on the driver is acceptable only if the workflow config
+sets realistic process-level CPU/memory and a capped `queueSize`; it is not the
+resource request for the full pipeline. If process resources or executor settings
+are missing, treat that as a review blocker or require a small pilot before scale-up.
+
 ## Preflight gate
 
 For a single read-only GO/NO-GO gate:
@@ -77,9 +103,9 @@ scripts/prepare_submission.sh --script <slurm_script> [--manifest <manifest.tsv>
     [--input-list <filelist.txt>] [--output <output_dir>] [--mode <partition>] [--conc <N>]
 ```
 
-It bundles input checks, SLURM preflight, array/manifest checks, quota checks, and
-overwrite checks into one verdict and prints the exact unsubmitted `sbatch`
-command.
+It bundles input checks, SLURM preflight, lightweight resource sanity, array/manifest
+checks, quota checks, and overwrite checks into one verdict and prints the exact
+unsubmitted `sbatch` command.
 
 Hard blockers include:
 
@@ -89,8 +115,8 @@ Hard blockers include:
 - `--output` under `/data9/home/qgzeng/data` or `/data9/home/qgzeng/tools`
 - quota submit-cap overrun
 
-Warnings to acknowledge include preflight `WARN`, non-empty output directories,
-and unknown quota/header status. The gate never submits.
+Warnings to acknowledge include preflight `WARN`, resource-sanity WARN, non-empty
+output directories, and unknown quota/header status. The gate never submits.
 
 To run underlying checks individually:
 
@@ -103,6 +129,11 @@ scripts/resource_usage_audit.sh --script <slurm_script> --time-log <stage.time.l
 Both audit scripts are read-only and print recommendations only. Do not write
 `reports/resource_usage.tsv`, generate replacement scripts, or submit arrays
 without user confirmation.
+
+`slurm_preflight.sh` only performs a lightweight sanity pass. A clean preflight
+does not prove that CPU and memory are optimal. For new tools, large inputs, or
+uncertain scaling, add an explicit estimate from `resource-feedback.md` and
+`software-resource-cards.md`, or run a pilot before full submission.
 
 ## Arrays and submission
 
@@ -139,3 +170,17 @@ Only `--yes` calls `sbatch` and appends `reports/run_record.tsv`. A NO-GO gate,
 missing `--yes`, unwritable record path, or script change since the gate blocks
 submission. Arrays must live in the script itself; there is no `--array`
 override on the submitter.
+
+For arrays that would exceed the submit cap, use the safe chunked wrapper:
+
+```bash
+scripts/submit_chunked.sh -s <slurm_script> -N <tasks> -k <chunk_size> -j <cap> \
+    [gate options] [--yes]
+```
+
+It is dry-run by default. With `--yes`, it writes persistent chunk scripts under
+the current project `reports/submitted_scripts/chunked/` by default, or under an
+explicit `--chunk-dir <dir>` when needed. The directory must not be under
+`/data9/home/qgzeng/data/` or `/data9/home/qgzeng/tools/`. Each chunk embeds the
+actual `#SBATCH --array=start-end%cap` and delegates to `submit_and_log.sh`. It
+must not pass arbitrary sbatch flags or call `sbatch` directly.

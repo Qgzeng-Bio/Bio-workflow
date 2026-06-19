@@ -102,7 +102,7 @@ bounded_find_files() {
             fi
             break
         fi
-    done < <(find "$dir" -maxdepth "$max_depth" -type f -print 2>/dev/null || true)
+    done < <(find "$dir" -maxdepth "$max_depth" \( -type f -o -type l \) -print 2>/dev/null || true)
 }
 
 list_files() {
@@ -128,6 +128,48 @@ count_lines() {
 
 first_nonempty() {
     sed -n '/./{p;q;}'
+}
+
+evidence_file_mtime() {
+    local line="$1"
+    local file="${line%%:*}"
+    if [[ -e "$file" || -L "$file" ]]; then
+        stat -c '%Y' "$file" 2>/dev/null || printf '0'
+    else
+        printf '0'
+    fi
+}
+
+evidence_lines_max_mtime() {
+    local lines="$1"
+    local max=0
+    local line
+    local mtime
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        mtime="$(evidence_file_mtime "$line")"
+        [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+        if [[ "$mtime" -gt "$max" ]]; then
+            max="$mtime"
+        fi
+    done <<< "$lines"
+    printf '%s\n' "$max"
+}
+
+filter_evidence_after_mtime() {
+    local cutoff="$1"
+    local lines="$2"
+    local line
+    local mtime
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        mtime="$(evidence_file_mtime "$line")"
+        [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+        if [[ "$mtime" -gt 0 && "$mtime" -lt "$cutoff" ]]; then
+            continue
+        fi
+        printf '%s\n' "$line"
+    done <<< "$lines" | head -n 8 || true
 }
 
 print_block() {
@@ -156,7 +198,7 @@ check_scan_limits() {
                 limit_warned[$dir]=1
                 break
             fi
-        done < <(find "$dir" -maxdepth "$max_depth" -type f -print 2>/dev/null || true)
+        done < <(find "$dir" -maxdepth "$max_depth" \( -type f -o -type l \) -print 2>/dev/null || true)
     done
 }
 
@@ -183,8 +225,28 @@ slurm_script_files="$(
 slurm_script_count="$(printf '%s\n' "$slurm_script_files" | count_lines)"
 
 failure_pattern='(OUT_OF_MEMORY|Out Of Memory|oom-kill|oom_kill|Cannot allocate memory|DUE TO TIME LIMIT|TIMEOUT|No such file or directory|cannot stat|command not found|ModuleNotFoundError|ImportError|Permission denied|Operation not permitted|Segmentation fault|core dumped|No space left on device|Disk quota exceeded|format error|invalid format|chromosome.*not found|contig.*not found|Traceback|FAILED|CANCELLED)'
+install_failure_pattern='(Could not solve for environment specs|UnsatisfiableError|ResolvePackageNotFound|critical libmamba|Conda.*(failed|error)|conda.*(failed|error)|micromamba.*(failed|error)|singularity.*(FATAL|ERROR)|FATAL:|No space left on device|Disk quota exceeded|Status[[:space:]]+(FAILED|FAIL)|exit[ _-]?code([=:]|[[:space:]])+[1-9][0-9]*|Traceback|command not found)'
 completion_pattern='(Job completed|Job finished|Finished successfully|normal completion|All done|Done\.?$|PILOT DONE|WORKFLOW DONE|Pipeline completed|Analysis completed)'
 start_pattern='(Job started|Submitted batch job|SLURM_JOB_ID|Job ID:|host=.*job=[0-9]+|(^|[[:space:]])job=[0-9]+)'
+status_file="reports/workflow_status.tsv"
+status_file_mtime=0
+status_job_ids=""
+
+if [[ -r "$status_file" ]]; then
+    status_file_mtime="$(stat -c '%Y' "$status_file" 2>/dev/null || printf '0')"
+    status_job_ids="$(
+        awk -F '\t' '
+            NR == 1 {
+                for (i = 1; i <= NF; i++) idx[tolower($i)] = i
+                next
+            }
+            {
+                job = (("job_id" in idx) ? $(idx["job_id"]) : "")
+                if (job ~ /^[0-9]+$/) print job
+            }
+        ' "$status_file" | sort -u || true
+    )"
+fi
 
 failure_evidence="$(
     while IFS= read -r file; do
@@ -192,6 +254,15 @@ failure_evidence="$(
         match="$(tail -n 240 "$file" 2>/dev/null | grep -Eim 1 -- "$failure_pattern" || true)"
         [[ -n "$match" ]] && printf '%s: %s\n' "$file" "$match"
     done <<< "$err_files" | head -n 8 || true
+)"
+
+install_log_files="$(printf '%s\n' "$log_files" | grep -Ei '(^|/)(codex_)?install|program-onboarding|onboard|conda|micromamba|singularity|nextflow' || true)"
+install_failure_evidence="$(
+    while IFS= read -r file; do
+        [[ -n "$file" && -r "$file" ]] || continue
+        match="$(tail -n 320 "$file" 2>/dev/null | grep -Eim 1 -- "$install_failure_pattern" || true)"
+        [[ -n "$match" ]] && printf '%s: %s\n' "$file" "$match"
+    done <<< "$install_log_files" | head -n 8 || true
 )"
 
 completion_evidence="$(
@@ -214,8 +285,10 @@ job_ids="$(
     while IFS= read -r file; do
         [[ -n "$file" ]] || continue
         base="$(basename "$file")"
-        if [[ "$base" =~ (^|[^0-9])([0-9]{4,})([_\.-]|$) ]]; then
-            printf '%s\n' "${BASH_REMATCH[2]}"
+        if [[ "$base" =~ ^([0-9]{4,})([_\.-]|$) ]]; then
+            printf '%s\n' "${BASH_REMATCH[1]}"
+        elif [[ "$base" =~ (^|[^[:alnum:]])(job|slurm)[_-]?([0-9]{4,})([^0-9]|$) ]]; then
+            printf '%s\n' "${BASH_REMATCH[3]}"
         fi
         [[ -r "$file" ]] || continue
         tail -n 120 "$file" 2>/dev/null \
@@ -223,6 +296,7 @@ job_ids="$(
             | grep -Eo '[0-9]{4,}' || true
     done <<< "$log_files" | sort -u
 )"
+job_ids="$(printf '%s\n%s\n' "$job_ids" "$status_job_ids" | sed '/^$/d' | sort -u)"
 
 queue_evidence=""
 sacct_evidence=""
@@ -255,9 +329,10 @@ incomplete_run_evidence="$(
     done < <(recent_files 12 logs reports)
 )"
 
-status_file="reports/workflow_status.tsv"
 validation_evidence=""
 latest_status_row=""
+status_running_evidence=""
+status_install_resolved_evidence=""
 if [[ -r "$status_file" ]]; then
     latest_status_row="$(awk -F '\t' 'NR > 1 && NF >= 9 && $1 != "" { row=$0 } END { print row }' "$status_file" 2>/dev/null || true)"
     if [[ -n "$latest_status_row" ]]; then
@@ -275,6 +350,75 @@ if [[ -r "$status_file" ]]; then
             validation_evidence="$latest_status_row"
         fi
     fi
+
+    status_running_evidence="$(
+        awk -F '\t' '
+            NR == 1 {
+                for (i = 1; i <= NF; i++) idx[tolower($i)] = i
+                next
+            }
+            {
+                stage = (("stage" in idx) ? $(idx["stage"]) : "")
+                status = (("status" in idx) ? $(idx["status"]) : "")
+                job = (("job_id" in idx) ? $(idx["job_id"]) : "")
+                finished = (("finished" in idx) ? $(idx["finished"]) : "")
+                st = tolower(stage)
+                ss = tolower(status)
+                ff = tolower(finished)
+                if (job ~ /^[0-9]+$/ && (ss ~ /(pending|running|queued|submitted)/ || st ~ /(queued_or_running|pilot|run)/) && (ff == "" || ff == "-" || ss ~ /(pending|running|queued|submitted)/)) {
+                    print "reports/workflow_status.tsv: " $0
+                    exit
+                }
+            }
+        ' "$status_file" 2>/dev/null || true
+    )"
+
+    status_install_resolved_evidence="$(
+        awk -F '\t' '
+            NR == 1 {
+                for (i = 1; i <= NF; i++) idx[tolower($i)] = i
+                next
+            }
+            {
+                stage = (("stage" in idx) ? $(idx["stage"]) : "")
+                status = (("status" in idx) ? $(idx["status"]) : "")
+                st = tolower(stage)
+                ss = tolower(status)
+                if (st ~ /(install|configure)/ && ss ~ /(completed|done|success|abandoned)/) {
+                    print "reports/workflow_status.tsv: " $0
+                }
+            }
+        ' "$status_file" 2>/dev/null | head -n 5 || true
+    )"
+fi
+
+if [[ -n "$install_failure_evidence" && -n "$status_install_resolved_evidence" && "$status_file_mtime" -gt 0 ]]; then
+    install_failure_evidence="$(
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            evidence_file="${line%%:*}"
+            if [[ -e "$evidence_file" ]]; then
+                evidence_mtime="$(stat -c '%Y' "$evidence_file" 2>/dev/null || printf '0')"
+                if [[ "$evidence_mtime" =~ ^[0-9]+$ && "$evidence_mtime" -lt "$status_file_mtime" ]]; then
+                    continue
+                fi
+            fi
+            printf '%s\n' "$line"
+        done <<< "$install_failure_evidence" | head -n 8 || true
+    )"
+fi
+
+completion_mtime="$(evidence_lines_max_mtime "$completion_evidence")"
+success_cutoff=0
+if [[ "$completion_mtime" =~ ^[0-9]+$ && "$completion_mtime" -gt "$success_cutoff" ]]; then
+    success_cutoff="$completion_mtime"
+fi
+if [[ -n "$validation_evidence" && "$status_file_mtime" =~ ^[0-9]+$ && "$status_file_mtime" -gt "$success_cutoff" ]]; then
+    success_cutoff="$status_file_mtime"
+fi
+if [[ "$success_cutoff" -gt 0 ]]; then
+    failure_evidence="$(filter_evidence_after_mtime "$success_cutoff" "$failure_evidence")"
+    install_failure_evidence="$(filter_evidence_after_mtime "$success_cutoff" "$install_failure_evidence")"
 fi
 
 candidate_stage=()
@@ -300,23 +444,37 @@ first_exit_code="$(printf '%s\n' "$sacct_evidence" | awk -F '|' 'NF >= 3 && $3 !
 
 check_scan_limits "${scan_dirs[@]}"
 
-if [[ -n "$failure_evidence" || -n "$sacct_failed_evidence" ]]; then
-    evidence="$(printf '%s\n%s\n' "$sacct_failed_evidence" "$failure_evidence" | first_nonempty)"
-    add_candidate "Failed" "Needs_triage" "$evidence" "Run scripts/slurm_failure_triage.sh on the job ID or .err log; ask before resubmission."
-fi
-
+active_candidate_added=0
 if [[ -n "$queue_active_evidence" ]]; then
     evidence="$(printf '%s\n' "$queue_active_evidence" | first_nonempty)"
     add_candidate "Queued_or_running" "Running" "$evidence" "Monitor with squeue/sacct and bounded log tails; do not edit or resubmit active work."
+    active_candidate_added=1
+elif [[ -n "$status_running_evidence" ]]; then
+    evidence="$(printf '%s\n' "$status_running_evidence" | first_nonempty)"
+    add_candidate "Queued_or_running" "Needs_monitoring" "$evidence" "Monitor the recorded job with squeue/sacct and bounded log tails; do not edit or resubmit active work."
+    active_candidate_added=1
 elif [[ -n "$incomplete_run_evidence" && -n "$job_ids" ]]; then
     if [[ "$check_queue" -eq 1 && -z "$queue_evidence" && -z "$sacct_evidence" ]]; then
         add_candidate "Queued_or_running" "Queue_state_unknown" "$incomplete_run_evidence" "Queue/accounting evidence is unavailable; retry squeue/sacct or inspect the newest log before validation or edits."
     else
         add_candidate "Queued_or_running" "Needs_monitoring" "$incomplete_run_evidence" "Check squeue/sacct for the discovered job ID before changing scripts."
     fi
-elif [[ -n "$start_evidence" && -z "$completion_evidence" && -z "$failure_evidence" && -n "$job_ids" ]]; then
+    active_candidate_added=1
+elif [[ -n "$start_evidence" && -z "$completion_evidence" && -z "$failure_evidence" && -z "$install_failure_evidence" && -n "$job_ids" ]]; then
     evidence="$(printf '%s\n' "$start_evidence" | first_nonempty)"
     add_candidate "Queued_or_running" "Needs_monitoring" "$evidence" "Check squeue/sacct for the discovered job ID before changing scripts."
+    active_candidate_added=1
+fi
+
+if [[ -n "$failure_evidence" || -n "$sacct_failed_evidence" || -n "$install_failure_evidence" ]]; then
+    evidence="$(printf '%s\n%s\n%s\n' "$sacct_failed_evidence" "$failure_evidence" "$install_failure_evidence" | first_nonempty)"
+    if [[ -n "$install_failure_evidence" && -z "$failure_evidence" && -z "$sacct_failed_evidence" ]]; then
+        if [[ "$active_candidate_added" -eq 0 ]]; then
+            add_candidate "Failed" "Needs_install_triage" "$evidence" "Triage install/onboarding log; record updated install status before running downstream scripts."
+        fi
+    else
+        add_candidate "Failed" "Needs_triage" "$evidence" "Run scripts/slurm_failure_triage.sh on the job ID or .err log; ask before resubmission."
+    fi
 fi
 
 if [[ "$result_count" -gt 0 && -n "$validation_evidence" ]]; then
@@ -326,9 +484,9 @@ elif [[ "$result_count" -gt 0 && -n "$completion_evidence" && -z "$incomplete_ru
     add_candidate "Complete_unvalidated" "Needs_validation" "$evidence" "Run result acceptance checks before biological interpretation."
 fi
 
-if [[ "$slurm_script_count" -gt 0 && -z "$completion_evidence" && -z "$failure_evidence" && -z "$incomplete_run_evidence" ]]; then
+if [[ "$slurm_script_count" -gt 0 && -z "$completion_evidence" && -z "$failure_evidence" && -z "$install_failure_evidence" && -z "$incomplete_run_evidence" && -z "$status_running_evidence" && -z "$queue_active_evidence" ]]; then
     evidence="$(printf '%s\n' "$slurm_script_files" | first_nonempty)"
-    add_candidate "Script_ready" "Needs_preflight" "$evidence" "Run scripts/slurm_preflight.sh --script <file>; ask before sbatch."
+    add_candidate "Script_ready" "Needs_preflight" "$evidence" "Run scripts/prepare_submission.sh --script <file> with known manifest/input/output; include resource assessment; ask before sbatch."
 fi
 
 if [[ "$input_count" -gt 0 && "$script_count" -eq 0 && "$result_count" -eq 0 ]]; then
@@ -384,8 +542,8 @@ fi
 [[ -n "$evidence_path" ]] || evidence_path="NA"
 
 row_job_id="$first_job_id"
-if [[ "$primary_evidence" =~ ([0-9]{4,}) ]]; then
-    row_job_id="${BASH_REMATCH[1]}"
+if [[ "$row_job_id" == "NA" && "$primary_evidence" =~ (Job[[:space:]]ID:|Submitted[[:space:]]batch[[:space:]]job|SLURM_JOB_ID|job=)[^0-9]*([0-9]{4,}) ]]; then
+    row_job_id="${BASH_REMATCH[2]}"
 fi
 
 printf '[INFO] Recommended_minimal_next_action: %s\n' "$primary_next"

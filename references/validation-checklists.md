@@ -31,8 +31,9 @@ snippets. Do not treat a zero exit code as enough.
 - Use `--check-queue` only when job IDs or SLURM log clues exist.
 - Assign one primary state: `Input_ready`, `Script_ready`, `Queued_or_running`,
   `Failed`, `Complete_unvalidated`, or `Analysis_ready`.
-- For `Script_ready`, run `scripts/slurm_preflight.sh --script <file>` before
-  proposing `sbatch`.
+- For `Script_ready`, run `scripts/prepare_submission.sh --script <file>` with
+  known manifest/input/output paths before proposing `sbatch`; use
+  `scripts/slurm_preflight.sh --script <file>` only as a fallback.
 - For `Queued_or_running`, monitor with `squeue`/`sacct`; do not edit active-run
   scripts or resubmit without confirmation.
 - If `squeue`/`sacct` are unavailable but the newest log has a job ID/start line
@@ -96,7 +97,11 @@ snippets. Do not treat a zero exit code as enough.
 
 ## SLURM pre-submit checklist
 
-- Run `scripts/slurm_preflight.sh --script <file>` before proposing `sbatch`.
+- Run `scripts/prepare_submission.sh --script <file>` before proposing
+  `sbatch` whenever manifest/input/output context is available; use
+  `scripts/slurm_preflight.sh --script <file>` only as a fallback.
+- Include a `🧮 资源判断` for CPU, memory, partition, array concurrency, and
+  whether the request fits the tool/input scale.
 - Script uses strict mode: `set -euo pipefail` or equivalent.
 - Log paths are absolute and include `%j` or `%x`.
 - `#SBATCH --output`, `#SBATCH --error`, and `#SBATCH --chdir` do not target protected
@@ -170,6 +175,132 @@ snippets. Do not treat a zero exit code as enough.
   generated prefixes and anchors rather than invented from memory.
 - Karyotype or microsynteny figures are non-empty and visually checked for swapped
   genomes, missing chromosomes, or label/layout mismatches.
+
+## Repeat annotation checklist
+
+- Genome FASTA, `.fai`, EDTA, RepeatModeler, RepeatMasker, solo-LTR, TEsorter, and
+  downstream BED/GFF files use the same assembly version and chromosome names.
+- For every repeat tool mode used, official GitHub/docs or local installed source
+  were checked for the exact command boundary; record source URL/path, check date,
+  local version/container, and whether the command is discovery, masking,
+  classification, summarization, alignment, or tree building.
+- Repeat workflow deliverables are separated: TRF tandem repeats, RepeatModeler
+  libraries, EDTA structural TE annotation, RepeatMasker softmasked FASTA, solo-LTR
+  ratios, TE density, and TEsorter/RT phylogeny are not treated as one evidence type.
+- Each result has a declared use: TRF for tandem repeats, EDTA GFF3/sum for TE
+  composition, EDTA TElib/RepeatModeler libraries for masking/library reuse,
+  RepeatMasker `.masked` for gene-prediction softmasking, solo/intact ratios for
+  LTR turnover, density/metagene profiles for spatial enrichment, and TEsorter/RT
+  trees for domain-containing LTR classification/phylogeny.
+- TRF records the full seven numeric parameters and labels `.mask` as tandem-repeat
+  masking evidence only.
+- RepeatModeler records whether `-LTRStruct` was deliberately used, keeps the log,
+  uses one intended assembly/haplotype per database, and does not split a genome into
+  arbitrary chunks for later naive merging.
+- EDTA runs record version/container, genome, `--species`, `--step`, `--sensitive`,
+  `--anno`, `--evaluate`, `--force`, `--overwrite`, `--threads`, and `--cds`.
+- EDTA FASTA headers are short/simple and stable; `--overwrite 0/1`, `--force`,
+  `--curatedlib`, and `--rmlib` decisions are explicit and not hidden defaults.
+- EDTA final TElib, TEanno GFF3, TEanno sum, RM out/GFF, intact GFF3/FASTA, and
+  `TE.fa.stat*` summaries are non-empty before interpretation.
+- RepeatModeler outputs include deliberate database prefix, family library, `.stk`,
+  log, and genome version; requested CPUs match the real `-threads`/`-pa` setting.
+- RepeatMasker outputs include `.masked`, `.out`, `.out.gff`, `.tbl`, `.cat.gz`,
+  library checksum/source, backend, and `-xsmall`/hardmask policy.
+- RepeatMasker custom library headers preserve useful `#class/subclass` labels when
+  class-level summaries matter, and `-pa` is translated into actual backend CPU use
+  before SLURM resources are chosen.
+- Merged/deduplicated repeat libraries record raw inputs, sequence type, command
+  (`cd-hit-est` for nucleotide TE libraries, `cd-hit` for protein FASTA), `-c`,
+  `-n`, coverage thresholds such as `-aS`, `.clstr`, counts before/after, and
+  checksums.
+- DeepTE refinement of EDTA `LTR/unknown` has backups, non-empty ID lists,
+  `LTR_unknown.fa`, `LTR_known.fa`, DeepTE output, normalized `LTR_unknown_DeepTE.fa`,
+  updated TElib checksum, and a recorded EDTA re-annotation decision.
+- DeepTE records species mode/model directory, family mode, output directory, and
+  probability threshold; it is used here for unknown TE classification, not primary
+  repeat discovery.
+- solo/intact LTR ratios are tied to the exact TElib and EDTA/RepeatMasker `.out`
+  file; large sorted joins have disk estimates and are not run on admin/login nodes.
+- TE density and flanking-gene/metagene profiles use 0-based half-open BED
+  coordinates, validated feature-type names, explicit window/bin sizes, and saved
+  TSV plus figure outputs.
+- TEsorter output has non-empty intact-LTR FASTA, class table, domain table, domain
+  FASTA/GFF, database name, coverage, e-value, and command name (`TEsorter` or
+  `tesorter`) recorded.
+- TEsorter element mode versus genome mode is explicit; for plant intact LTRs use
+  extracted TE/LTR sequences with a plant database such as `rexdb-plant`, and state
+  the expected bias against no-domain/non-autonomous or highly divergent elements.
+- RT-domain trees record target superfamily/domain, extracted sequence count,
+  domain naming scheme, MAFFT alignment, IQ-TREE2 model/bootstrap settings, and ID
+  mapping back to LTR coordinates or insertion-time records.
+- Any `--overwrite 1`, TElib replacement, rerun into non-empty directories, external
+  model download, or write into protected paths has explicit user confirmation.
+
+## Genome annotation checklist
+
+- Genome FASTA, `.fai`, repeat annotation, masked FASTA, gene GFF3, CDS, protein,
+  transcript FASTA, and functional tables all use the same assembly version and
+  chromosome names.
+- Repeat annotation source is explicit: EDTA, RepeatModeler/RepeatMasker, or both with
+  separate purposes; partial repeat outputs are not treated as final.
+- RNA/protein evidence provenance is recorded, including species, tissue/stage,
+  strandedness, database/source version, and filtering policy.
+- For each predictor or evidence wrapper, official docs/GitHub or local installed
+  source were checked for the exact mode used; record source URL/path, check date,
+  tool version/container, and command-line mode.
+- Protein homology evidence uses a target-appropriate taxonomic scope, such as
+  same genus/family/order/clade depending on the organism and data availability; do
+  not reuse quinoa's Caryophyllales library for unrelated taxa.
+- EviAnn/BRAKER3 shared protein libraries have a manifest with taxon rationale,
+  source databases/species, build date, sequence counts before/after filtering,
+  header-cleaning rule, deduplication rule, and checksum.
+- Protein evidence is large and diverse enough to represent many protein families
+  with multiple related-species representatives, not a tiny hand-picked convenience
+  set or an uncontrolled duplicate/isoform dump.
+- Predictor work directories are unique per run or array task; no concurrent tasks
+  write into the same BRAKER/MAKER/AUGUSTUS/GeneMark output directory.
+- HISAT2/StringTie RNA evidence is mode-compatible: HISAT2 `--dta` is used for
+  downstream transcript assembly, BAMs are coordinate-sorted and indexed, STAR
+  alternatives carry transcript-strand tags when needed, and StringTie `--mix` input
+  order is recorded if short and long reads are combined.
+- BRAKER3 evidence mode is explicit: softmasked genome, RNA BAM source, protein
+  library scope, unique species/work directory, container/version, and any
+  BUSCO/compleasm-assisted prediction mode are recorded.
+- AUGUSTUS training is reproducible: source GFF3/FASTA, GenBank conversion route,
+  raw/filtered locus counts, random train/test split, species name, project-local
+  `AUGUSTUS_CONFIG_PATH`, and `optimize_augustus.pl` decision are recorded.
+- TransDecoder outputs are tied to transcript evidence, not treated as standalone
+  genome gene predictions; LongOrfs/Predict or wrapper mode, homology-retention
+  settings, `--single_best_only` policy, and genome-projection route are recorded.
+- SPALN/miniprot-style protein-to-genome evidence records database/index mode,
+  output GFF3 mode, species/table or intron settings, version, and sorted
+  evidence-GFF output path.
+- GFF3 validates structurally: required feature types exist, `ID`/`Parent` links are
+  consistent, CDS phases are valid, and coordinates are within contig lengths.
+- Gene, transcript, exon, CDS, protein length, isoform-per-gene, and gene-density
+  summaries are generated and checked for repeat-driven inflation or truncation.
+- Released protein FASTA has protein-mode BUSCO with lineage, mode, version, and
+  database identity reported.
+- Functional annotation keeps raw hits, filtered hits, final merged gene-function
+  table, database versions, thresholds, and merge priority separate and reproducible.
+- Final release includes ID mapping if any gene/transcript IDs were renamed after
+  prediction.
+- Annotation conclusions separate structure quality, expression evidence, homology
+  evidence, and functional labels; weak single-hit labels are not overclaimed.
+- For multi-accession batches, the intended sample manifest or regex is checked
+  against observed summary rows; non-sample directories are not allowed in sample
+  summaries.
+- Batch GFF3/BUSCO summaries include a `status` column, and any non-`ok` value such
+  as `ambiguous_gff`, `no_gff`, `missing_pep`, `busco_failed`, `no_short_summary`,
+  or `parse_failed` blocks cross-sample interpretation until resolved.
+- EviAnn-style outputs report evidence composition (`complete`, `transcript_only`,
+  `protein_only`, and other evidence classes) rather than only total gene counts.
+- BRAKER3 batch outputs use unique per-task working directories and species names;
+  shared BRAKER/AUGUSTUS working directories are treated as collision risks.
+- Protein BUSCO summaries use protein mode, exact lineage path/version, marker count,
+  and intended sample set; high duplicated BUSCOs are interpreted with ploidy and
+  subgenome context.
 
 ## Figure acceptance checklist
 

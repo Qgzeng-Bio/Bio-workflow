@@ -13,7 +13,11 @@ records when available.
 - SyRI
 - OrthoFinder
 - EDTA
+- TRF
 - RepeatModeler
+- RepeatMasker
+- HiTE and panHiTE / Nextflow drivers
+- TEsorter and repeat post-processing
 - STAR
 - featureCounts
 - PanGenie
@@ -218,8 +222,12 @@ plant genomes. Treat it as a heavy job.
 **Preflight checks:**
 
 - use `.fai` or explicit genome file size
-- ensure genome headers are clean and stable
+- ensure genome headers are clean, short/simple, and stable before launch
 - set a project-local temp/output directory
+- decide explicitly whether `--overwrite 0` resume, `--overwrite 1` rerun,
+  `--force`, `--curatedlib`, or `--rmlib` is appropriate for this run
+- label `.MAKER.masked` as gene-prediction mask evidence, not final TE composition
+  evidence
 - preserve full logs because EDTA failures often need stage-specific diagnosis
 
 **Red flags:**
@@ -227,6 +235,42 @@ plant genomes. Treat it as a heavy job.
 - running multiple EDTA jobs concurrently without memory accounting
 - writing temporary files into protected raw-data directories
 - treating a partial EDTA output as a completed annotation
+- using `--overwrite 1` or replacing a DeepTE-refined TElib without an explicit
+  backup/version policy
+
+## TRF
+
+**Typical use:** tandem-repeat discovery and simple tandem-repeat masking evidence.
+
+**Parallelism:** limited to moderate depending on wrapper/environment. Treat output
+size as the main risk on large plant genomes.
+
+**Memory drivers:**
+
+- genome size
+- repeat density
+- output `.dat`, `.mask`, and optional HTML report volume
+
+**Starting points:**
+
+- plant genome run: `normal`, 4-10 CPUs, 32-64G unless prior evidence supports more
+- many genomes: array with a low concurrency cap from output I/O
+
+**Preflight checks:**
+
+- record the full seven numeric TRF parameters because they are encoded in output
+  filenames
+- confirm input genome FASTA version and whether `.mask` is only tandem-repeat
+  evidence
+- record that TRF is tandem-repeat discovery/masking, not whole-genome TE
+  classification
+- keep `.dat`, `.mask`, and logs together
+
+**Red flags:**
+
+- treating TRF `.mask` as a whole-genome TE annotation
+- scanning or rendering TRF HTML/output folders recursively when only script
+  extraction is needed
 
 ## RepeatModeler
 
@@ -253,12 +297,151 @@ size, repeat content, and database steps.
 - confirm BuildDatabase input and output naming
 - put database and temp outputs under project results/tmp
 - record RepeatModeler and RepeatMasker versions
+- decide whether `-LTRStruct` is required for structural LTR recovery before
+  comparing or scaling runs
+- run one intended assembly/haplotype per database; do not split one genome into
+  arbitrary chunks for naive later merging
+- use `-recoverDir` only for a documented failed working directory
 
 **Red flags:**
 
 - high concurrency on shared `fat` nodes
 - restarting into an unclear half-built database without documenting state
 - assuming `-pa 32` always gives a proportional speedup
+- running from slow shared paths when project-local scratch is available
+
+## RepeatMasker
+
+**Typical use:** homology-based repeat masking with a custom or curated repeat
+library, often producing the soft-masked FASTA used by gene prediction.
+
+**Parallelism:** moderate. `-pa` helps, but library size, genome size, rmblast, and
+output writing are major drivers.
+
+**Memory drivers:**
+
+- genome size
+- repeat-library size and classification quality
+- `-pa` worker count
+- `.out`, `.gff`, `.cat.gz`, and `.masked` output volume
+
+**Starting points:**
+
+- small/medium genome: `normal`, 8-16 CPUs, 64-120G
+- quinoa-scale repeat masking: `fat`, 16-32 CPUs, 128-250G after confirmation
+- many genomes: array with `%1-%2` if each task writes large `.out/.cat.gz` files
+
+**Preflight checks:**
+
+- confirm the repeat library source: RepeatModeler, EDTA, DeepTE-refined EDTA,
+  curated library, or a merged/deduplicated library
+- if the library was merged/deduplicated, verify `cd-hit-est` versus `cd-hit`, `-c`,
+  `-n`, coverage thresholds, counts before/after, and `.clstr` provenance
+- preserve useful `#class/subclass` labels in custom library FASTA headers when
+  RepeatMasker class summaries are needed
+- use `-xsmall` for gene-prediction softmasking unless a tool requires hard masking
+- record `RepeatMasker`, rmblast, library checksum, `-pa`, backend, and `-rmblast_dir`
+- account for backend-specific core multiplication from `-pa` before choosing SLURM
+  CPUs
+- run `bash -n` on wrapper scripts; malformed command continuations can make options
+  such as `-pa` execute as separate shell commands
+
+**Red flags:**
+
+- using an unclassified or wrong-species library without labeling the limitation
+- comparing masked percentages from different libraries as if they were the same
+  method
+- treating `.tbl` summary success as proof that GFF3 coordinates and library labels
+  are publication-ready
+
+## HiTE and panHiTE / Nextflow drivers
+
+**Typical use:** single-genome TE discovery with HiTE, or multi-genome pan-TE
+workflows through panHiTE/Nextflow.
+
+**Parallelism:** HiTE uses a thread parameter for compute-heavy discovery stages.
+The Nextflow SLURM job is usually only a launcher; real CPU, memory, partition, and
+concurrency live in the Nextflow `process` config.
+
+**Memory and disk drivers:**
+
+- genome size and repeat content
+- HybridLTR, NeuralTE, RepeatMasker, or other enabled submodules
+- number of genomes in the manifest
+- Nextflow `queueSize`, per-process `cpus`, per-process `memory`, and `workDir`
+- container/Conda route and temporary directory growth
+
+**Starting points:**
+
+- single quinoa-scale HiTE pilot: `normal` or `fat`, 16-32 CPUs, 96-160G
+- if requested memory is `<200G`, justify `fat/fat2` use or prefer `normal`
+- panHiTE/Nextflow launcher: usually `normal`, 1-2 CPUs, 4-8G
+- panHiTE child processes: often 16-32 CPUs and 60-160G per active process; cap
+  `queueSize` from total memory and disk pressure before full scale
+
+**Preflight checks:**
+
+- review both the driver SLURM script and the `-c` Nextflow config
+- confirm the run mode matches the installed route: Conda profile vs Singularity
+  image, bind paths, and project-local `SINGULARITY_TMPDIR`
+- keep `workDir`, output, trace, timeline, and report under the project
+- run a single-genome pilot before a 20-genome or larger production run
+- compare pilot `sacct` MaxRSS/Elapsed with requested resources before scaling
+
+**Red flags:**
+
+- treating the Nextflow launcher request as the total workflow resource request
+- `queueSize * process memory` exceeding available node/account capacity
+- switching from Conda to Singularity without updating run scripts and config
+- full multi-genome launch without pilot completion evidence
+- full FASTA body scans in input-prep scripts when `.fai` or existing metadata can
+  provide genome sizes
+
+## TEsorter and repeat post-processing
+
+**Typical use:** classify intact LTRs or TE libraries against RexDB-style databases,
+extract domains, build RT-domain alignments/trees, and support solo/intact LTR or TE
+density analyses.
+
+**Parallelism:** mode-dependent. TEsorter and MAFFT/IQ-TREE use threads, while large
+joins, density windows, and bedtools intersections are often I/O-bound.
+
+**Memory and disk drivers:**
+
+- intact LTR count and extracted FASTA size
+- `.domtbl`, `.dom.tsv`, `.dom.faa`, and class-library output size
+- MAFFT alignment length and sequence count
+- large join/merge tables for solo LTR superfamily annotation
+
+**Starting points:**
+
+- TEsorter on intact LTRs: `normal`, 8-20 CPUs, 32-100G
+- quinoa-scale classification/tree work: 20-30 threads can be reasonable after
+  checking sequence count
+- large solo-LTR joins or density summaries: SLURM or approved compute context; do
+  not run multi-GB joins casually on admin/login nodes
+
+**Preflight checks:**
+
+- confirm EDTA intact GFF3 and genome FASTA are from the same assembly
+- verify command name in the environment (`TEsorter` vs `tesorter`)
+- record database, usually `rexdb-plant`, coverage, e-value, prefix, target
+  superfamily, and target domain
+- distinguish element mode from genome mode; this route expects extracted TE/LTR
+  sequences and `*.cls.*`/domain outputs
+- state that unclassified elements can reflect database limits, divergence,
+  no-domain/non-autonomous TEs, or false positives
+- validate non-zero family/domain counts before MAFFT/IQ-TREE
+- verify local IQ-TREE2 bootstrap option spelling (`-bb` vs local-help-confirmed
+  `-B`) before reusing older scripts
+- for density/metagene profiles, verify BED 0-based coordinates and chromosome names
+
+**Red flags:**
+
+- assuming EDTA `LTR/unknown` refinement, TEsorter classification, and RepeatMasker
+  softmasking are interchangeable deliverables
+- joining multi-GB solo-LTR tables without sorted-key checks and disk estimates
+- using old `iqtree` PBS commands when the environment provides `iqtree2`
 
 ## STAR
 
@@ -546,12 +729,21 @@ on species partitioning, evidence size, and database access.
 - check chromosome/scaffold naming across FASTA, BAM, GFF/GTF, and proteins
 - ensure each array task has a unique working directory
 - record tool versions because annotation wrappers are version-sensitive
+- verify tool-specific modes against official docs or local wrapper source before
+  scripting: BRAKER3 evidence mode, AUGUSTUS train/test split, HISAT2/StringTie
+  transcript-assembly mode, TransDecoder transcript boundary, and SPALN/miniprot
+  protein-to-genome output format
+- when protein evidence is used, confirm the database is taxon-appropriate and broad
+  enough for protein-family support; do not substitute a tiny convenience FASTA for an
+  OrthoDB-style clade or multi-species related-protein library
 
 **Red flags:**
 
 - running wrappers in a shared output directory from multiple tasks
 - missing GeneMark/Augustus configuration or licenses
 - using unmasked repeats and then over-interpreting inflated gene counts
+- evaluating a prediction with the same BUSCO lineage or evidence class that was used
+  to optimize/train it without labeling that dependency
 
 ## bcftools and GATK
 

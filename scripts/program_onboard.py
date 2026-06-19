@@ -33,10 +33,18 @@ import menu  # noqa: E402  (sys.path tweak above is intentional)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-ONBOARD_ROOT = REPO_ROOT / "reports" / "program-onboarding"
 CARD_DRAFT_DIR = REPO_ROOT / "references" / "program-cards" / "drafts"
-CHOICE_ROOT = REPO_ROOT / "config"
-CHOICE_DIR = CHOICE_ROOT / "program-onboarding"
+PROTECTED_WRITE_ROOTS = (
+    Path("/data9/home/qgzeng/data"),
+    Path("/data9/home/qgzeng/tools"),
+)
+BROAD_PROJECT_ROOTS = (
+    Path("/"),
+    Path("/data9"),
+    Path("/data9/home"),
+    Path("/data9/home/qgzeng"),
+    Path("/data9/home/qgzeng/projects"),
+)
 
 SCHEMA_VERSION = "program_onboarding.v3"
 CREATED_BY = "bio-workflow program_onboard.py"
@@ -86,13 +94,6 @@ def safe_env_name(name: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9_.-]+", name)) and not name.startswith("-") and "/" not in name
 
 
-def rel(path: Path) -> str:
-    try:
-        return str(path.resolve().relative_to(REPO_ROOT))
-    except ValueError:
-        return str(path)
-
-
 def is_relative_to(path: Path, parent: Path) -> bool:
     try:
         path.resolve().relative_to(parent.resolve())
@@ -101,35 +102,102 @@ def is_relative_to(path: Path, parent: Path) -> bool:
         return False
 
 
-def validate_project_path(path: Path, allowed_root: Path, label: str, allow_external: bool = False) -> Path:
+def rel(path: Path) -> str:
     resolved = path.resolve()
+    for base in (Path.cwd(), REPO_ROOT):
+        try:
+            return str(resolved.relative_to(base.resolve()))
+        except ValueError:
+            continue
+    return str(resolved)
+
+
+def resolve_under_project(path: Path | str, project_root: Path) -> Path:
+    candidate = Path(path).expanduser()
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    return candidate.resolve()
+
+
+def is_protected_write_path(path: Path) -> bool:
+    resolved = path.resolve()
+    return any(is_relative_to(resolved, root) for root in PROTECTED_WRITE_ROOTS)
+
+
+def validate_project_root(path: str | None) -> Path:
+    root = Path(path).expanduser() if path else Path.cwd()
+    resolved = root.resolve()
+    if resolved in {item.resolve() for item in BROAD_PROJECT_ROOTS}:
+        raise ValueError(f"project root is too broad for onboarding writes: {resolved}")
+    if is_protected_write_path(resolved):
+        raise ValueError(f"project root must not be under protected data/tools roots: {resolved}")
+    return resolved
+
+
+def onboard_root(project_root: Path) -> Path:
+    return project_root / "reports" / "program-onboarding"
+
+
+def choice_root(project_root: Path) -> Path:
+    return project_root / "config"
+
+
+def choice_dir(project_root: Path) -> Path:
+    return choice_root(project_root) / "program-onboarding"
+
+
+def validate_project_path(
+    path: Path,
+    allowed_root: Path,
+    label: str,
+    allow_external: bool = False,
+    external_hint: str = "--allow-external-paths",
+) -> Path:
+    resolved = path.expanduser().resolve()
+    if is_protected_write_path(resolved):
+        raise ValueError(f"{label} must not be under /data9/home/qgzeng/data or /data9/home/qgzeng/tools")
     if allow_external:
         return resolved
     if not is_relative_to(resolved, allowed_root):
-        raise ValueError(f"{label} must be under {rel(allowed_root)}; use --allow-external-paths only for non-install smoke tests")
+        raise ValueError(f"{label} must be under {rel(allowed_root)}; use {external_hint} only for non-install smoke tests")
     return resolved
 
 
-def validate_bundle_dir(bundle: Path, allow_external: bool = False) -> Path:
-    resolved = validate_project_path(bundle, ONBOARD_ROOT, "evidence dir", allow_external)
-    if not allow_external:
-        rel_parts = resolved.relative_to(ONBOARD_ROOT.resolve()).parts
-        if len(rel_parts) != 2:
-            raise ValueError("evidence dir must follow reports/program-onboarding/<program_key>/<timestamp>")
+def looks_like_onboarding_bundle(path: Path) -> bool:
+    parts = path.resolve().parts
+    return len(parts) >= 4 and parts[-4] == "reports" and parts[-3] == "program-onboarding" and bool(parts[-2]) and bool(parts[-1])
+
+
+def validate_bundle_dir(bundle: Path, project_root: Path | None = None, allow_external: bool = False) -> Path:
+    resolved = bundle.expanduser().resolve()
+    if is_protected_write_path(resolved):
+        raise ValueError("evidence dir must not be under /data9/home/qgzeng/data or /data9/home/qgzeng/tools")
+    if allow_external:
+        return resolved
+    if project_root is not None and not is_relative_to(resolved, project_root):
+        raise ValueError(f"evidence dir must be under project root {rel(project_root)}")
+    if not looks_like_onboarding_bundle(resolved):
+        raise ValueError("evidence dir must follow <project>/reports/program-onboarding/<program_key>/<timestamp>")
     return resolved
 
 
-def validated_out_root(out_root: str | None, allow_external: bool = False) -> Path:
-    root = Path(out_root) if out_root else ONBOARD_ROOT
-    return validate_project_path(root, ONBOARD_ROOT, "out root", allow_external)
+def validated_out_root(out_root: str | None, project_root: Path, allow_external: bool = False) -> Path:
+    root = resolve_under_project(out_root, project_root) if out_root else onboard_root(project_root)
+    return validate_project_path(root, onboard_root(project_root), "out root", allow_external)
 
 
 def validated_draft_path(path: Path, allow_external: bool = False) -> Path:
     return validate_project_path(path, CARD_DRAFT_DIR, "draft card path", allow_external)
 
 
-def validated_choice_output_path(path: Path, allow_external: bool = False) -> Path:
-    return validate_project_path(path, CHOICE_ROOT, "choice output path", allow_external)
+def validated_choice_output_path(path: Path, project_root: Path, allow_external: bool = False) -> Path:
+    return validate_project_path(
+        resolve_under_project(path, project_root),
+        choice_root(project_root),
+        "choice output path",
+        allow_external,
+        "--allow-external-output",
+    )
 
 
 def unsafe_token(value: str, *, allow_slash: bool = False) -> bool:
@@ -172,7 +240,7 @@ def read_tsv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle, delimiter="\t"))
 
 
-def ensure_bundle(key: str, out_root: Path = ONBOARD_ROOT) -> Path:
+def ensure_bundle(key: str, out_root: Path) -> Path:
     base = out_root / key / now_stamp()
     bundle = base
     suffix = 2
@@ -212,8 +280,8 @@ def read_intent(bundle: Path) -> dict[str, str]:
     return values
 
 
-def default_choice_output(program: str) -> Path:
-    return CHOICE_DIR / f"{program_key(program)}_choice.json"
+def default_choice_output(program: str, project_root: Path) -> Path:
+    return choice_dir(project_root) / f"{program_key(program)}_choice.json"
 
 
 def source_default_index(default_source: str) -> int:
@@ -224,8 +292,13 @@ def source_default_index(default_source: str) -> int:
         return 0
 
 
-def onboarding_choice_questions(program: str, default_source: str = "conda") -> tuple[ChoiceQuestion, ...]:
+def onboarding_choice_questions(
+    program: str,
+    default_source: str = "conda",
+    project_root: Path | None = None,
+) -> tuple[ChoiceQuestion, ...]:
     key = program_key(program)
+    project_root = project_root or Path.cwd().resolve()
     return (
         ChoiceQuestion(
             key="install_location",
@@ -235,7 +308,7 @@ def onboarding_choice_questions(program: str, default_source: str = "conda") -> 
                     label="Project-local test install",
                     value="project_local",
                     description="Recommended for first contact; writes under this project and is easy to inspect.",
-                    path=str(REPO_ROOT / "tools" / key),
+                    path=str(project_root / "tools" / key),
                 ),
                 ChoiceOption(
                     label="User tools long-term install",
@@ -265,7 +338,7 @@ def onboarding_choice_questions(program: str, default_source: str = "conda") -> 
                 ChoiceOption(
                     label="Conda/Bioconda package",
                     value="conda",
-                    description="Can be turned into an executable Conda proposal after confirmation.",
+                    description="Executable after confirmation; prefer only when no suitable official container route exists.",
                 ),
                 ChoiceOption(
                     label="GitHub/source repo",
@@ -275,7 +348,7 @@ def onboarding_choice_questions(program: str, default_source: str = "conda") -> 
                 ChoiceOption(
                     label="Container image",
                     value="container",
-                    description="Proposal-only; requires image source and runtime review.",
+                    description="Prefer for official Docker/Singularity/Apptainer images; proposal-only before pull/run.",
                 ),
                 ChoiceOption(
                     label="Binary/manual source",
@@ -339,13 +412,14 @@ def choice_option_to_dict(option: ChoiceOption, text: str = "") -> dict[str, str
     }
 
 
-def build_choice_result(program: str, answers: dict[str, dict[str, str]]) -> dict[str, Any]:
+def build_choice_result(program: str, answers: dict[str, dict[str, str]], project_root: Path) -> dict[str, Any]:
     key = program_key(program)
     install = answers["install_location"]
     source = answers["source_type"]
     pilot = answers["pilot_input"]
     source_type = source["choice"]
-    suggested_commands: list[str] = [f"python3 scripts/program_onboard.py probe {shlex.quote(program)}"]
+    project_flag = "" if project_root == Path.cwd().resolve() else f" --project-root {shlex.quote(str(project_root))}"
+    suggested_commands: list[str] = [f"python3 scripts/program_onboard.py probe {shlex.quote(program)}{project_flag}"]
     next_steps: list[str] = []
 
     if install["choice"] == "no_install":
@@ -356,7 +430,7 @@ def build_choice_result(program: str, answers: dict[str, dict[str, str]]) -> dic
 
     if source_type in {"conda", "github", "container", "binary"}:
         suggested_commands.append(
-            f"python3 scripts/program_onboard.py plan-install {shlex.quote(program)} --package {shlex.quote(key)} --source {source_type}"
+            f"python3 scripts/program_onboard.py plan-install {shlex.quote(program)} --package {shlex.quote(key)} --source {source_type}{project_flag}"
         )
         if source_type == "conda":
             next_steps.append("Generate a Conda proposal; execute only with install --proposal <json> --yes after review.")
@@ -374,6 +448,7 @@ def build_choice_result(program: str, answers: dict[str, dict[str, str]]) -> dic
         "choice_schema_version": "program_onboarding.choice.v1",
         "program": program,
         "program_key": key,
+        "project_root": str(project_root),
         "created_at": iso_now(),
         "install_location": install,
         "source_type": source,
@@ -424,9 +499,14 @@ def choose_question_plain(question: ChoiceQuestion) -> tuple[ChoiceOption, str]:
     return originals[mq.options.index(chosen)], text
 
 
-def collect_choice_answers(program: str, default_source: str, use_plain: bool = False) -> dict[str, dict[str, str]]:
+def collect_choice_answers(
+    program: str,
+    default_source: str,
+    project_root: Path,
+    use_plain: bool = False,
+) -> dict[str, dict[str, str]]:
     answers: dict[str, dict[str, str]] = {}
-    for question in onboarding_choice_questions(program, default_source):
+    for question in onboarding_choice_questions(program, default_source, project_root):
         if use_plain:
             option, text = choose_question_plain(question)
         else:
@@ -437,15 +517,15 @@ def collect_choice_answers(program: str, default_source: str, use_plain: bool = 
     return answers
 
 
-def default_choice_answers(program: str, default_source: str) -> dict[str, dict[str, str]]:
+def default_choice_answers(program: str, default_source: str, project_root: Path) -> dict[str, dict[str, str]]:
     answers: dict[str, dict[str, str]] = {}
-    for question in onboarding_choice_questions(program, default_source):
+    for question in onboarding_choice_questions(program, default_source, project_root):
         option = question.options[question.default_index]
         answers[question.key] = choice_option_to_dict(option)
     return answers
 
 
-def print_choice_options(program: str, default_source: str) -> None:
+def print_choice_options(program: str, default_source: str, project_root: Path) -> None:
     payload = {
         question.key: [
             {
@@ -457,30 +537,37 @@ def print_choice_options(program: str, default_source: str) -> None:
             }
             for option in question.options
         ]
-        for question in onboarding_choice_questions(program, default_source)
+        for question in onboarding_choice_questions(program, default_source, project_root)
     }
     print(json.dumps(payload, indent=2, ensure_ascii=False))
 
 
 def choose(args: argparse.Namespace) -> int:
+    try:
+        project_root = validate_project_root(args.project_root)
+    except ValueError as exc:
+        print("Status\tBLOCKED")
+        print("Reason\t" + str(exc))
+        return 2
     if args.print_options:
-        print_choice_options(args.program, args.default_source)
+        print_choice_options(args.program, args.default_source, project_root)
         return 0
 
-    output = Path(args.output) if args.output else default_choice_output(args.program)
+    output = Path(args.output) if args.output else default_choice_output(args.program, project_root)
     try:
-        output = validated_choice_output_path(output, args.allow_external_output)
+        output = validated_choice_output_path(output, project_root, args.allow_external_output)
     except ValueError as exc:
         print("Status\tBLOCKED")
         print("Reason\t" + str(exc))
         return 2
 
-    answers = default_choice_answers(args.program, args.default_source) if args.defaults else collect_choice_answers(
+    answers = default_choice_answers(args.program, args.default_source, project_root) if args.defaults else collect_choice_answers(
         args.program,
         args.default_source,
+        project_root,
         args.plain,
     )
-    result = build_choice_result(args.program, answers)
+    result = build_choice_result(args.program, answers, project_root)
     write_text(output, json.dumps(result, indent=2, ensure_ascii=False) + "\n")
     print("Status\tCHOICE_RECORDED")
     print("Program_Key\t" + result["program_key"])
@@ -792,7 +879,8 @@ def collect_local_discovery(program: str, explicit_path: str | None, bundle: Pat
 def probe(args: argparse.Namespace) -> int:
     key = program_key(args.program)
     try:
-        out_root = validated_out_root(args.out_root, args.allow_external_paths)
+        project_root = validate_project_root(args.project_root)
+        out_root = validated_out_root(args.out_root, project_root, args.allow_external_paths)
     except ValueError as exc:
         print("Status\tBLOCKED")
         print("Reason\t" + str(exc))
@@ -945,7 +1033,8 @@ def plan_install(args: argparse.Namespace) -> int:
     source_type = args.source
     channels = args.channel or DEFAULT_CHANNELS
     try:
-        out_root = validated_out_root(args.out_root)
+        project_root = validate_project_root(args.project_root)
+        out_root = validated_out_root(args.out_root, project_root)
     except ValueError as exc:
         print("Status\tBLOCKED")
         print("Reason\t" + str(exc))
@@ -1089,7 +1178,9 @@ def load_proposal(path: Path) -> dict[str, Any]:
 
 
 def resolve_install_proposal_path(path: Path) -> Path:
-    resolved = validate_project_path(path, ONBOARD_ROOT, "proposal path")
+    resolved = path.expanduser().resolve()
+    if is_protected_write_path(resolved):
+        raise ValueError("proposal path must not be under /data9/home/qgzeng/data or /data9/home/qgzeng/tools")
     if resolved.name != "install_proposal.json":
         raise ValueError("proposal path must be named install_proposal.json")
     validate_bundle_dir(resolved.parent)
@@ -1266,10 +1357,11 @@ def install(args: argparse.Namespace) -> int:
 def capture(args: argparse.Namespace) -> int:
     key = program_key(args.program)
     try:
+        project_root = validate_project_root(args.project_root)
         if args.evidence_dir:
-            bundle = validate_bundle_dir(Path(args.evidence_dir), args.allow_external_paths)
+            bundle = validate_bundle_dir(resolve_under_project(args.evidence_dir, project_root), project_root, args.allow_external_paths)
         else:
-            out_root = validated_out_root(args.out_root, args.allow_external_paths)
+            out_root = validated_out_root(args.out_root, project_root, args.allow_external_paths)
             bundle = ensure_bundle(key, out_root)
     except ValueError as exc:
         print("Status\tBLOCKED")
@@ -1415,7 +1507,8 @@ def draft_card_text(bundle: Path, output_path: Path) -> str:
 
 def draft_card(args: argparse.Namespace) -> int:
     try:
-        bundle = validate_bundle_dir(Path(args.evidence_dir), args.allow_external_paths)
+        project_root = validate_project_root(args.project_root)
+        bundle = validate_bundle_dir(resolve_under_project(args.evidence_dir, project_root), project_root, args.allow_external_paths)
     except ValueError as exc:
         print("Status\tBLOCKED")
         print("Reason\t" + str(exc))
@@ -1462,6 +1555,7 @@ def build_parser() -> argparse.ArgumentParser:
     choose_parser = subparsers.add_parser("choose", help="Record interactive onboarding choices without installing")
     choose_parser.add_argument("program", help="Program name")
     choose_parser.add_argument("--output", help="Output JSON path; defaults to config/program-onboarding/<program_key>_choice.json")
+    choose_parser.add_argument("--project-root", help="Project root for choice output; defaults to current directory")
     choose_parser.add_argument("--plain", action="store_true", help="Use numbered prompts instead of curses")
     choose_parser.add_argument("--print-options", action="store_true", help="Print available choices and exit")
     choose_parser.add_argument("--defaults", action="store_true", help="Write recommended defaults without prompting")
@@ -1482,6 +1576,7 @@ def build_parser() -> argparse.ArgumentParser:
     probe_parser.add_argument("program", help="Program name or explicit executable path")
     probe_parser.add_argument("--path", help="Explicit executable path to check before PATH lookup")
     probe_parser.add_argument("--out-root", help="Evidence root; defaults to reports/program-onboarding")
+    probe_parser.add_argument("--project-root", help="Project root for evidence output; defaults to current directory")
     probe_parser.add_argument(
         "--allow-external-paths",
         action="store_true",
@@ -1511,6 +1606,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Explicitly allow proposal to install into an existing target env.",
     )
     plan_parser.add_argument("--out-root", help="Evidence root; defaults to reports/program-onboarding")
+    plan_parser.add_argument("--project-root", help="Project root for evidence output; defaults to current directory")
     plan_parser.set_defaults(func=plan_install)
 
     install_parser = subparsers.add_parser("install", help="Execute a generated Conda install proposal")
@@ -1523,6 +1619,7 @@ def build_parser() -> argparse.ArgumentParser:
     capture_parser.add_argument("--path", help="Explicit executable path to check before PATH lookup")
     capture_parser.add_argument("--evidence-dir", help="Existing evidence bundle to update")
     capture_parser.add_argument("--out-root", help="Evidence root for a new bundle")
+    capture_parser.add_argument("--project-root", help="Project root for evidence output; defaults to current directory")
     capture_parser.add_argument(
         "--allow-external-paths",
         action="store_true",
@@ -1533,6 +1630,7 @@ def build_parser() -> argparse.ArgumentParser:
     draft_parser = subparsers.add_parser("draft-card", help="Generate a program card draft from evidence")
     draft_parser.add_argument("evidence_dir", help="Evidence bundle directory")
     draft_parser.add_argument("--output-card", help="Draft card path; defaults to references/program-cards/drafts/<program_key>.md")
+    draft_parser.add_argument("--project-root", help="Project root for resolving the evidence dir; defaults to current directory")
     draft_parser.add_argument("--force", action="store_true", help="Overwrite an existing draft card")
     draft_parser.add_argument(
         "--allow-external-paths",

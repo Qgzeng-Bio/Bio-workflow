@@ -24,6 +24,13 @@ Do not request CPU or memory by habit. Estimate from:
 - current queue state
 - previous job history when available
 
+Prefer manifests, indexes, metadata, file sizes, and previous `sacct` or
+`/usr/bin/time -v` records. Do not estimate resources by full recursive scans or
+full streaming/decompression of FASTA, FASTQ, BAM/CRAM, VCF/BCF, or GFF/GTF
+inputs on login/admin nodes. If metadata are missing and the estimate depends on
+reading large files, propose a bounded SLURM precheck or ask the user for the
+manifest/index path.
+
 Use this reasoning pattern:
 
 ```text
@@ -54,6 +61,40 @@ Examples:
 - Use `pigz` only when parallel I/O is helpful.
 
 When uncertain, propose a small pilot or benchmark before the full run.
+
+For repeat annotation, genome annotation, pangenome workflows, unknown tools,
+multi-sample/multi-file pipelines, and workflow engines such as Nextflow,
+Snakemake, or WDL, do not scale directly from a template to a full run unless
+there is relevant historical `sacct` or `/usr/bin/time -v` evidence. Require a
+pilot or explicitly state why existing evidence is sufficient.
+
+For workflow engines, separate the resource model:
+
+- driver resources: launcher CPU/memory, logs, executor overhead, and whether it
+  performs real compute or only schedules jobs
+- process resources: per-process `cpus`, `memory`, threads, Java heap, container
+  overhead, and temporary expansion
+- concurrency: job arrays, `queueSize`, simultaneous processes, shared database
+  pressure, and total concurrent memory (`per_task_memory * concurrency`)
+- outputs: `workDir`, publish directory, trace/report files, cleanup policy, and
+  temporary disk growth
+
+## Minimum SLURM script review
+
+When reviewing an existing SLURM script, always give a short resource verdict. Do
+not treat the presence of `#SBATCH --cpus-per-task` and `#SBATCH --mem` as enough.
+
+Check at minimum:
+
+- requested CPUs vs tool scalability and whether threads are passed to the tool
+- requested memory vs the main memory driver: input, index/database, per-thread
+  buffers, Java heap, sorting memory, temporary expansion, or output volume
+- partition vs memory: `<200G` usually `normal`; `>=200G` consider `fat/fat2`
+- array concurrency vs combined memory, disk I/O, and shared database pressure
+- previous `sacct`/`/usr/bin/time -v` evidence when a related job already ran
+
+If any part cannot be estimated from the script and explicit inputs, say so and
+recommend a bounded pilot rather than silently accepting the template resources.
 
 ## Feedback loop
 

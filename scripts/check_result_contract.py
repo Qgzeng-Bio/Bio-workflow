@@ -377,10 +377,12 @@ def render(status: str, findings: list[tuple[str, str, str]]) -> str:
     blocks = [f for f in findings if f[0] == "BLOCK"]
     warns = [f for f in findings if f[0] == "WARN"]
     notes = [f for f in findings if f[0] == "NOTE"]
+    suggests = [f for f in findings if f[0] == "SUGGEST"]
     missing = [f for f in findings if f[0] == "MISSING"]
     section("BLOCKED", blocks)
     section("WARNINGS", warns)
     section("NOTES", notes)
+    section("SUGGESTIONS", suggests)
     section("MISSING", missing)
 
     if status == "PASS":

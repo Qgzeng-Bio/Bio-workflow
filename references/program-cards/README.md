@@ -26,9 +26,10 @@ acceptance checks into the conversation.
    and does not install or download anything. Generate install proposals with
    `plan-install`; execute only with
    `install --proposal <json> --yes` after confirmation; then run `capture` and
-   `draft-card` before any registry promotion. Helper outputs stay project-local
-   by default; draft generation will not overwrite an existing draft unless
-   `--force` is supplied.
+   `draft-card` before any registry promotion. Choice and evidence outputs stay
+   project-local by default; draft cards stay under `references/program-cards/drafts/`
+   unless `--output-card` is supplied, and draft generation will not overwrite an
+   existing draft unless `--force` is supplied.
 4. Always select a supported mode before deciding inputs or resources.
 5. Ask for explicit input paths, a manifest, or a bounded search root plus pattern
    and maxdepth. Do not scan broad data or project roots.
@@ -49,6 +50,7 @@ Current cards:
 - `minimap2-samtools.md`
 - `syri.md`
 - `biser.md`
+- `kmeria.md`
 
 After adding or editing a card, run:
 

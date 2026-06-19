@@ -156,6 +156,44 @@ has_sbatch_value() {
     [[ -n "$(get_sbatch_value "$long" "$short")" ]]
 }
 
+mem_to_gb() {
+    local raw="$1"
+    awk -v raw="$raw" '
+        BEGIN {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", raw)
+            if (raw == "" || raw == "NA") { print "NA"; exit }
+            value = raw
+            unit = raw
+            gsub(/[^0-9.]/, "", value)
+            gsub(/[0-9.]/, "", unit)
+            unit = toupper(unit)
+            if (value == "") { print "NA"; exit }
+            if (unit == "" || unit == "M" || unit == "MB") gb = value / 1024
+            else if (unit == "K" || unit == "KB") gb = value / 1024 / 1024
+            else if (unit == "G" || unit == "GB") gb = value
+            else if (unit == "T" || unit == "TB") gb = value * 1024
+            else gb = value / 1024
+            printf "%.2f\n", gb
+        }
+    '
+}
+
+mem_gb_from_script() {
+    local cpus mem_value mem_per_cpu mem_per_cpu_gb
+    cpus="$(get_sbatch_value "--cpus-per-task" "-c" || true)"
+    [[ -n "$cpus" ]] || cpus="$(get_sbatch_value "--ntasks" "-n" || true)"
+    mem_value="$(get_sbatch_value "--mem" "" || true)"
+    mem_per_cpu="$(get_sbatch_value "--mem-per-cpu" "" || true)"
+    if [[ -n "$mem_value" ]]; then
+        mem_to_gb "$mem_value"
+    elif [[ -n "$mem_per_cpu" && "$cpus" =~ ^[0-9]+$ ]]; then
+        mem_per_cpu_gb="$(mem_to_gb "$mem_per_cpu")"
+        awk -v m="$mem_per_cpu_gb" -v c="$cpus" 'BEGIN { if (m == "NA") print "NA"; else printf "%.2f\n", m * c }'
+    else
+        printf 'NA\n'
+    fi
+}
+
 check_log_path() {
     local label="$1"
     local value="$2"
@@ -268,6 +306,9 @@ check_kmeria_static() {
 }
 
 big_command_pattern='(^|[[:space:]/])(minimap2|bwa|hisat2|STAR|samtools[[:space:]]+sort|hifiasm|orthofinder|braker[.]pl|braker|maker|EDTA[.]pl|RepeatModeler|RepeatMasker|syri|plotsr|nucmer|delta-filter|show-coords|juicer|3d-dna|run-asm-pipeline|busco|quast|gatk|bcftools|fastp|featureCounts|diamond|blastn|blastp|hmmsearch|hmmscan|cmscan|PanGenie|kmeria)([[:space:]]|$)'
+hite_command_pattern='(panHiTE[.]nf|panHiTE[.]py|HiTE[/][^[:space:]]*main[.]py|--use_HybridLTR|--use_NeuralTE|--is_denovo_nonltr)'
+hite_invocation_pattern='^[[:space:]]*((/usr/bin/time[[:space:]]+-v[[:space:]]+)?python[0-9.]*[[:space:]][^#;|&]*(main[.]py|panHiTE[.]py)|nextflow[[:space:]]+run[[:space:]].*(panHiTE[.]nf|[$][{]?HITE_DIR[}]?[/]panHiTE[.]nf))'
+nextflow_driver_pattern='(^|[[:space:]/])nextflow[[:space:]]+run([[:space:]]|$)'
 
 check_cpu_forwarding() {
     local cpus
@@ -310,6 +351,8 @@ check_serial_parallelization_hint() {
             /^[[:space:]]*#/ { next }
             function key_for(line, lower) {
                 lower = tolower(line)
+                if (lower ~ /^[[:space:]]*(echo|printf)[[:space:]]/) return ""
+                if (lower ~ /^[[:space:]]*(if|elif|for|while|case|do|done|then|else|fi|esac|\[)([[:space:]]|$)/) return ""
                 if (lower ~ /kmeria[[:space:]]+count/) return "kmeria count"
                 if (lower ~ /bwa[[:space:]]+mem/) return "bwa mem"
                 if (lower ~ /samtools[[:space:]]+sort/) return "samtools sort"
@@ -317,6 +360,9 @@ check_serial_parallelization_hint() {
                 if (lower ~ /repeatmodeler/) return "RepeatModeler"
                 if (lower ~ /repeatmasker/) return "RepeatMasker"
                 if (lower ~ /edta[.]pl/) return "EDTA.pl"
+                if (lower ~ /^[[:space:]]*nextflow[[:space:]]+run([[:space:]]|$)/) return "Nextflow run"
+                if (lower ~ /^[[:space:]]*(\/usr\/bin\/time[[:space:]]+-v[[:space:]]+)?python[0-9.]*[[:space:]][^#;|&]*panhite[.]py/) return "panHiTE"
+                if (lower ~ /^[[:space:]]*(\/usr\/bin\/time[[:space:]]+-v[[:space:]]+)?python[0-9.]*[[:space:]][^#;|&]*main[.]py/) return "HiTE"
                 if (match(lower, /(^|[[:space:]\/])(fastp|minimap2|hisat2|star|hifiasm|orthofinder|braker[.]pl|braker|maker|syri|plotsr|nucmer|busco|quast|gatk|bcftools|diamond|blastn|blastp|hmmsearch|hmmscan|cmscan|pangenie)([[:space:]]|$)/, a)) return a[2]
                 return ""
             }
@@ -342,7 +388,7 @@ check_serial_parallelization_hint() {
     )"
 
     loop_big_count="$(
-        awk -v pattern="$big_command_pattern" '
+        awk -v pattern="${big_command_pattern}|${hite_invocation_pattern}" '
             BEGIN { IGNORECASE = 1; in_loop = 0; found = 0 }
             /^[[:space:]]*#/ { next }
             /^[[:space:]]*(for[[:space:]].*[[:space:]]in[[:space:]]|while[[:space:]]+read)(.*)$/ { in_loop = 1 }
@@ -367,6 +413,109 @@ check_serial_parallelization_hint() {
     fi
 }
 
+check_resource_sanity() {
+    local cpus mem_gb partition first_tool sort_m sort_m_gb sort_total_gb
+    local warned=0
+
+    cpus="$(get_sbatch_value "--cpus-per-task" "-c" || true)"
+    [[ -n "$cpus" ]] || cpus="$(get_sbatch_value "--ntasks" "-n" || true)"
+    cpus="${cpus:-NA}"
+    mem_gb="$(mem_gb_from_script)"
+    partition="$mode"
+
+    if [[ "$cpus" =~ ^[0-9]+$ ]]; then
+        if [[ "$cpus" -gt 32 ]]; then
+            warn "Resource sanity: --cpus-per-task=$cpus exceeds the usual 16-32 CPU bioinformatics range; require benchmark or project-history evidence"
+            warned=1
+        elif [[ "$partition" == "normal" && "$cpus" -gt 16 ]]; then
+            warn "Resource sanity: normal partition with $cpus CPUs is above the usual normal-node starting point; justify with scaling evidence or reduce"
+            warned=1
+        fi
+    else
+        warn "Resource sanity: cannot parse requested CPU count; resource estimate is incomplete"
+        warned=1
+    fi
+
+    if [[ "$mem_gb" != "NA" ]]; then
+        if awk -v m="$mem_gb" 'BEGIN { exit !(m >= 200) }'; then
+            if [[ "$partition" == "normal" ]]; then
+                warn "Resource sanity: requested memory is ${mem_gb}G on normal; consider fat/fat2 or justify normal-node availability"
+                warned=1
+            fi
+        elif [[ "$partition" == "fat" || "$partition" == "fat2" ]]; then
+            warn "Resource sanity: requested memory is ${mem_gb}G on $partition (<200G); justify fat/fat2 use or prefer normal"
+            warned=1
+        fi
+    else
+        warn "Resource sanity: cannot parse requested memory; resource estimate is incomplete"
+        warned=1
+    fi
+
+    if grep_active '(^|[[:space:]/])(syri)([[:space:]]|$)' && [[ "$cpus" =~ ^[0-9]+$ && "$cpus" -gt 8 ]]; then
+        warn "Resource sanity: SyRI has limited CPU scaling; >8 CPUs needs evidence"
+        warned=1
+    fi
+    if grep_active '(^|[[:space:]/])(featureCounts|plotsr|quast|fastp)([[:space:]]|$)' && [[ "$cpus" =~ ^[0-9]+$ && "$cpus" -gt 16 ]]; then
+        warn "Resource sanity: detected a modest-scaling tool with $cpus CPUs; check software-resource-cards.md or reduce"
+        warned=1
+    fi
+    if grep_active '(^|[[:space:]/])(bcftools)([[:space:]]|$)' && [[ "$cpus" =~ ^[0-9]+$ && "$cpus" -gt 8 ]]; then
+        warn "Resource sanity: bcftools stages are often low-to-moderate parallel; >8 CPUs needs stage-specific evidence"
+        warned=1
+    fi
+    if grep_active "$nextflow_driver_pattern"; then
+        warn "Resource sanity: Nextflow driver resources cover only the launcher; review process cpus/memory/queueSize in the -c config before submission"
+        warned=1
+    fi
+    if grep_active '(^|[[:space:]/])(hifiasm|orthofinder|braker[.]pl|braker|maker|EDTA[.]pl|RepeatModeler|RepeatMasker|juicer|3d-dna|run-asm-pipeline|PanGenie)([[:space:]]|$)' || { grep_active "$hite_command_pattern" && ! grep_active "$nextflow_driver_pattern"; }; then
+        if [[ "$mem_gb" != "NA" ]] && awk -v m="$mem_gb" 'BEGIN { exit !(m < 64) }'; then
+            first_tool="$(first_active_match '(^|[[:space:]/])(hifiasm|orthofinder|braker[.]pl|braker|maker|EDTA[.]pl|RepeatModeler|RepeatMasker|juicer|3d-dna|run-asm-pipeline|PanGenie)([[:space:]]|$)' || true)"
+            [[ -n "$first_tool" ]] || first_tool="$(first_active_match "$hite_command_pattern" || true)"
+            warn "Resource sanity: memory-heavy workflow has only ${mem_gb}G; confirm this is a pilot/small input or increase memory: $first_tool"
+            warned=1
+        fi
+    fi
+
+    if grep_active 'samtools[[:space:]]+sort'; then
+        sort_m="$(
+            awk '
+                BEGIN { IGNORECASE = 1 }
+                /^[[:space:]]*#/ { next }
+                /samtools[[:space:]]+sort/ {
+                    for (i = 1; i <= NF; i++) {
+                        if ($i == "-m" && (i + 1) <= NF) { print $(i + 1); exit }
+                        if ($i ~ /^-m[0-9.]+[KMGTP]?B?$/) { sub(/^-m/, "", $i); print $i; exit }
+                    }
+                }
+            ' "$script"
+        )"
+        if [[ -z "$sort_m" ]]; then
+            warn "Resource sanity: samtools sort detected without explicit -m; set per-thread sort memory and match it to --mem"
+            warned=1
+        elif [[ "$cpus" =~ ^[0-9]+$ && "$mem_gb" != "NA" ]]; then
+            sort_m_gb="$(mem_to_gb "$sort_m")"
+            if [[ "$sort_m_gb" != "NA" ]]; then
+                sort_total_gb="$(awk -v m="$sort_m_gb" -v c="$cpus" 'BEGIN { printf "%.2f\n", m * c }')"
+                if awk -v s="$sort_total_gb" -v r="$mem_gb" 'BEGIN { exit !(s > r * 0.9) }'; then
+                    warn "Resource sanity: samtools sort -m * CPUs is about ${sort_total_gb}G, leaving little headroom under --mem=${mem_gb}G"
+                    warned=1
+                fi
+            fi
+        fi
+    fi
+
+    if ! grep_active "$big_command_pattern" && ! grep_active "$hite_command_pattern" && ! grep_active "$nextflow_driver_pattern" && [[ "$cpus" =~ ^[0-9]+$ ]] && [[ "$mem_gb" != "NA" ]]; then
+        if [[ "$cpus" -gt 4 ]] || awk -v m="$mem_gb" 'BEGIN { exit !(m > 32) }'; then
+            warn "Resource sanity: no known large-compute tool detected but resources are cpus=$cpus mem=${mem_gb}G; justify or reduce for wrapper/summary scripts"
+            warned=1
+        fi
+    fi
+
+    if [[ "$warned" -eq 0 ]]; then
+        pass "Resource sanity: no obvious CPU/memory/partition mismatch detected; still verify input-size and tool-specific estimates"
+    fi
+}
+
 if [[ -z "$mode" ]]; then
     mode="$(infer_partition || true)"
     [[ -n "$mode" ]] || mode="normal"
@@ -378,7 +527,7 @@ printf '[INFO] Mode: %s\n' "$mode"
 
 if grep -Eiq '^[[:space:]]*#SBATCH[[:space:]]+.*(--time(=|[[:space:]])|-t([[:space:]=]|$))' "$script"; then
     if grep -Eq '^[[:space:]]*#.*ALLOW_TIME_DIRECTIVE' "$script"; then
-        pass "#SBATCH --time is present with ALLOW_TIME_DIRECTIVE comment"
+        warn "#SBATCH --time is present with ALLOW_TIME_DIRECTIVE marker; verify explicit user confirmation and cluster-policy reason before submitting"
     elif [[ "$mode" == "debug" ]]; then
         warn "#SBATCH --time is present in debug mode; acceptable only for tiny tests"
     else
@@ -450,9 +599,13 @@ fi
 
 check_cpu_forwarding
 check_serial_parallelization_hint
+check_resource_sanity
 
-if grep_active "$big_command_pattern"; then
+if grep_active "$nextflow_driver_pattern"; then
+    pass "Known Nextflow workflow driver detected; child process resources must be reviewed in the Nextflow config"
+elif grep_active "$big_command_pattern" || grep_active "$hite_command_pattern"; then
     big_match="$(first_active_match "$big_command_pattern" || true)"
+    [[ -n "$big_match" ]] || big_match="$(first_active_match "$hite_command_pattern" || true)"
     has_cpu=0
     has_mem=0
     if has_sbatch_value "--cpus-per-task" "-c" || has_sbatch_value "--ntasks" "-n"; then
