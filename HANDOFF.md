@@ -1,8 +1,49 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-19 — review fixes for project-root helpers and resume audit
+Last updated: 2026-06-19 - pushed bio-workflow helper/playbook updates
 
-## Latest Update — 2026-06-19: Review Fixes for Project-Root Helpers and Resume Audit
+## Latest Update - 2026-06-19: Commit and Push Completed
+
+Purpose: record the repository state after committing and pushing the current
+bio-workflow maintenance pass.
+
+Repository state:
+
+- Branch: `main`
+- Remote: `origin` (`git@github.com:Qgzeng-Bio/Bio-workflow.git`)
+- Local and remote are synchronized at
+  `edc9c00 Harden bio-workflow helpers and playbooks`.
+- Working tree was clean immediately after push; this handoff refresh is the
+  only follow-up local edit from the current turn.
+
+Pushed commits:
+
+- `01ce86d Slim bio-workflow skill routing`
+- `edc9c00 Harden bio-workflow helpers and playbooks`
+
+Validation before `edc9c00`:
+
+- `bash -n` passed for bundled shell scripts and SLURM templates.
+- Python `py_compile` passed for changed/helper Python scripts.
+- Program-card validation passed for 5 active cards and 0 draft cards.
+- Source and installed runtime skill validation passed with the base Conda
+  Python that provides `yaml`.
+- `git diff --cached --check` passed before commit.
+
+Caveats:
+
+- No SLURM job was submitted, cancelled, or modified.
+- No live analysis project was changed.
+- No force push was used.
+- This handoff edit itself has not been committed or pushed yet.
+
+Next steps:
+
+- If this handoff refresh should also be tracked remotely, commit and push a
+  small follow-up documentation-only commit.
+- Otherwise, the remote repository is already current at `edc9c00`.
+
+## Previous Update - 2026-06-19: Review Fixes for Project-Root Helpers and Resume Audit
 
 Purpose: fix small but high-impact issues found in the systematic skills review
 without changing the overall bio-workflow chain, live projects, SLURM state, or
