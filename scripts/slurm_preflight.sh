@@ -320,56 +320,57 @@ check_conda_activation() {
         return
     fi
 
-    # Scope the guard/self-check to the region AFTER the LAST activation. The PATH
-    # guard must follow the final `conda activate` (it pins that env's $CONDA_PREFIX);
-    # a guard tied to an earlier env must not mask a later unguarded activation
-    # (codex review P2: a multi-activate script would otherwise falsely PASS).
-    local tail_region
-    tail_region="$(awk '
+    # Per-activation, ORDER-SENSITIVE analysis (codex review P2). The risk is real
+    # only when, inside the block opened by a `conda activate` (until the next
+    # activation or EOF), a PATH-resolved python runs BEFORE the env bin is pinned
+    # to the front of PATH. So an earlier guarded env must not mask a later
+    # unguarded one (P2-A), and a guard written after the first python is too late
+    # (P2-B). Absolute-path python and `conda run -n` do not rely on PATH and are
+    # ignored. Worst block wins: BAD > UNGUARDED > NOSELF > OK.
+    local verdict
+    verdict="$(awk '
         BEGIN { IGNORECASE = 1 }
+        function close_block() {
+            if (!inblk) return
+            if (!guard) unguarded = 1
+            else if (!self) noself = 1
+        }
         /^[[:space:]]*#/ { next }
-        { lines[NR] = $0; if ($0 ~ /(^|[[:space:];&|])(conda|micromamba|mamba)[[:space:]]+activate([[:space:]]|$)/) last = NR }
-        END { for (i = last; i <= NR; i++) if (i in lines) print lines[i] }
+        {
+            if ($0 ~ /(^|[;&|]|[[:space:]])(conda|micromamba|mamba)[[:space:]]+activate([[:space:]]|$)/) {
+                close_block(); any = 1; inblk = 1; guard = 0; self = 0; next
+            }
+            if (!inblk) next
+            if ($0 ~ /export[[:space:]]+PATH=["'\'']?[$][{]?CONDA_PREFIX[}]?\/bin:[$][{]?PATH[}]?/) guard = 1
+            if ($0 ~ /export[[:space:]]+PATH=["'\'']?[^"'\'' ]*\/envs\/[^\/"'\'' ]+\/bin:[$][{]?PATH[}]?/) guard = 1
+            if ($0 ~ /command[[:space:]]+-v[[:space:]]+python[0-9.]*/) self = 1
+            if ($0 ~ /(^|[;&|]|[[:space:]])(which[[:space:]]+python[0-9.]*|python[0-9.]*[[:space:]]+-c[[:space:]].*import)/) self = 1
+            isbare = ($0 ~ /(^|[;&|`(]|[[:space:]])(\/usr\/bin\/time[[:space:]]+-v[[:space:]]+)?python[0-9.]*([[:space:]]|$)/)
+            isabs  = ($0 ~ /\/(bin|envs\/[^\/ ]+\/bin)\/python[0-9.]*([[:space:]]|$)/)
+            if (isbare && !isabs && !guard) bad = 1
+        }
+        END {
+            close_block()
+            if (!any) print "NONE"
+            else if (bad) print "BAD"
+            else if (unguarded) print "UNGUARDED"
+            else if (noself) print "NOSELF"
+            else print "OK"
+        }
     ' "$script")"
-    region_has() { printf '%s\n' "$tail_region" | grep -Eiq -- "$1"; }
 
-    # Defense 1: a guard that pins the activated env bin to the FRONT of PATH,
-    # in canonical $CONDA_PREFIX/bin form or the equivalent literal envs/<x>/bin form.
-    local has_path_guard=0
-    if region_has 'export[[:space:]]+PATH=["'\'']?\$\{?CONDA_PREFIX\}?/bin:\$\{?PATH\}?' \
-       || region_has 'export[[:space:]]+PATH=["'\'']?[^"'\'' ]*/envs/[^/"'\'' ]+/bin:\$\{?PATH\}?'; then
-        has_path_guard=1
-    fi
-
-    # Defense 2: an activation self-check (command -v python landing assertion,
-    # or a python -c import that can fail-fast).
-    local has_selfcheck=0
-    if region_has 'command[[:space:]]+-v[[:space:]]+python[0-9.]*' \
-       || region_has '(^|[[:space:];&|])(which[[:space:]]+python[0-9.]*|python[0-9.]*[[:space:]]+-c[[:space:]].*import)'; then
-        has_selfcheck=1
-    fi
-
-    if [[ "$has_path_guard" -eq 1 && "$has_selfcheck" -eq 1 ]]; then
-        pass "conda activate has a PATH guard (\$CONDA_PREFIX/bin front) and a self-check after the last activation"
-        return
-    fi
-
-    # High-risk subcase: a bare PATH-resolved python after the last activation with
-    # no guard (the exact shape that crashed). Absolute-path python is excluded — it
-    # does not rely on PATH — so it is not escalated.
-    local bare_python=0
-    if region_has '(^|[[:space:];&|`(]|[[:space:]])(/usr/bin/time[[:space:]]+-v[[:space:]]+)?python[0-9.]*([[:space:]]|$)' \
-       && ! region_has '/(bin|envs/[^/ ]+/bin)/python[0-9.]*([[:space:]]|$)'; then
-        bare_python=1
-    fi
-
-    if [[ "$has_path_guard" -eq 0 && "$bare_python" -eq 1 ]]; then
-        warn "conda activate is followed by a PATH-resolved python with NO PATH guard; a polluted PATH (sbatch --export=ALL from an env-exporting agent) runs the wrong python and crashes on import. Add export PATH=\"\$CONDA_PREFIX/bin:\$PATH\" plus a command -v python assertion, or mark # ALLOW_NO_PATH_GUARD if python is unused/absolute"
-    elif [[ "$has_path_guard" -eq 0 ]]; then
-        warn "conda activate without an explicit PATH guard; if this job resolves python/tools via PATH it can pick a foreign env's bin (sbatch --export=ALL pollution). Add export PATH=\"\$CONDA_PREFIX/bin:\$PATH\" after activate, or mark # ALLOW_NO_PATH_GUARD"
-    else
-        warn "conda activate has a PATH guard but no activation self-check; add a command -v python landing assertion or a fail-fast import so a bad env fails in ~1s, not mid-run"
-    fi
+    case "$verdict" in
+        NONE)
+            pass "No in-shell conda/micromamba activate detected" ;;
+        OK)
+            pass "every conda activate pins \$CONDA_PREFIX/bin to PATH before any python, with a self-check" ;;
+        NOSELF)
+            warn "conda activate has a PATH guard but no activation self-check; add a command -v python landing assertion or a fail-fast import so a bad env fails in ~1s, not mid-run" ;;
+        BAD)
+            warn "a PATH-resolved python runs after a conda activate BEFORE its PATH guard; a polluted PATH (sbatch --export=ALL from an env-exporting parent) runs the wrong python and crashes on import. Put export PATH=\"\$CONDA_PREFIX/bin:\$PATH\" (and a command -v python assertion) right after each activate, ahead of any python, or mark # ALLOW_NO_PATH_GUARD if python is unused/absolute" ;;
+        *)
+            warn "conda activate without an explicit PATH guard; if this job resolves python/tools via PATH it can pick a foreign env's bin (sbatch --export=ALL pollution). Add export PATH=\"\$CONDA_PREFIX/bin:\$PATH\" after each activate, or mark # ALLOW_NO_PATH_GUARD" ;;
+    esac
 }
 
 big_command_pattern='(^|[[:space:]/])(minimap2|bwa|hisat2|STAR|samtools[[:space:]]+sort|hifiasm|orthofinder|braker[.]pl|braker|maker|EDTA[.]pl|RepeatModeler|RepeatMasker|syri|plotsr|nucmer|delta-filter|show-coords|juicer|3d-dna|run-asm-pipeline|busco|quast|gatk|bcftools|fastp|featureCounts|diamond|blastn|blastp|hmmsearch|hmmscan|cmscan|PanGenie|kmeria)([[:space:]]|$)'
