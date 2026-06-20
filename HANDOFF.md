@@ -1,6 +1,319 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-19 - pushed bio-workflow helper/playbook updates
+Last updated: 2026-06-20 - conda-activation PATH-guard lint added to the SLURM toolchain
+
+## Latest Update - 2026-06-20: Conda Activation PATH-Guard Lint
+
+Purpose: record a focused safety addition to the SLURM toolchain after a real
+failure — a panTE/HiTE pilot crashed in ~25s because `conda activate` left a
+polluted PATH (an env-exporting parent + `sbatch --export=ALL`), so `python`
+resolved to the wrong env and `import pysam` failed even though the env had it.
+
+What changed (committed as `15b88c0` on `main`):
+
+- `scripts/slurm_preflight.sh`: new `check_conda_activation`. WARNs when a
+  `conda activate` lacks a PATH guard (`export PATH="$CONDA_PREFIX/bin:$PATH"`)
+  or a python landing/import self-check. Detection is scoped to the region after
+  the LAST activation, so an earlier env's guard cannot mask a later unguarded
+  one. Pure WARN, not FAIL (avoids flagging CLI-only / absolute-path / `conda
+  run` activations); waivable with a `# ALLOW_NO_PATH_GUARD` comment.
+- `scripts/gen_sbatch.sh`: new `--conda-env ENV` / `--conda-check M1,M2` to emit
+  a compliant hardened activation block (the lint rule's golden reference).
+- Docs: `references/executor-safety.md` (new "Conda environment activation"
+  section), `references/validation-checklists.md` (one pre-submit item),
+  `SKILL.md` (reference routing + step-6 note).
+- `scripts/sync_install.sh` and `scripts/sync_plugin_wrapper.sh` are now tracked
+  so the documented runtime/plugin sync steps resolve in a clean checkout.
+
+Review and validation:
+
+- codex review (`codex review --commit`) returned 0 P0/P1, 2 P2. P2-1
+  (multi-activate false PASS) was fixed by scoping to the last activation and
+  re-verified with codex's own counterexample; P2-2 (untracked sync helper) was
+  resolved by tracking the two sync scripts in this commit.
+- Regression: 8 lint samples + the multi-activate counterexample + generator
+  self-consistency all pass; the real pilot script PASSes.
+- Synced to all three trees (repo root, `~/.codex/skills/bio-workflow`,
+  `plugins/bio-workflow/skills/bio-workflow`) and verified byte-identical.
+- A second codex review (on 15b88c0, after a re-login) found two more P2 in the
+  lint itself: P2-A (the after-last-activation scoping still missed an earlier
+  activation that runs python before a later guarded one) and P2-B (a guard
+  written after the first python in the same block). Fixed in `a853e96` by
+  replacing the whole-tail existence checks with a per-activation, order-sensitive
+  state machine (within each activate block, a PATH-resolved python before the
+  guard => BAD; worst block wins). Re-verified with codex's own counterexamples
+  plus the prior samples; pilot still PASSes; re-synced byte-identical. The two
+  sync-script findings it also raised (P2-C clean-checkout default path, P3
+  `--skip-validate` vs PyYAML) are deferred to the beta-marketplace wrap-up.
+
+Still uncommitted after `15b88c0`: `HANDOFF.md`, `README.md`, `.agents/`,
+`.claude-plugin/`, `plugins/` (the pre-existing beta-marketplace changes and
+generated mirrors below).
+
+## Latest Update - 2026-06-19: Handoff Refreshed After Beta Marketplace Validation
+
+Purpose: record the current handoff state after adding and validating the
+repo-local Codex and Claude Code beta marketplaces.
+
+Current state:
+
+- The repo now has plugin wrappers for both Codex and Claude Code under
+  `plugins/bio-workflow/`.
+- The repo now has internal beta marketplace manifests for both tools:
+  `.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`.
+- Both marketplaces use the same marketplace name: `qgzeng-bio-beta`.
+- Temporary HOME install tests confirmed that both tools can install
+  `bio-workflow@qgzeng-bio-beta` from this checkout.
+- Nothing has been published to a public marketplace.
+- No real user Codex or Claude configuration was modified by the install tests;
+  temporary test homes under `/tmp` were used.
+- The current working tree is still uncommitted. Intended changes include
+  `README.md`, `HANDOFF.md`, `.agents/`, `.claude-plugin/`, and `plugins/`.
+  (`SKILL.md`, `scripts/sync_install.sh`, and `scripts/sync_plugin_wrapper.sh`
+  were committed on 2026-06-20 as part of `15b88c0`; see the latest update above.)
+
+Commands/tests already run in this marketplace pass:
+
+```bash
+/data9/home/qgzeng/anaconda3/bin/python -m json.tool .agents/plugins/marketplace.json
+/data9/home/qgzeng/anaconda3/bin/python -m json.tool .claude-plugin/marketplace.json
+/data9/home/qgzeng/anaconda3/bin/python /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .
+/data9/home/qgzeng/anaconda3/bin/python /data9/home/qgzeng/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/bio-workflow
+claude plugin validate plugins/bio-workflow
+claude plugin validate .
+env HOME=/tmp/bwf_codex_home codex plugin marketplace add /data9/home/qgzeng/projects/3-Biotools_create/bio-workflow --json
+env HOME=/tmp/bwf_codex_home codex plugin add bio-workflow@qgzeng-bio-beta --json
+env HOME=/tmp/bwf_claude_home claude plugin marketplace add /data9/home/qgzeng/projects/3-Biotools_create/bio-workflow
+env HOME=/tmp/bwf_claude_home claude plugin install bio-workflow@qgzeng-bio-beta --scope user
+scripts/sync_plugin_wrapper.sh
+git diff --check
+```
+
+Next steps:
+
+- Review the uncommitted changes.
+- Commit and push to the branch or tag intended for trusted beta testers.
+- Give testers the README `Internal beta marketplace` commands.
+- Keep beta testing to read-only checks, dry-runs, script review, and explicit
+  confirmation before any `sbatch`, install, download, or overwrite action.
+
+## Latest Update - 2026-06-19: Internal Beta Marketplaces Added
+
+Purpose: let trusted testers install the existing `bio-workflow` plugin wrapper
+through repo-local Codex and Claude Code marketplaces without publishing to a
+public marketplace.
+
+Key changes:
+
+- `.agents/plugins/marketplace.json`: added a Codex repo/team marketplace named
+  `qgzeng-bio-beta`. It exposes `bio-workflow` from `./plugins/bio-workflow`
+  with `AVAILABLE` installation policy and `ON_INSTALL` authentication policy.
+- `.claude-plugin/marketplace.json`: added a Claude Code marketplace named
+  `qgzeng-bio-beta`. It exposes the same `bio-workflow` wrapper through a
+  relative `./plugins/bio-workflow` source.
+- `README.md`: added an `Internal beta marketplace` section with local clone,
+  marketplace add, and plugin install commands for Codex and Claude Code.
+
+Commands/tests run:
+
+```bash
+codex plugin marketplace add --help
+claude plugin marketplace add --help
+/data9/home/qgzeng/anaconda3/bin/python -m json.tool .agents/plugins/marketplace.json
+/data9/home/qgzeng/anaconda3/bin/python -m json.tool .claude-plugin/marketplace.json
+/data9/home/qgzeng/anaconda3/bin/python /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .
+/data9/home/qgzeng/anaconda3/bin/python /data9/home/qgzeng/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/bio-workflow
+claude plugin validate plugins/bio-workflow
+claude plugin validate .
+git diff --check
+env HOME=/tmp/bwf_codex_home codex plugin marketplace add /data9/home/qgzeng/projects/3-Biotools_create/bio-workflow --json
+env HOME=/tmp/bwf_claude_home claude plugin marketplace add /data9/home/qgzeng/projects/3-Biotools_create/bio-workflow
+env HOME=/tmp/bwf_codex_home codex plugin add bio-workflow@qgzeng-bio-beta --json
+env HOME=/tmp/bwf_claude_home claude plugin install bio-workflow@qgzeng-bio-beta --scope user
+env HOME=/tmp/bwf_codex_home codex plugin list
+env HOME=/tmp/bwf_claude_home claude plugin list
+scripts/sync_plugin_wrapper.sh
+```
+
+Current conclusion:
+
+- The marketplace entry points are repo-local and do not publish anything.
+- The intended tester flow is to clone a reviewed branch/tag, add the checkout as
+  a marketplace, then install `bio-workflow@qgzeng-bio-beta`.
+- JSON syntax validation passed for both marketplace manifests.
+- Source skill validation passed.
+- Codex plugin validation passed.
+- Claude plugin validation passed.
+- Claude marketplace validation passed for the repo root.
+- A temporary Codex HOME under `/tmp` successfully added the repo marketplace and
+  installed `bio-workflow@qgzeng-bio-beta`.
+- A temporary Claude HOME under `/tmp` successfully added the repo marketplace
+  and installed `bio-workflow@qgzeng-bio-beta`.
+- `scripts/sync_plugin_wrapper.sh` dry-run after the marketplace changes showed
+  no plugin-wrapper content drift.
+
+Caveats:
+
+- Testers need repository access if the beta branch/repo is private.
+- The plugin remains qgzeng `/data9` SLURM environment specific and should start
+  with read-only checks and dry-runs during beta.
+- The temporary install tests wrote only under `/tmp/bwf_codex_home` and
+  `/tmp/bwf_claude_home`, not the real user config.
+
+Next steps:
+
+- After review, commit and push the marketplace manifests to the branch/tag that
+  trusted testers will clone.
+
+## Latest Update - 2026-06-19: Codex and Claude Plugin Wrappers Added
+
+Purpose: add repo-local Codex and Claude Code plugin wrappers for
+`bio-workflow` while keeping the raw skill source as the primary, cross-agent
+installation path.
+
+Key changes:
+
+- `plugins/bio-workflow/.codex-plugin/plugin.json`: added a validation-ready
+  Codex plugin manifest named `bio-workflow`. The metadata explicitly identifies
+  the plugin as a qgzeng `/data9` SLURM bioinformatics workflow wrapper, not a
+  generic bioinformatics toolkit.
+- `plugins/bio-workflow/.claude-plugin/plugin.json`: added a Claude Code plugin
+  manifest named `bio-workflow`, using the same plugin root and the same
+  `skills/bio-workflow/` skill copy. This keeps the plugin skill namespaced as
+  `/bio-workflow:bio-workflow` in Claude Code.
+- `plugins/bio-workflow/skills/bio-workflow/`: added a synchronized skill copy
+  containing `SKILL.md`, `agents/`, `assets/`, `references/`, and `scripts/`.
+  This is generated content for plugin distribution; the root raw skill remains
+  the source of truth.
+- `scripts/sync_plugin_wrapper.sh`: added a guarded sync helper. It defaults to
+  dry-run, writes only with `--yes`, validates the source skill plus Codex and
+  Claude plugin manifests, and excludes `.git`, `.claude`, `.codex`, `.agents`,
+  `tmp`, `__pycache__`, and `*.pyc`.
+- `scripts/sync_plugin_wrapper.sh`: finalized the rsync exclusion rules after
+  dry-run review so source-local directories are excluded explicitly before
+  include rules are applied, preventing `.git`, `.claude`, `.codex`, `.agents`,
+  `tmp`, `__pycache__`, or `*.pyc` from entering the plugin skill copy.
+- `README.md`: added a `Plugin wrapper install` section. It keeps raw skill
+  symlink installation as the recommended daily-use path, documents the optional
+  plugin wrapper, shows Codex and Claude validation commands, documents local
+  Claude testing with `claude --plugin-dir plugins/bio-workflow`, and notes that
+  marketplace files are not written automatically.
+
+Commands/tests run:
+
+```bash
+chmod +x scripts/sync_plugin_wrapper.sh
+bash -n scripts/sync_plugin_wrapper.sh
+scripts/sync_plugin_wrapper.sh
+scripts/sync_plugin_wrapper.sh --yes
+bash -n scripts/sync_plugin_wrapper.sh
+scripts/sync_plugin_wrapper.sh
+scripts/sync_plugin_wrapper.sh --yes
+bash -n scripts/*.sh
+/data9/home/qgzeng/anaconda3/bin/python /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .
+/data9/home/qgzeng/anaconda3/bin/python /data9/home/qgzeng/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/bio-workflow
+claude plugin validate plugins/bio-workflow
+scripts/sync_plugin_wrapper.sh
+git diff --check
+find plugins/bio-workflow -maxdepth 4 -type f
+git status --short
+```
+
+Current conclusion:
+
+- Source skill validation passed.
+- Codex plugin validation passed for `plugins/bio-workflow`.
+- Claude plugin validation passed for `plugins/bio-workflow`.
+- `scripts/sync_plugin_wrapper.sh` dry-run after the write showed no remaining
+  plugin-wrapper content drift after the final exclusion-rule update.
+- Shell syntax checks passed for root `scripts/*.sh`.
+- `git diff --check` passed.
+- No SLURM jobs were submitted, cancelled, or modified.
+
+Caveats:
+
+- No user-level or repo-level Codex or Claude marketplace file was created or
+  modified. The wrapper is validation-ready, but not marketplace-published.
+- The plugin wrapper intentionally duplicates the raw skill into
+  `plugins/bio-workflow/skills/bio-workflow/`; refresh it with
+  `scripts/sync_plugin_wrapper.sh --yes` after source changes.
+- Existing uncommitted edits from the prior startup/sync pass remain in the same
+  working tree (`SKILL.md`, `README.md`, `HANDOFF.md`, and `scripts/sync_install.sh`).
+- The current shell's default `python3` lacks `yaml`; validation used
+  `/data9/home/qgzeng/anaconda3/bin/python`.
+
+Next steps:
+
+- Review and commit the intended changes together.
+- If marketplace publication is desired later, add a separate, reviewed
+  marketplace entry that points at `./plugins/bio-workflow`; do not silently
+  write `~/.agents/plugins/marketplace.json`.
+- If marketplace publication is desired for Claude Code later, add a separate,
+  reviewed marketplace/setup path; current testing is via
+  `claude --plugin-dir plugins/bio-workflow`.
+
+## Latest Update - 2026-06-19: Codex/Claude Startup Split and Codex Sync Helper
+
+Purpose: adapt the `bio-workflow` skill so Codex and Claude Code load their
+own project-context files, and add a guarded helper for keeping the Codex
+runtime skill copy synchronized with this source directory.
+
+Key changes:
+
+- `SKILL.md`: startup now branches by active agent surface. Codex reads
+  `/data9/home/qgzeng/.codex/memories/user_output_format_preferences.md`,
+  `/data9/home/qgzeng/.codex/memories/slurm_preferences.md`, and the nearest
+  `AGENTS.md`; Claude Code reads the nearest `CLAUDE.md`.
+- `SKILL.md`: permission/project-rule language now names the active agent's
+  rule file explicitly: `AGENTS.md` for Codex and `CLAUDE.md` for Claude Code.
+- `scripts/sync_install.sh`: new guarded source-to-Codex-runtime sync helper.
+  It defaults to dry-run, validates with `quick_validate.py`, writes only with
+  `--yes`, excludes source-local directories, and restricts the target to
+  `/data9/home/qgzeng/.codex/skills/*`.
+- `README.md`: maintenance commands now include `scripts/sync_install.sh` dry-run
+  and `scripts/sync_install.sh --yes`.
+
+Commands/tests run:
+
+```bash
+chmod +x scripts/sync_install.sh
+bash -n scripts/sync_install.sh
+bash -n scripts/*.sh
+/data9/home/qgzeng/anaconda3/bin/python /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .
+scripts/sync_install.sh
+scripts/sync_install.sh --yes
+/data9/home/qgzeng/anaconda3/bin/python /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py /data9/home/qgzeng/.codex/skills/bio-workflow
+/data9/home/qgzeng/anaconda3/bin/python /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py /data9/home/qgzeng/.claude/skills/bio-workflow
+diff -qr --exclude=.git --exclude=.claude --exclude=.codex --exclude=.agents --exclude=tmp --exclude=__pycache__ . /data9/home/qgzeng/.codex/skills/bio-workflow
+git status --short
+```
+
+Current conclusion:
+
+- Source skill validation passed.
+- Installed Codex runtime skill validation passed.
+- Claude Code skill path validation passed through the existing
+  `~/.claude/skills/bio-workflow` symlink.
+- `scripts/sync_install.sh --yes` synchronized the source tree to
+  `/data9/home/qgzeng/.codex/skills/bio-workflow`; a subsequent dry-run showed
+  no remaining content changes to sync at that time. This handoff refresh was
+  included in a follow-up runtime sync before closing the turn.
+- No SLURM jobs were submitted, cancelled, or modified.
+
+Caveats:
+
+- The current shell's default `python3` lacks `yaml`; validation used
+  `/data9/home/qgzeng/anaconda3/bin/python`.
+- The working tree still has uncommitted source edits: `README.md`, `SKILL.md`,
+  and new `scripts/sync_install.sh`, plus this handoff update.
+
+Next steps:
+
+- Review and commit the intended changes when ready.
+- Run `scripts/sync_install.sh` before future final handoff checks; add `--yes`
+  when the Codex runtime copy should be updated.
+- Keep Claude Code using the symlinked source skill unless a separate packaged
+  Claude distribution is intentionally needed.
 
 ## Latest Update - 2026-06-19: Commit and Push Completed
 

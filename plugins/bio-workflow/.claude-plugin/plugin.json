@@ -1,0 +1,21 @@
+{
+  "name": "bio-workflow",
+  "displayName": "Bio-workflow",
+  "version": "0.1.0",
+  "description": "Claude Code plugin wrapper for qgzeng's SLURM bioinformatics workflow skill.",
+  "author": {
+    "name": "Qgzeng Bio",
+    "url": "https://github.com/Qgzeng-Bio"
+  },
+  "homepage": "https://github.com/Qgzeng-Bio/Bio-workflow",
+  "repository": "https://github.com/Qgzeng-Bio/Bio-workflow",
+  "license": "UNLICENSED",
+  "keywords": [
+    "bioinformatics",
+    "slurm",
+    "workflow",
+    "claude-code",
+    "qgzeng"
+  ],
+  "skills": "./skills/"
+}

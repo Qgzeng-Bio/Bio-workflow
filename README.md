@@ -114,6 +114,95 @@ acceptance gates (exit code 0 ≠ success).
   (`$RM`, `eval`, `bash -c "…"`); the real protection is filesystem permissions plus the
   confirmation gate.
 
+## Plugin wrapper install
+
+The raw skill install remains the recommended path for daily use because Codex and Claude Code
+can share one source checkout:
+
+```bash
+mkdir -p ~/agent-skills ~/.codex/skills ~/.claude/skills
+git clone https://github.com/Qgzeng-Bio/Bio-workflow.git ~/agent-skills/bio-workflow
+ln -sfn ~/agent-skills/bio-workflow ~/.codex/skills/bio-workflow
+ln -sfn ~/agent-skills/bio-workflow ~/.claude/skills/bio-workflow
+```
+
+The repo also includes an optional plugin wrapper at `plugins/bio-workflow/`.
+It contains both Codex and Claude Code manifests:
+
+```text
+plugins/bio-workflow/
+├── .codex-plugin/plugin.json
+├── .claude-plugin/plugin.json
+└── skills/bio-workflow/
+```
+
+The wrapper packages a synchronized copy of the raw skill under
+`plugins/bio-workflow/skills/bio-workflow/` for future marketplace or team distribution.
+It is a distribution layer only; do not edit the copied skill by hand.
+
+Refresh the plugin wrapper from the raw skill source with:
+
+```bash
+scripts/sync_plugin_wrapper.sh          # dry-run
+scripts/sync_plugin_wrapper.sh --yes    # write wrapper copy and validate plugin
+```
+
+Validate the wrapper directly with:
+
+```bash
+/data9/home/qgzeng/anaconda3/bin/python \
+  /data9/home/qgzeng/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py \
+  plugins/bio-workflow
+claude plugin validate plugins/bio-workflow
+```
+
+This repository does not write `~/.agents/plugins/marketplace.json` automatically.
+To expose the wrapper through a personal Codex marketplace, point a marketplace entry named
+`bio-workflow` at `./plugins/bio-workflow` and then install it from that marketplace, for example
+`codex plugin add bio-workflow@personal` after the entry exists.
+
+## Internal beta marketplace
+
+For trusted testers, this repo includes marketplace manifests without publishing to a public
+registry:
+
+```text
+.agents/plugins/marketplace.json      # Codex marketplace
+.claude-plugin/marketplace.json       # Claude Code marketplace
+```
+
+The marketplace name is `qgzeng-bio-beta`. After cloning a reviewed branch or tag, testers can add
+the local checkout as a marketplace and install the plugin:
+
+```bash
+git clone https://github.com/Qgzeng-Bio/Bio-workflow.git ~/agent-marketplaces/bio-workflow
+
+codex plugin marketplace add ~/agent-marketplaces/bio-workflow
+codex plugin add bio-workflow@qgzeng-bio-beta
+
+claude plugin marketplace add ~/agent-marketplaces/bio-workflow
+claude plugin install bio-workflow@qgzeng-bio-beta
+```
+
+This is intended for private beta testing only. Share a branch, tag, or private repository access
+with testers instead of submitting to public Codex or Claude marketplaces. Testers should start with
+read-only checks, dry-runs, and script review before any real `sbatch`, install, download, or
+overwrite action.
+
+For Claude Code local testing without publishing a marketplace, launch Claude from the repo root
+with:
+
+```bash
+claude --plugin-dir plugins/bio-workflow
+```
+
+The plugin skill is namespaced as `/bio-workflow:bio-workflow`. Run `/reload-plugins` after
+editing plugin metadata or non-skill plugin components.
+
+This skill is server-specific. It assumes `/data9/home/qgzeng/`, the local SLURM partitions and
+QOS, qgzeng protected paths, and the C quinoa workflow policy. External users should adapt those
+paths and resource rules before installing it as a plugin.
+
 ## Maintenance
 
 `SKILL.md` is the source of truth; validate after changes:
@@ -121,6 +210,10 @@ acceptance gates (exit code 0 ≠ success).
 ```bash
 bash -n scripts/*.sh                             # shell syntax
 python3 .../skill-creator/scripts/quick_validate.py .   # needs a python with PyYAML
+scripts/sync_install.sh                          # dry-run Codex runtime sync
+scripts/sync_install.sh --yes                    # write Codex runtime sync
+scripts/sync_plugin_wrapper.sh                   # dry-run Codex plugin-wrapper sync
+scripts/sync_plugin_wrapper.sh --yes             # write and validate plugin wrapper
 ```
 
 For `slurm_preflight.sh` changes, test at least one passing and one failing script before

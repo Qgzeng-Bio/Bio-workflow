@@ -1,0 +1,38 @@
+{
+  "name": "bio-workflow",
+  "version": "0.1.0",
+  "description": "Codex plugin wrapper for qgzeng's SLURM bioinformatics workflow skill.",
+  "author": {
+    "name": "Qgzeng Bio",
+    "url": "https://github.com/Qgzeng-Bio"
+  },
+  "homepage": "https://github.com/Qgzeng-Bio/Bio-workflow",
+  "repository": "https://github.com/Qgzeng-Bio/Bio-workflow",
+  "license": "UNLICENSED",
+  "keywords": [
+    "bioinformatics",
+    "slurm",
+    "workflow",
+    "codex-skill",
+    "qgzeng"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Bio-workflow",
+    "shortDescription": "qgzeng SLURM bioinformatics workflow skill.",
+    "longDescription": "A Codex plugin wrapper around the bio-workflow skill for qgzeng's /data9 SLURM server. It is not a generic bioinformatics toolkit; adapt paths, QOS, protected directories, and cluster policy before using it elsewhere.",
+    "developerName": "Qgzeng Bio",
+    "category": "Productivity",
+    "capabilities": [
+      "Planning",
+      "Validation",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use bio-workflow to resume and validate a SLURM workflow.",
+      "Use bio-workflow to review this sbatch script before submission.",
+      "Use bio-workflow to onboard a bioinformatics tool safely."
+    ],
+    "brandColor": "#2E8B57"
+  }
+}

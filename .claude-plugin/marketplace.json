@@ -1,0 +1,30 @@
+{
+  "name": "qgzeng-bio-beta",
+  "owner": {
+    "name": "Qgzeng Bio"
+  },
+  "description": "Internal beta marketplace for qgzeng's server-specific bioinformatics workflow plugins.",
+  "version": "0.1.0",
+  "plugins": [
+    {
+      "name": "bio-workflow",
+      "source": "./plugins/bio-workflow",
+      "displayName": "Bio-workflow",
+      "description": "qgzeng /data9 SLURM bioinformatics workflow skill.",
+      "author": {
+        "name": "Qgzeng Bio"
+      },
+      "homepage": "https://github.com/Qgzeng-Bio/Bio-workflow",
+      "repository": "https://github.com/Qgzeng-Bio/Bio-workflow",
+      "license": "UNLICENSED",
+      "keywords": [
+        "bioinformatics",
+        "slurm",
+        "workflow",
+        "claude-code",
+        "qgzeng"
+      ],
+      "category": "bioinformatics"
+    }
+  ]
+}
