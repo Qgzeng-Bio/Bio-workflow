@@ -13,11 +13,15 @@ Plan and execute reproducible bioinformatics work on qgzeng's server without was
 
 Before substantive work:
 
-1. Read `/data9/home/qgzeng/.codex/memories/user_output_format_preferences.md`.
-2. Read `/data9/home/qgzeng/.codex/memories/slurm_preferences.md`.
-3. Read the nearest `AGENTS.md` in the current directory or parent directories.
-4. If any required file is missing, state the missing item briefly and continue with available context.
-5. Reply according to `user_output_format_preferences.md`; if it has no stronger preference, Chinese is the default for this user.
+1. Identify the active agent surface from the system/developer context, available CLI identity, or explicit user wording.
+2. If using Codex, read:
+   - `/data9/home/qgzeng/.codex/memories/user_output_format_preferences.md`
+   - `/data9/home/qgzeng/.codex/memories/slurm_preferences.md`
+   - the nearest `AGENTS.md` in the current directory or parent directories
+3. If using Claude Code, read the nearest `CLAUDE.md` in the current directory or parent directories.
+4. If the active agent is unclear, state that briefly and continue without loading agent-specific memory files by default.
+5. If any required file for the active agent is missing or unreadable, state the missing item briefly and continue with available context.
+6. Reply according to loaded output preferences; if they have no stronger preference, Chinese is the default for this user.
 
 ## Server safety boundaries
 
@@ -38,7 +42,7 @@ Treat `admin2` as a login/admin node. On `admin2`, run only planning, script edi
 
 ## Permission and confirmation rules
 
-Always apply the nearest `AGENTS.md` first. If it requires write disclosure or confirmation, follow it even for low-risk project files. If no applicable `AGENTS.md` adds stricter limits, use these defaults.
+Always apply the active agent's nearest project rule file first: `AGENTS.md` for Codex and `CLAUDE.md` for Claude Code. If it requires write disclosure or confirmation, follow it even for low-risk project files. If no applicable agent-specific project rule file adds stricter limits, use these defaults.
 
 Low-risk actions inside the working project:
 
@@ -83,7 +87,7 @@ Keep `SKILL.md` as the routing hub. Load detailed references only when their tas
 - `references/resume-protocol.md`: use when taking over, checking, recovering, or validating an existing project. It defines project states, forbidden actions, and the `workflow_status.tsv` contract.
 - `references/software-resource-cards.md`: use when estimating resources or writing commands for known tools. It gives per-tool modes, memory drivers, parallelism, red flags, and acceptance notes.
 - `references/resource-feedback.md`: use for CPU/memory sizing, pilot or benchmark interpretation, partition choice, array concurrency, resource down-tuning, and serial-to-array audits. It supports `scripts/resource_usage_audit.sh` and `scripts/parallelization_audit.sh`.
-- `references/executor-safety.md`: use for SLURM generation, preflight, submit gates, chunked array submission, array templates, and run recording. It supports `scripts/gen_sbatch.sh`, `scripts/slurm_preflight.sh`, `scripts/prepare_submission.sh`, `scripts/submit_and_log.sh`, and `scripts/submit_chunked.sh`.
+- `references/executor-safety.md`: use for SLURM generation, conda activation PATH guards, preflight, submit gates, chunked array submission, array templates, and run recording. It supports `scripts/gen_sbatch.sh`, `scripts/slurm_preflight.sh`, `scripts/prepare_submission.sh`, `scripts/submit_and_log.sh`, and `scripts/submit_chunked.sh`.
 - `references/validation-checklists.md`: use before interpreting completed results, before figures, before SLURM submission, after failures, and when a task has domain-specific acceptance gates.
 - `references/operations-reporting.md`: use for failure monitoring details, raw-data downloads, qp mode, and plotting/reporting handoff details.
 - `references/result-manifest-schema.md`, `references/interpretation-rules.tsv`, and `references/project-anchors.yaml`: use with `scripts/check_result_contract.py` when a result claim may affect a paper, downstream biology, or decision.
@@ -347,7 +351,7 @@ Use job arrays for independent samples, but always set a concurrency cap such as
 Read `references/executor-safety.md` when generating or reviewing SLURM scripts. Prefer:
 
 ```bash
-scripts/gen_sbatch.sh --job-name NAME --cpus N --mem SIZE --log-dir ABS_DIR [--partition P] [--array RANGE] [--manifest FILE] [--cmd 'COMMAND'] [--out FILE]
+scripts/gen_sbatch.sh --job-name NAME --cpus N --mem SIZE --log-dir ABS_DIR [--partition P] [--array RANGE] [--manifest FILE] [--cmd 'COMMAND'] [--conda-env ENV [--conda-check pysam]] [--out FILE]
 ```
 
 Preserve:
@@ -356,6 +360,7 @@ Preserve:
 - absolute `%j_%x` logs
 - CPU forwarding through `THREADS=${SLURM_CPUS_PER_TASK}`
 - protected-path guards
+- conda activation PATH guard + python self-check when a conda env is used (or `gen_sbatch.sh --conda-env`)
 - full stderr and `/usr/bin/time -v` logs
 - clear rerun behavior
 - no default `#SBATCH --time`
@@ -437,7 +442,7 @@ Read `references/operations-reporting.md` and `references/validation-checklists.
 When slimming or reorganizing this skill, preserve behavior before reducing line count. A change is not acceptable if it weakens any of these:
 
 - trigger coverage in the frontmatter `description`
-- startup memory and `AGENTS.md` checks
+- agent-specific startup memory and project-rule checks
 - narrow-scan policy and login/admin node limits
 - protected path rules for `/data9/home/qgzeng/data/` and `/data9/home/qgzeng/tools/`
 - user confirmation before `sbatch`, `scancel`, resubmission, install, large download, high-resource work, overwrite, or protected write
@@ -465,7 +470,13 @@ python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_val
 
 Run `bash -n` for bundled shell script changes. For `scripts/slurm_preflight.sh`, test at least one passing script and one failing script before trusting rule changes. After editing program cards or registry, run `python3 scripts/validate_program_cards.py` and `python3 scripts/validate_program_cards.py --check-drafts`.
 
-After source edits that should affect Codex runtime behavior, sync the installed copy at `/data9/home/qgzeng/.codex/skills/bio-workflow` and validate both source and installed skill. Use `diff -qr` to confirm only source-local development directories differ.
+After source edits that should affect Codex runtime behavior, sync the installed copy at `/data9/home/qgzeng/.codex/skills/bio-workflow` with:
+
+```bash
+scripts/sync_install.sh --yes
+```
+
+The script validates source and installed skill and reports the remaining source-vs-installed differences.
 
 ## Default response shape
 

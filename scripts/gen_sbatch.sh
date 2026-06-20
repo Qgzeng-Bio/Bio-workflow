@@ -35,6 +35,8 @@ Options:
                        slurm_preflight.sh will WARN on, not silently PASS)
   --out FILE           write here (non-protected); refuses to overwrite without --force
   --force              allow overwriting --out
+  --conda-env ENV      activate this conda env with a PATH guard + python landing check
+  --conda-check M1,M2  comma-separated modules to import-check after activate (needs --conda-env)
   -h, --help           show this help
 
 Exit codes: 0=generated (preflight passed)  1=generation/preflight blocked  2=usage error
@@ -44,6 +46,7 @@ USAGE
 job_name=""; cpus=""; mem=""; log_dir=""; partition="normal"
 array=""; manifest=""; cmd=""; chdir=""; walltime=""; allow_time=0
 out=""; force=0
+conda_env=""; conda_check=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -60,6 +63,8 @@ while [[ $# -gt 0 ]]; do
         --allow-time) allow_time=1; shift ;;
         --out)      [[ $# -ge 2 ]] || { echo "ERROR | --out requires a value" >&2; exit 2; }; out="$2"; shift 2 ;;
         --force)    force=1; shift ;;
+        --conda-env)   [[ $# -ge 2 ]] || { echo "ERROR | --conda-env requires a value" >&2; exit 2; }; conda_env="$2"; shift 2 ;;
+        --conda-check) [[ $# -ge 2 ]] || { echo "ERROR | --conda-check requires a value" >&2; exit 2; }; conda_check="$2"; shift 2 ;;
         -h|--help)  usage; exit 0 ;;
         *)          echo "ERROR | Unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -93,6 +98,14 @@ case "$partition" in
     normal|debug|fat|fat2|high) ;;
     *) echo "ERROR | --partition must be normal|debug|fat|fat2|high: $partition" >&2; exit 2 ;;
 esac
+
+if [[ -n "$conda_env" ]]; then
+    [[ "$conda_env" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "ERROR | --conda-env name looks unsafe (allowed: A-Za-z0-9._-): $conda_env" >&2; exit 2; }
+fi
+if [[ -n "$conda_check" ]]; then
+    [[ -n "$conda_env" ]] || { echo "ERROR | --conda-check requires --conda-env" >&2; exit 2; }
+    [[ "$conda_check" =~ ^[A-Za-z0-9._,]+$ ]] || { echo "ERROR | --conda-check must be comma-separated module names (A-Za-z0-9._): $conda_check" >&2; exit 2; }
+fi
 
 [[ "$log_dir" == /* ]] || { echo "ERROR | --log-dir must be an absolute path: $log_dir" >&2; exit 2; }
 _ld="$(resolve_safe "${log_dir%/}")" || { echo "ERROR | --log-dir 无法安全规范化 (realpath 不可用或路径含 ..): $log_dir" >&2; exit 2; }
@@ -146,6 +159,25 @@ trap 'rm -f "$tmp"' EXIT
     fi
     echo ''
     echo 'set -euo pipefail'
+    if [[ -n "$conda_env" ]]; then
+        echo ''
+        echo '# --- conda activation (PATH-guard hardened; see slurm_preflight check_conda_activation) ---'
+        echo '# set -u relaxed around activate.d hooks (they read unbound vars); restored after.'
+        echo 'set +u'
+        echo 'source "$(conda info --base)/etc/profile.d/conda.sh"'
+        echo "conda activate $conda_env"
+        echo 'set -u'
+        echo '# Pin the activated env bin to the FRONT of PATH: defends against a polluted'
+        echo '# PATH (an env-exporting parent + sbatch --export=ALL) that conda activate cannot evict.'
+        echo 'export PATH="$CONDA_PREFIX/bin:$PATH"'
+        echo '# Landing assertion: fail in ~1s if python does not resolve inside this env.'
+        echo 'command -v python >/dev/null 2>&1 || { echo "[FATAL] python not found after conda activate" >&2; exit 1; }'
+        echo 'case "$(command -v python)" in "$CONDA_PREFIX"/bin/*) : ;; *) echo "[FATAL] python resolves outside $CONDA_PREFIX: $(command -v python)" >&2; exit 1 ;; esac'
+        if [[ -n "$conda_check" ]]; then
+            echo "# Fail-fast import self-check of key modules ($conda_check)."
+            echo "python -c 'import sys; [__import__(m) for m in \"$conda_check\".split(\",\")]' || { echo \"[FATAL] import self-check failed for: $conda_check\" >&2; exit 1; }"
+        fi
+    fi
     echo ''
     echo 'echo "[INFO] Job started | Host: $(hostname) | Time: $(date)"'
     echo 'echo "[INFO] Job ID: ${SLURM_JOB_ID:-NA} | Partition: ${SLURM_JOB_PARTITION:-NA}"'

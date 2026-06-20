@@ -103,6 +103,9 @@ snippets. Do not treat a zero exit code as enough.
 - Include a `🧮 资源判断` for CPU, memory, partition, array concurrency, and
   whether the request fits the tool/input scale.
 - Script uses strict mode: `set -euo pipefail` or equivalent.
+- If the script uses `conda activate`, it pins the env bin to PATH front
+  (`export PATH="$CONDA_PREFIX/bin:$PATH"`) and self-checks python/key modules with
+  a fail-fast guard, unless marked `# ALLOW_NO_PATH_GUARD`.
 - Log paths are absolute and include `%j` or `%x`.
 - `#SBATCH --output`, `#SBATCH --error`, and `#SBATCH --chdir` do not target protected
   raw-data or tool directories.

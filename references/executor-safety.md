@@ -74,6 +74,31 @@ echo "[INFO] CPUs: ${SLURM_CPUS_PER_TASK:-NA} | Workdir: $(pwd)"
 
 Do not include `#SBATCH --time` in this skeleton.
 
+## Conda environment activation
+
+`sbatch` defaults to `--export=ALL`, so the job inherits the submitting shell's
+PATH. If a parent process bare-exported a conda env's `bin` to the front of PATH
+(common when an agent runs inside its own env), `conda activate <env>` updates
+`CONDA_PREFIX` but cannot evict that foreign `bin` — `python` and tools then
+resolve to the wrong env and crash on import. Guard every in-script activation:
+
+```bash
+set +u                                            # activate.d hooks read unbound vars under set -u
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate <env>
+set -u
+export PATH="$CONDA_PREFIX/bin:$PATH"             # pin this env's bin to the FRONT of PATH
+command -v python >/dev/null 2>&1 || { echo "[FATAL] python not found after activate" >&2; exit 1; }
+case "$(command -v python)" in "$CONDA_PREFIX"/bin/*) : ;; *) echo "[FATAL] python outside $CONDA_PREFIX" >&2; exit 1 ;; esac
+# python -c 'import pysam' || { echo "[FATAL] key module missing" >&2; exit 1; }   # add for tools that import
+```
+
+`slurm_preflight.sh` (`check_conda_activation`) WARNs on an activation that lacks
+the PATH guard or the self-check. Generate a compliant block with
+`gen_sbatch.sh --conda-env <env> [--conda-check pysam]`. When the job genuinely
+does not resolve via PATH (absolute-path binaries, or `conda run -n <env>`), add
+a `# ALLOW_NO_PATH_GUARD` comment to the script to waive the rule.
+
 ## Workflow engines
 
 For Nextflow, Snakemake, WDL/Cromwell, or similar workflow engines, do not judge

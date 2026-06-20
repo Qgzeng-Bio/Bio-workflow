@@ -305,6 +305,73 @@ check_kmeria_static() {
     fi
 }
 
+check_conda_activation() {
+    # Only the in-shell `... activate <env>` form is risky. `conda run -n` /
+    # `micromamba run -n` resolve the env themselves and do not rely on PATH.
+    if ! grep_active '(^|[[:space:];&|])(conda|micromamba|mamba)[[:space:]]+activate([[:space:]]|$)'; then
+        pass "No in-shell conda/micromamba activate detected"
+        return
+    fi
+
+    # Explicit waiver, aligned with ALLOW_TIME_DIRECTIVE: still emit a downgraded
+    # WARN so the bypass leaves an auditable trace instead of a silent pass.
+    if grep -Eq '^[[:space:]]*#.*ALLOW_NO_PATH_GUARD' "$script"; then
+        warn "conda activate present with ALLOW_NO_PATH_GUARD marker; verify PATH cannot be shadowed by an externally exported env bin (sbatch --export=ALL pollution)"
+        return
+    fi
+
+    # Scope the guard/self-check to the region AFTER the LAST activation. The PATH
+    # guard must follow the final `conda activate` (it pins that env's $CONDA_PREFIX);
+    # a guard tied to an earlier env must not mask a later unguarded activation
+    # (codex review P2: a multi-activate script would otherwise falsely PASS).
+    local tail_region
+    tail_region="$(awk '
+        BEGIN { IGNORECASE = 1 }
+        /^[[:space:]]*#/ { next }
+        { lines[NR] = $0; if ($0 ~ /(^|[[:space:];&|])(conda|micromamba|mamba)[[:space:]]+activate([[:space:]]|$)/) last = NR }
+        END { for (i = last; i <= NR; i++) if (i in lines) print lines[i] }
+    ' "$script")"
+    region_has() { printf '%s\n' "$tail_region" | grep -Eiq -- "$1"; }
+
+    # Defense 1: a guard that pins the activated env bin to the FRONT of PATH,
+    # in canonical $CONDA_PREFIX/bin form or the equivalent literal envs/<x>/bin form.
+    local has_path_guard=0
+    if region_has 'export[[:space:]]+PATH=["'\'']?\$\{?CONDA_PREFIX\}?/bin:\$\{?PATH\}?' \
+       || region_has 'export[[:space:]]+PATH=["'\'']?[^"'\'' ]*/envs/[^/"'\'' ]+/bin:\$\{?PATH\}?'; then
+        has_path_guard=1
+    fi
+
+    # Defense 2: an activation self-check (command -v python landing assertion,
+    # or a python -c import that can fail-fast).
+    local has_selfcheck=0
+    if region_has 'command[[:space:]]+-v[[:space:]]+python[0-9.]*' \
+       || region_has '(^|[[:space:];&|])(which[[:space:]]+python[0-9.]*|python[0-9.]*[[:space:]]+-c[[:space:]].*import)'; then
+        has_selfcheck=1
+    fi
+
+    if [[ "$has_path_guard" -eq 1 && "$has_selfcheck" -eq 1 ]]; then
+        pass "conda activate has a PATH guard (\$CONDA_PREFIX/bin front) and a self-check after the last activation"
+        return
+    fi
+
+    # High-risk subcase: a bare PATH-resolved python after the last activation with
+    # no guard (the exact shape that crashed). Absolute-path python is excluded — it
+    # does not rely on PATH — so it is not escalated.
+    local bare_python=0
+    if region_has '(^|[[:space:];&|`(]|[[:space:]])(/usr/bin/time[[:space:]]+-v[[:space:]]+)?python[0-9.]*([[:space:]]|$)' \
+       && ! region_has '/(bin|envs/[^/ ]+/bin)/python[0-9.]*([[:space:]]|$)'; then
+        bare_python=1
+    fi
+
+    if [[ "$has_path_guard" -eq 0 && "$bare_python" -eq 1 ]]; then
+        warn "conda activate is followed by a PATH-resolved python with NO PATH guard; a polluted PATH (sbatch --export=ALL from an env-exporting agent) runs the wrong python and crashes on import. Add export PATH=\"\$CONDA_PREFIX/bin:\$PATH\" plus a command -v python assertion, or mark # ALLOW_NO_PATH_GUARD if python is unused/absolute"
+    elif [[ "$has_path_guard" -eq 0 ]]; then
+        warn "conda activate without an explicit PATH guard; if this job resolves python/tools via PATH it can pick a foreign env's bin (sbatch --export=ALL pollution). Add export PATH=\"\$CONDA_PREFIX/bin:\$PATH\" after activate, or mark # ALLOW_NO_PATH_GUARD"
+    else
+        warn "conda activate has a PATH guard but no activation self-check; add a command -v python landing assertion or a fail-fast import so a bad env fails in ~1s, not mid-run"
+    fi
+}
+
 big_command_pattern='(^|[[:space:]/])(minimap2|bwa|hisat2|STAR|samtools[[:space:]]+sort|hifiasm|orthofinder|braker[.]pl|braker|maker|EDTA[.]pl|RepeatModeler|RepeatMasker|syri|plotsr|nucmer|delta-filter|show-coords|juicer|3d-dna|run-asm-pipeline|busco|quast|gatk|bcftools|fastp|featureCounts|diamond|blastn|blastp|hmmsearch|hmmscan|cmscan|PanGenie|kmeria)([[:space:]]|$)'
 hite_command_pattern='(panHiTE[.]nf|panHiTE[.]py|HiTE[/][^[:space:]]*main[.]py|--use_HybridLTR|--use_NeuralTE|--is_denovo_nonltr)'
 hite_invocation_pattern='^[[:space:]]*((/usr/bin/time[[:space:]]+-v[[:space:]]+)?python[0-9.]*[[:space:]][^#;|&]*(main[.]py|panHiTE[.]py)|nextflow[[:space:]]+run[[:space:]].*(panHiTE[.]nf|[$][{]?HITE_DIR[}]?[/]panHiTE[.]nf))'
@@ -580,6 +647,7 @@ fi
 
 check_protected_paths
 check_kmeria_static
+check_conda_activation
 
 if grep_active '(^|[[:space:]])(proxychains|http_proxy|https_proxy|all_proxy|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY)([[:space:]=]|$)'; then
     warn "External proxy pattern found; do not use proxies for raw-data downloads without confirmation"
