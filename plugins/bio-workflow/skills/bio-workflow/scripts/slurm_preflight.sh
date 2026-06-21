@@ -81,6 +81,15 @@ fail() {
     fail_count=$((fail_count + 1))
 }
 
+value_is_protected() {
+    # Protected = the current user's own data/tools, plus any /data9/home/<user>/data|tools.
+    local p="${1%/}" home="${HOME%/}"
+    [[ "$p" == "$home/data" || "$p" == "$home/data"/* \
+       || "$p" == "$home/tools" || "$p" == "$home/tools"/* ]] && return 0
+    [[ "$p" =~ ^/data9/home/[^/]+/(data|tools)(/.*)?$ ]] && return 0
+    return 1
+}
+
 strip_inline_comment() {
     local line="$1"
     printf '%s\n' "${line%%#*}"
@@ -206,7 +215,7 @@ check_log_path() {
     clean_value="${clean_value#\"}"
     clean_value="${clean_value%\'}"
     clean_value="${clean_value#\'}"
-    if [[ "$clean_value" == /data9/home/qgzeng/data || "$clean_value" == /data9/home/qgzeng/data/* || "$clean_value" == /data9/home/qgzeng/tools || "$clean_value" == /data9/home/qgzeng/tools/* ]]; then
+    if value_is_protected "$clean_value"; then
         fail "#SBATCH $label writes to protected path: $clean_value"
     elif [[ "$clean_value" == /* ]]; then
         pass "#SBATCH $label uses an absolute path: $value"
@@ -231,7 +240,7 @@ check_sbatch_chdir() {
     clean_value="${clean_value#\"}"
     clean_value="${clean_value%\'}"
     clean_value="${clean_value#\'}"
-    if [[ "$clean_value" == /data9/home/qgzeng/data || "$clean_value" == /data9/home/qgzeng/data/* || "$clean_value" == /data9/home/qgzeng/tools || "$clean_value" == /data9/home/qgzeng/tools/* ]]; then
+    if value_is_protected "$clean_value"; then
         fail "#SBATCH --chdir targets protected path: $clean_value"
     else
         pass "#SBATCH --chdir does not target a protected path: $clean_value"
@@ -274,20 +283,44 @@ check_pipefail_preview_pipelines() {
 }
 
 check_protected_paths() {
-    local path lines write_pattern
-    write_pattern='(^|[[:space:];|])(cp|mv|rm|rsync|mkdir|touch|tee|wget|curl|ln|pigz|gzip|bgzip)([[:space:]]|$)|(^|[[:space:]])--?delete([[:space:]]|$)|(^|[^<])>>?|--out([^[:alnum:]_-]|$)|--output([^[:alnum:]_-]|$)|--output=|-o[[:space:]]+|-O[[:space:]]+|--prefix|--dir|--tmp|--temp'
-    for path in "/data9/home/qgzeng/data/" "/data9/home/qgzeng/tools/"; do
-        # check EVERY active reference, not just the first: a later write/delete must
-        # not be masked by an earlier read of the same protected path.
-        lines="$(awk '/^[[:space:]]*#/ { next } { print }' "$script" | grep -F -- "$path" || true)"
-        if [[ -z "$lines" ]]; then
-            pass "No active reference to protected path: $path"
-        elif printf '%s\n' "$lines" | grep -Eiq -- "$write_pattern"; then
-            fail "Protected path appears in a write-like/delete command: $path"
-        else
-            warn "Protected path is referenced; verify it is read-only input: $path"
-        fi
-    done
+    local refs home_esc unexp core cb write_target
+    home_esc="$(printf '%s' "${HOME%/}" | sed -E 's/[][(){}.^$*+?|\\]/\\&/g')"
+    # A protected data/tools dir = the current user's ~/data|tools, ANY account's
+    # /data9/home/<user>/data|tools, or the unexpanded ~ / $HOME / ${HOME...} forms
+    # (the shell expands those only at run time). ${HOME[^}]*} covers ${HOME},
+    # ${HOME%/}, ${HOME:-x}. Static scan: indirect expansion via another variable
+    # cannot be caught here — slurm_preflight is a heuristic, not a sandbox.
+    # ~user (named tilde, e.g. ~alice/data -> /data9/home/alice/data) as well as bare
+    # ~. A quote may sit between HOME and the path, e.g. "$HOME"/data or "${HOME}"/tools.
+    unexp="(~[a-zA-Z0-9_.-]*|[\$]HOME|[\$][{]HOME[^}]*[}])[\"']?/(data|tools)"
+    core="(/data9/home/[^/]+/(data|tools)|${home_esc}/(data|tools)|${unexp})"
+    # core + a name boundary (end or a non-name char). Excludes alnum _ . - so
+    # ".../datax", ".../data-backup", "~/tools-v2" do NOT match value_is_protected.
+    cb="${core}(\$|[^[:alnum:]_.-])"
+    # FAIL only when a protected path is itself the WRITE/DELETE target; a protected
+    # path used as a read-only INPUT (e.g. --input ~/data/ref.fa --output results/x)
+    # stays a WARN. This is a line-level heuristic — the authoritative blocks on
+    # protected OUTPUT targets are the structured gates on #SBATCH
+    # --output/--error/--chdir, prepare_submission --output and submit_and_log
+    # --record. Write-target signals:
+    #   - redirection or a write-option (-o/--output/--prefix/...) pointing AT it
+    #   - a create/modify/delete/download/compress command naming it as an argument
+    #     (rm/rmdir/shred/unlink/mv/mkdir/touch/tee/wget/curl/pigz/gzip/bgzip/bzip2/xz)
+    #   - cp/rsync/install/ln whose final (target) argument is it
+    write_target="(>>?[[:space:]]*[\"']?${cb}|(-o|-O|-t|--output|--out|--target-directory|--prefix|--dir|--tmp|--temp)(=|[[:space:]]+)[\"']?${cb}|(^|[[:space:];|&])[[:space:]]*(rm|rmdir|shred|unlink|mv|mkdir|touch|tee|wget|curl|pigz|gzip|bgzip|bzip2|xz)([[:space:]][^;|&]*)?[[:space:]][\"']?${cb}|(^|[[:space:];|&])[[:space:]]*(cp|rsync|install|ln)[[:space:]][^;|&]*[[:space:]][\"']?${core}(/[^[:space:]\"';|&]*)?[\"']?([[:space:]]+-[^[:space:]]+)*[[:space:]]*(\$|[;|&]))"
+    # consider EVERY active reference; strip an inline " # comment" tail first so a
+    # protected write target sitting right before a comment is not hidden from the
+    # scan. The " +#" guard leaves ${HOME#...}/URL-fragment '#' (no leading space) intact.
+    refs="$(awk '/^[[:space:]]*#/ { next } { sub(/[[:space:]]+#.*$/, ""); print }' "$script" | grep -E -- "$cb" || true)"
+    if [[ -z "$refs" ]]; then
+        pass "No active reference to a protected data/tools path (own or any /data9/home/*/data|tools)"
+        return
+    fi
+    if printf '%s\n' "$refs" | grep -Eq -- "$write_target"; then
+        fail "Protected data/tools path is a write/delete target (own or another account)"
+    else
+        warn "Protected data/tools path is referenced as a read-only input; verify it is not a write target"
+    fi
 }
 
 check_kmeria_static() {

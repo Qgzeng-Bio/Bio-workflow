@@ -82,9 +82,13 @@ resolve_safe() {  # echo a clean absolute path; FAIL (return 1, no output) if it
     printf '%s\n' "$n"
 }
 is_protected() {
-    local p="${1%/}"
-    [[ "$p" == /data9/home/qgzeng/data || "$p" == /data9/home/qgzeng/data/* \
-       || "$p" == /data9/home/qgzeng/tools || "$p" == /data9/home/qgzeng/tools/* ]]
+    # Protected = the current user's own data/tools, plus any /data9/home/<user>/data|tools
+    # (so a multi-user install protects every account's raw-data/tools, not just one).
+    local p="${1%/}" home="${HOME%/}"
+    [[ "$p" == "$home/data" || "$p" == "$home/data"/* \
+       || "$p" == "$home/tools" || "$p" == "$home/tools"/* ]] && return 0
+    [[ "$p" =~ ^/data9/home/[^/]+/(data|tools)(/.*)?$ ]] && return 0
+    return 1
 }
 
 [[ -n "$job_name" ]] || { echo "ERROR | Missing --job-name" >&2; exit 2; }

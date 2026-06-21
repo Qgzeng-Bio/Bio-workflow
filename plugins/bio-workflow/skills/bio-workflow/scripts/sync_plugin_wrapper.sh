@@ -86,8 +86,8 @@ case "$plugin_dir" in
 esac
 [[ "$source_dir" != "$target_skill_dir" ]] || { echo "ERROR | Source and target skill directories are identical" >&2; exit 2; }
 
-skill_validator="/data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py"
-plugin_validator="/data9/home/qgzeng/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py"
+skill_validator="${HOME%/}/.codex/skills/.system/skill-creator/scripts/quick_validate.py"
+plugin_validator="${HOME%/}/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py"
 
 choose_python() {
     local candidate
@@ -100,7 +100,7 @@ choose_python() {
         printf '%s\n' "$python_bin"
         return 0
     fi
-    for candidate in /data9/home/qgzeng/anaconda3/bin/python python3 python; do
+    for candidate in "${HOME%/}/anaconda3/bin/python" python3 python; do
         if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import yaml' >/dev/null 2>&1; then
             command -v "$candidate"
             return 0
@@ -112,15 +112,20 @@ choose_python() {
 
 run_source_validate() {
     [[ "$skip_validate" -eq 0 ]] || return 0
-    [[ -r "$skill_validator" ]] || { echo "ERROR | quick_validate.py not readable: $skill_validator" >&2; exit 2; }
+    # Multi-user: the skill-creator validator lives under each user's own ~/.codex.
+    # If it is absent, warn and skip rather than fail.
+    [[ -r "$skill_validator" ]] || { echo "WARN   | quick_validate.py not found, skipping skill validation: $skill_validator" >&2; return 0; }
     "$python_bin" "$skill_validator" "$source_dir"
 }
 
 run_plugin_validate() {
     [[ "$skip_validate" -eq 0 ]] || return 0
     if [[ -f "$plugin_dir/.codex-plugin/plugin.json" ]]; then
-        [[ -r "$plugin_validator" ]] || { echo "ERROR | validate_plugin.py not readable: $plugin_validator" >&2; exit 2; }
-        "$python_bin" "$plugin_validator" "$plugin_dir"
+        if [[ -r "$plugin_validator" ]]; then
+            "$python_bin" "$plugin_validator" "$plugin_dir"
+        else
+            echo "WARN   | validate_plugin.py not found, skipping Codex plugin validation: $plugin_validator" >&2
+        fi
     fi
     if [[ -f "$plugin_dir/.claude-plugin/plugin.json" ]]; then
         if [[ "$skip_claude_validate" -eq 1 ]]; then
@@ -133,7 +138,11 @@ run_plugin_validate() {
     fi
 }
 
-python_bin="$(choose_python)"
+# Only a validating run needs a PyYAML Python. If validation is skipped or both
+# validators are absent (multi-user / non-Codex install), do not hard-require one.
+if [[ "$skip_validate" -eq 0 && ( -r "$skill_validator" || -r "$plugin_validator" ) ]]; then
+    python_bin="$(choose_python)"
+fi
 
 rsync_args=(
     -a

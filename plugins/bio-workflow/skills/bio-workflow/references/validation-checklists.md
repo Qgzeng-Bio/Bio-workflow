@@ -59,8 +59,8 @@ snippets. Do not treat a zero exit code as enough.
   dictionary, or tool-specific indexes.
 - Sample count, group labels, and paired-end naming match the manifest.
 - Chromosome/scaffold names are compatible across FASTA, BAM, VCF, and annotation.
-- Raw data under `/data9/home/qgzeng/data/` are treated as protected read-only input
-  unless the user explicitly confirms otherwise.
+- Raw data under the user's `~/data/` (and any `/data9/home/*/data`) are treated as
+  protected read-only input unless the user explicitly confirms otherwise.
 
 ## Lightweight environment checklist
 
@@ -116,8 +116,8 @@ snippets. Do not treat a zero exit code as enough.
 - No active `rm -rf` pattern is present unless the user explicitly approved it.
 - No unguarded display-only pipe to `head` is present under `set -euo pipefail`.
 - Stage wrappers keep full stderr/time logs, not only filtered `error` lines.
-- No write-like command targets `/data9/home/qgzeng/data/` or
-  `/data9/home/qgzeng/tools/`.
+- No write-like command targets `~/data/` or `~/tools/`
+  (or any `/data9/home/*/data|tools`).
 - User confirmation is obtained before `sbatch`, resubmission, `scancel`, high-memory,
   long-running, or large-download actions.
 

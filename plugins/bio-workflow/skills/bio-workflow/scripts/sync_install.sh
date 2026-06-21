@@ -11,7 +11,7 @@ Synchronize this source skill into the Codex runtime copy.
 
 Defaults:
   --source  directory above this script
-  --target  /data9/home/qgzeng/.codex/skills/bio-workflow
+  --target  $HOME/.codex/skills/bio-workflow
 
 Behavior:
   - without --yes: dry-run only; prints rsync itemized changes and writes nothing.
@@ -32,7 +32,7 @@ USAGE
 
 do_sync=0
 source_dir=""
-target_dir="/data9/home/qgzeng/.codex/skills/bio-workflow"
+target_dir="${HOME%/}/.codex/skills/bio-workflow"
 python_bin="${PYTHON_BIN:-}"
 skip_validate=0
 
@@ -63,13 +63,14 @@ source_dir="$(resolve_path "$source_dir")"
 target_dir="$(resolve_path "$target_dir")"
 
 [[ -f "$source_dir/SKILL.md" ]] || { echo "ERROR | Source is not a skill directory: $source_dir" >&2; exit 2; }
+home_skills="$(resolve_path "${HOME%/}/.codex/skills")"
 case "$target_dir" in
-    /data9/home/qgzeng/.codex/skills/*) ;;
-    *) echo "ERROR | Target must be under /data9/home/qgzeng/.codex/skills: $target_dir" >&2; exit 2 ;;
+    "$home_skills"/*) ;;
+    *) echo "ERROR | Target must be under $home_skills: $target_dir" >&2; exit 2 ;;
 esac
 [[ "$source_dir" != "$target_dir" ]] || { echo "ERROR | Source and target are identical; refusing to sync" >&2; exit 2; }
 
-validator="/data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py"
+validator="${HOME%/}/.codex/skills/.system/skill-creator/scripts/quick_validate.py"
 
 choose_python() {
     local candidate
@@ -82,7 +83,7 @@ choose_python() {
         printf '%s\n' "$python_bin"
         return 0
     fi
-    for candidate in /data9/home/qgzeng/anaconda3/bin/python python3 python; do
+    for candidate in "${HOME%/}/anaconda3/bin/python" python3 python; do
         if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import yaml' >/dev/null 2>&1; then
             command -v "$candidate"
             return 0
@@ -95,11 +96,17 @@ choose_python() {
 run_validate() {
     local path="$1"
     [[ "$skip_validate" -eq 0 ]] || return 0
-    [[ -r "$validator" ]] || { echo "ERROR | quick_validate.py not readable: $validator" >&2; exit 2; }
+    # Multi-user: the skill-creator validator lives under each user's own ~/.codex.
+    # If it is absent (e.g. a non-Codex install), warn and skip rather than fail.
+    [[ -r "$validator" ]] || { echo "WARN   | quick_validate.py not found, skipping validation: $validator" >&2; return 0; }
     "$python_bin" "$validator" "$path"
 }
 
-python_bin="$(choose_python)"
+# Only a validating run needs a PyYAML Python. If validation is skipped or the
+# validator is absent (multi-user / non-Codex install), do not hard-require one.
+if [[ "$skip_validate" -eq 0 && -r "$validator" ]]; then
+    python_bin="$(choose_python)"
+fi
 
 rsync_args=(
     -a

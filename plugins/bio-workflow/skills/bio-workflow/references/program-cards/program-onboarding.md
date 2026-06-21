@@ -27,7 +27,7 @@ contents. Install proposal format and execution gates are defined in
 
 `install` is the only subcommand that mutates a Conda environment, and it must be
 called with `--yes` against a generated proposal. Network access, Conda env
-mutation, writes under `/data9/home/qgzeng/tools/`, downloads, and SLURM
+mutation, writes under `~/tools/`, downloads, and SLURM
 submission still require explicit user confirmation. Evidence and choice paths
 are project-local by default; `--allow-external-paths` is only for non-install
 smoke tests, and automatic `install` still accepts only a generated proposal
@@ -131,7 +131,7 @@ Before any install or environment mutation, state:
 - risks and rollback limits
 
 Default user-level targets are a named Conda env or a clear directory under
-`/data9/home/qgzeng/tools/`, but writing there still requires confirmation.
+the current user's `~/tools/`, but writing there still requires confirmation.
 
 Default third-version container proposal when an official image exists:
 
@@ -163,7 +163,7 @@ structured command argv are validated again by `install`.
 Stop before:
 
 - installing, updating, or removing tools
-- writing to `/data9/home/qgzeng/tools/`
+- writing to `~/tools/`
 - downloading databases or large reference files
 - submitting SLURM jobs
 - overwriting existing results

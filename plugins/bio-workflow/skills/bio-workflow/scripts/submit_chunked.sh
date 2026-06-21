@@ -112,11 +112,11 @@ resolve_safe() {
 }
 
 protected_write_path() {
-    case "$1" in
-        /data9/home/qgzeng/data|/data9/home/qgzeng/data/*|/data9/home/qgzeng/tools|/data9/home/qgzeng/tools/*)
-            return 0
-            ;;
-    esac
+    # Protected = the current user's own data/tools, plus any /data9/home/<user>/data|tools.
+    local p="${1%/}" home="${HOME%/}"
+    [[ "$p" == "$home/data" || "$p" == "$home/data"/* \
+       || "$p" == "$home/tools" || "$p" == "$home/tools"/* ]] && return 0
+    [[ "$p" =~ ^/data9/home/[^/]+/(data|tools)(/.*)?$ ]] && return 0
     return 1
 }
 

@@ -137,7 +137,7 @@ Hard blockers include:
 - preflight `FAIL`
 - missing or empty inputs
 - header row in bundled-template manifests
-- `--output` under `/data9/home/qgzeng/data` or `/data9/home/qgzeng/tools`
+- `--output` under `~/data` or `~/tools` (or any `/data9/home/*/data|tools`)
 - quota submit-cap overrun
 
 Warnings to acknowledge include preflight `WARN`, resource-sanity WARN, non-empty
@@ -206,6 +206,6 @@ scripts/submit_chunked.sh -s <slurm_script> -N <tasks> -k <chunk_size> -j <cap> 
 It is dry-run by default. With `--yes`, it writes persistent chunk scripts under
 the current project `reports/submitted_scripts/chunked/` by default, or under an
 explicit `--chunk-dir <dir>` when needed. The directory must not be under
-`/data9/home/qgzeng/data/` or `/data9/home/qgzeng/tools/`. Each chunk embeds the
+`~/data/` or `~/tools/` (or any `/data9/home/*/data|tools`). Each chunk embeds the
 actual `#SBATCH --array=start-end%cap` and delegates to `submit_and_log.sh`. It
 must not pass arbitrary sbatch flags or call `sbatch` directly.

@@ -82,4 +82,4 @@ an image until the user confirms a separate execution plan.
 
 Source, binary, GitHub, and container routes are proposal-only in third-version
 onboarding. They require separate review and confirmation before any manual
-installation, download, or write under `/data9/home/qgzeng/tools/`.
+installation, download, or write under `~/tools/`.

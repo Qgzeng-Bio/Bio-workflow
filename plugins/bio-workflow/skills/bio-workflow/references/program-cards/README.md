@@ -85,4 +85,4 @@ If the user cannot identify the input location, ask for one of:
 - a bounded search root, filename pattern, and maxdepth
 
 Do not install software, download databases, mutate Conda environments, or write
-under `/data9/home/qgzeng/tools/` without user confirmation.
+under `~/tools/` without user confirmation.

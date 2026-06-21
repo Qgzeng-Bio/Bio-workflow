@@ -35,15 +35,15 @@ import menu  # noqa: E402  (sys.path tweak above is intentional)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CARD_DRAFT_DIR = REPO_ROOT / "references" / "program-cards" / "drafts"
 PROTECTED_WRITE_ROOTS = (
-    Path("/data9/home/qgzeng/data"),
-    Path("/data9/home/qgzeng/tools"),
+    Path.home() / "data",
+    Path.home() / "tools",
 )
 BROAD_PROJECT_ROOTS = (
     Path("/"),
     Path("/data9"),
     Path("/data9/home"),
-    Path("/data9/home/qgzeng"),
-    Path("/data9/home/qgzeng/projects"),
+    Path.home(),
+    Path.home() / "projects",
 )
 
 SCHEMA_VERSION = "program_onboarding.v3"
@@ -121,7 +121,17 @@ def resolve_under_project(path: Path | str, project_root: Path) -> Path:
 
 def is_protected_write_path(path: Path) -> bool:
     resolved = path.resolve()
-    return any(is_relative_to(resolved, root) for root in PROTECTED_WRITE_ROOTS)
+    if any(is_relative_to(resolved, root) for root in PROTECTED_WRITE_ROOTS):
+        return True
+    # Also protect any account's raw-data/tools on this cluster:
+    # /data9/home/<user>/data[/...] and /data9/home/<user>/tools[/...].
+    parts = resolved.parts
+    return (
+        len(parts) >= 5
+        and parts[1] == "data9"
+        and parts[2] == "home"
+        and parts[4] in {"data", "tools"}
+    )
 
 
 def validate_project_root(path: str | None) -> Path:
@@ -155,7 +165,7 @@ def validate_project_path(
 ) -> Path:
     resolved = path.expanduser().resolve()
     if is_protected_write_path(resolved):
-        raise ValueError(f"{label} must not be under /data9/home/qgzeng/data or /data9/home/qgzeng/tools")
+        raise ValueError(f"{label} must not be under a protected data/tools directory (e.g. ~/data or ~/tools)")
     if allow_external:
         return resolved
     if not is_relative_to(resolved, allowed_root):
@@ -171,7 +181,7 @@ def looks_like_onboarding_bundle(path: Path) -> bool:
 def validate_bundle_dir(bundle: Path, project_root: Path | None = None, allow_external: bool = False) -> Path:
     resolved = bundle.expanduser().resolve()
     if is_protected_write_path(resolved):
-        raise ValueError("evidence dir must not be under /data9/home/qgzeng/data or /data9/home/qgzeng/tools")
+        raise ValueError("evidence dir must not be under a protected data/tools directory (e.g. ~/data or ~/tools)")
     if allow_external:
         return resolved
     if project_root is not None and not is_relative_to(resolved, project_root):
@@ -313,8 +323,8 @@ def onboarding_choice_questions(
                 ChoiceOption(
                     label="User tools long-term install",
                     value="user_tools",
-                    description="Writes under /data9/home/qgzeng/tools and requires explicit confirmation.",
-                    path=f"/data9/home/qgzeng/tools/{key}",
+                    description="Writes under ~/tools and requires explicit confirmation.",
+                    path=str(Path.home() / "tools" / key),
                 ),
                 ChoiceOption(
                     label="Do not install yet",
@@ -1105,7 +1115,7 @@ def plan_install(args: argparse.Namespace) -> int:
         risk_notes = [
             "This source type is proposal-only in program_onboard.py.",
             "Review official installation instructions and confirm target paths before any manual action.",
-            "Do not write under /data9/home/qgzeng/tools/ without separate confirmation.",
+            "Do not write under ~/tools/ without separate confirmation.",
         ]
         network_required = source_type in {"container", "github", "source", "binary"}
 
@@ -1180,7 +1190,7 @@ def load_proposal(path: Path) -> dict[str, Any]:
 def resolve_install_proposal_path(path: Path) -> Path:
     resolved = path.expanduser().resolve()
     if is_protected_write_path(resolved):
-        raise ValueError("proposal path must not be under /data9/home/qgzeng/data or /data9/home/qgzeng/tools")
+        raise ValueError("proposal path must not be under a protected data/tools directory (e.g. ~/data or ~/tools)")
     if resolved.name != "install_proposal.json":
         raise ValueError("proposal path must be named install_proposal.json")
     validate_bundle_dir(resolved.parent)
@@ -1234,8 +1244,9 @@ def validate_conda_proposal(proposal: dict[str, Any]) -> list[str]:
         env_arg = argv[argv.index("-n") + 1] if argv.index("-n") + 1 < len(argv) else ""
         if env_arg != target_env:
             errors.append("Conda command target env does not match proposal target_env")
-    if any("/data9/home/qgzeng/tools/" in part for part in argv):
-        errors.append("automatic install command must not write under /data9/home/qgzeng/tools/")
+    user_tools_prefix = str(Path.home() / "tools")
+    if any(user_tools_prefix in part for part in argv):
+        errors.append("automatic install command must not write under ~/tools/")
     if any(part in {";", "&&", "||", "|", ">", ">>"} for part in argv):
         errors.append("command_argv contains shell control syntax")
 

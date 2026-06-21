@@ -13,8 +13,8 @@ config/ data/ scripts/ logs/ results/ reports/ tmp/
 
 The script prints state candidates and a suggested workflow_status.tsv row.
 It does not write files, submit jobs, cancel jobs, resubmit jobs, or repair outputs.
-Broad roots such as /, /data9, /data9/home/qgzeng, and /data9/home/qgzeng/projects
-are refused; ask the user for a narrower project directory instead.
+Broad roots such as /, /data9, /data9/home, your home directory, and your
+home/projects directory are refused; ask the user for a narrower project directory.
 USAGE
 }
 
@@ -75,13 +75,23 @@ fi
 
 project_abs="$(cd "$project" && pwd -P)"
 
+# Refuse broad roots. Keep the cluster-wide literals, and also refuse the current
+# user's own home and home/projects so a multi-user install protects every account.
+_home_abs="$(cd "${HOME:-/nonexistent}" 2>/dev/null && pwd -P || echo "${HOME%/}")"
 case "$project_abs" in
-    /|/data9|/data9/home|/data9/home/qgzeng|/data9/home/qgzeng/projects)
+    /|/data9|/data9/home|"$_home_abs"|"${_home_abs%/}/projects")
         echo "FAIL | Refusing broad root audit: $project_abs" >&2
         echo "FAIL | Provide a narrower project directory; full-disk or account-wide scans require explicit confirmation." >&2
         exit 1
         ;;
 esac
+# Also refuse ANY account's home or home/projects on this cluster, not just the
+# current user's, so a multi-user install never account-wide-scans a peer's tree.
+if [[ "$project_abs" =~ ^/data9/home/[^/]+(/projects)?$ ]]; then
+    echo "FAIL | Refusing broad account-root audit: $project_abs" >&2
+    echo "FAIL | Provide a narrower project directory; account-wide scans require explicit confirmation." >&2
+    exit 1
+fi
 
 cd "$project_abs"
 

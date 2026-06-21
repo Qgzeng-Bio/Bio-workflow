@@ -17,9 +17,9 @@ Defaults:
   --note    ""
 
 Path safety: --audit must resolve inside this project and must not target
-/data9/home/qgzeng/data or /data9/home/qgzeng/tools. The default audit file
-lives under reports/. --rules / --anchors / --checker may be absolute read-only
-paths.
+a protected data/tools directory (~/data, ~/tools, or any /data9/home/*/data|tools).
+The default audit file lives under reports/. --rules / --anchors / --checker may
+be absolute read-only paths.
 
 Audit TSV schema:
   Timestamp
@@ -71,7 +71,7 @@ done
 # unconditionally and exits 2 with a confusing message if not present. Project
 # convention (HANDOFF) is the anaconda3 interpreter. Caller may force one with --python.
 if [[ -z "$python_bin" ]]; then
-    for cand in /data9/home/qgzeng/anaconda3/bin/python3 python3; do
+    for cand in "${HOME%/}/anaconda3/bin/python3" python3; do
         if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import yaml' >/dev/null 2>&1; then
             python_bin="$cand"
             break
@@ -102,9 +102,12 @@ normalize_target_path() {
 }
 
 is_protected_path() {
-    local p="${1%/}"
-    [[ "$p" == /data9/home/qgzeng/data || "$p" == /data9/home/qgzeng/data/* \
-       || "$p" == /data9/home/qgzeng/tools || "$p" == /data9/home/qgzeng/tools/* ]]
+    # Protected = the current user's own data/tools, plus any /data9/home/<user>/data|tools.
+    local p="${1%/}" home="${HOME%/}"
+    [[ "$p" == "$home/data" || "$p" == "$home/data"/* \
+       || "$p" == "$home/tools" || "$p" == "$home/tools"/* ]] && return 0
+    [[ "$p" =~ ^/data9/home/[^/]+/(data|tools)(/.*)?$ ]] && return 0
+    return 1
 }
 
 is_project_path() {

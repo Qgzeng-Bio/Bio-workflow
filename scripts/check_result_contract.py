@@ -31,7 +31,7 @@ try:
     import yaml
 except ImportError:  # pragma: no cover -- yaml is required
     sys.stderr.write(
-        "PyYAML is required. Try /data9/home/qgzeng/anaconda3/bin/python3 instead of system python3.\n"
+        "PyYAML is required. Use a Python that has PyYAML installed (e.g. your conda/anaconda Python).\n"
     )
     raise SystemExit(2)
 

@@ -15,8 +15,8 @@ Before substantive work:
 
 1. Identify the active agent surface from the system/developer context, available CLI identity, or explicit user wording.
 2. If using Codex, read:
-   - `/data9/home/qgzeng/.codex/memories/user_output_format_preferences.md`
-   - `/data9/home/qgzeng/.codex/memories/slurm_preferences.md`
+   - `~/.codex/memories/user_output_format_preferences.md` (the active user's own Codex memories)
+   - `~/.codex/memories/slurm_preferences.md`
    - the nearest `AGENTS.md` in the current directory or parent directories
 3. If using Claude Code, read the nearest `CLAUDE.md` in the current directory or parent directories.
 4. If the active agent is unclear, state that briefly and continue without loading agent-specific memory files by default.
@@ -56,7 +56,7 @@ Require user confirmation before:
 - `sbatch`, `scancel`, resubmission, or changing job concurrency
 - starting high CPU, high memory, long-running, or large-I/O work
 - installing, upgrading, removing, or changing Conda, modules, tools, or containers
-- writing into `/data9/home/qgzeng/data/` or `/data9/home/qgzeng/tools/`
+- writing into the current user's `~/data/` or `~/tools/` (on this cluster, any `/data9/home/*/data|tools` is also protected)
 - overwriting, moving, deleting, or replacing existing results
 - changing formal analysis parameters after a plan has been agreed
 - downloading large raw data
@@ -177,7 +177,7 @@ Use this route before task routing when the user mainly names a program or tool 
    python3 scripts/program_onboard.py draft-card <evidence_dir>
    ```
 
-   Do not install, download, write under `/data9/home/qgzeng/tools/`, submit SLURM, scan broadly, write onboarding evidence outside the project, or overwrite draft cards without explicit confirmation.
+   Do not install, download, write under `~/tools/`, submit SLURM, scan broadly, write onboarding evidence outside the project, or overwrite draft cards without explicit confirmation.
 
 5. For any program-level run, follow: environment discovery -> input dialogue -> parameter confirmation -> script generation -> safety preflight -> user-confirmed submit/run -> acceptance checks. Report the level honestly: `L0=choice/intake`, `L1=probe`, `L2=install proposal`, `L3=installed+captured`, `L4=pilot script/preflight`, `L5=pilot/run validated`, `L6=active card`. Do not describe `probe` or `plan-install` as testing that the program can run.
 6. Use `references/software-resource-cards.md` for resource estimates and `references/validation-checklists.md` for shared acceptance gates. Do not copy shared checks into cards unless a tool has extra acceptance rules.
@@ -444,7 +444,7 @@ When slimming or reorganizing this skill, preserve behavior before reducing line
 - trigger coverage in the frontmatter `description`
 - agent-specific startup memory and project-rule checks
 - narrow-scan policy and login/admin node limits
-- protected path rules for `/data9/home/qgzeng/data/` and `/data9/home/qgzeng/tools/`
+- protected path rules for the current user's `~/data/` and `~/tools/` (and any `/data9/home/*/data|tools`)
 - user confirmation before `sbatch`, `scancel`, resubmission, install, large download, high-resource work, overwrite, or protected write
 - resume route through `project_state_audit.sh` and `references/resume-protocol.md`
 - program-level route through program cards and onboarding
@@ -465,12 +465,12 @@ Before declaring a slimming pass complete, verify:
 Run after structural changes:
 
 ```bash
-python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .
+python3 ~/.codex/skills/.system/skill-creator/scripts/quick_validate.py .
 ```
 
 Run `bash -n` for bundled shell script changes. For `scripts/slurm_preflight.sh`, test at least one passing script and one failing script before trusting rule changes. After editing program cards or registry, run `python3 scripts/validate_program_cards.py` and `python3 scripts/validate_program_cards.py --check-drafts`.
 
-After source edits that should affect Codex runtime behavior, sync the installed copy at `/data9/home/qgzeng/.codex/skills/bio-workflow` with:
+After source edits that should affect Codex runtime behavior, sync the installed copy at `~/.codex/skills/bio-workflow` with:
 
 ```bash
 scripts/sync_install.sh --yes

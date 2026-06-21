@@ -1,6 +1,49 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-20 - conda-activation PATH-guard lint added to the SLURM toolchain
+Last updated: 2026-06-20 - multi-user portability pass (paths follow $HOME)
+
+## Latest Update — 2026-06-20: Multi-user Portability Pass
+
+Purpose: let trusted same-cluster colleagues install and run the skill without
+tripping over hardcoded `/data9/home/qgzeng` paths, while keeping the original
+owner's behavior byte-for-byte unchanged.
+
+What changed (uncommitted; source + synced plugin copy):
+
+- **User-relative paths.** All bash helpers now use `$HOME`; `program_onboard.py`
+  uses `Path.home()`. For `$HOME=/data9/home/qgzeng` every code path is identical
+  to before.
+- **Write-protection semantics unified.** A path is protected iff it is the
+  current user's `~/data`/`~/tools` (or under them), OR matches
+  `/data9/home/<user>/(data|tools)[/...]` (bash regex
+  `^/data9/home/[^/]+/(data|tools)(/.*)?$`; Python `parts` check). This now
+  protects every account's raw-data/tools, and does NOT match project-internal
+  `.../projects/<x>/data`. Touched: `gen_sbatch.sh`, `submit_and_log.sh`,
+  `submit_chunked.sh`, `log_claim_audit.sh`, `slurm_preflight.sh` (new
+  `value_is_protected` helper + the two inline checks + `check_protected_paths`
+  loop), `prepare_submission.sh`, and `program_onboard.py`
+  (`is_protected_write_path`, `PROTECTED_WRITE_ROOTS`, `BROAD_PROJECT_ROOTS`).
+- **Sync/runtime targets follow `$HOME`.** `sync_install.sh` defaults to
+  `$HOME/.codex/skills/bio-workflow` and validates the target is under
+  `$HOME/.codex/skills`; both sync scripts resolve validators under `$HOME/.codex`
+  and now **warn-skip** (instead of ERROR-exit) when the validator is absent, and
+  only require a PyYAML Python when a validation will actually run. Python
+  candidate lists use `$HOME/anaconda3/bin/python` first, then `python3`/`python`.
+- **broad-root audit** (`project_state_audit.sh`) still refuses `/`, `/data9`,
+  `/data9/home`, and now also the running user's own home and `~/projects`.
+- **Docs.** Rule-level protected-path text in `SKILL.md`, `executor-safety.md`,
+  `validation-checklists.md`, `program-onboarding.md`, `install-proposal-template.md`,
+  and `program-cards/README.md` now reads `~/data`/`~/tools` (+ cross-user note).
+  Playbook tool/conda-env absolute paths are intentionally left as qgzeng tested
+  evidence. README gained a `Multi-user / portability` section.
+
+Validation: `bash -n` (all shell + sbatch templates), `py_compile` (all Python),
+`quick_validate.py .`, program-card validation (active + drafts), and
+`git diff --check` all PASS. Behavior regression confirmed: (A)
+`/data9/home/qgzeng/data/x` protected when `$HOME=/data9/home/qgzeng`; (B)
+`/data9/home/alice/data/x` protected (new cross-user); (C)
+`/data9/home/qgzeng/projects/foo/data/x` NOT protected. Plugin wrapper copy
+re-synced and verified identical to source. Not committed.
 
 ## Latest Update - 2026-06-20: Conda Activation PATH-Guard Lint
 

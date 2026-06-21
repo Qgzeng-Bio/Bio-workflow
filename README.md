@@ -199,9 +199,35 @@ claude --plugin-dir plugins/bio-workflow
 The plugin skill is namespaced as `/bio-workflow:bio-workflow`. Run `/reload-plugins` after
 editing plugin metadata or non-skill plugin components.
 
-This skill is server-specific. It assumes `/data9/home/qgzeng/`, the local SLURM partitions and
-QOS, qgzeng protected paths, and the C quinoa workflow policy. External users should adapt those
-paths and resource rules before installing it as a plugin.
+This skill targets the qgzeng `/data9` SLURM cluster. It assumes the local SLURM partitions and
+QOS, the cluster's `admin2`/login-node policy, and the C quinoa workflow conventions. External
+users on a different cluster should adapt the partition/resource rules before relying on it.
+
+## Multi-user / portability
+
+The helper scripts no longer hardcode `/data9/home/qgzeng`. They follow whoever runs them:
+
+- **User-relative paths.** Bash scripts use `$HOME`; `program_onboard.py` uses `Path.home()`. For
+  the original owner (`$HOME=/data9/home/qgzeng`) behavior is unchanged; for any other account the
+  same rules apply to that account's own home.
+- **Write protection.** A path is protected when it is the current user's own `~/data` or `~/tools`
+  (or anything under them), **or** any `/data9/home/*/data` or `/data9/home/*/tools` on this
+  cluster. So a shared install protects every account's raw-data/tools, not just one — while a
+  project-internal `…/projects/<x>/data` directory stays writable.
+- **Runtime/plugin sync targets follow `$HOME`.** `sync_install.sh` writes to
+  `$HOME/.codex/skills/bio-workflow`; `sync_install.sh` / `sync_plugin_wrapper.sh` look for the
+  skill-creator/plugin-creator validators under `$HOME/.codex`. If those validators are absent
+  (a non-Codex install), validation is **skipped with a warning** instead of failing.
+- **Project rules per user.** The skill's own safety rules live in `SKILL.md` and apply wherever it
+  is loaded. On Codex, `SKILL.md` startup reads the active user's own `~/.codex/memories`, so each
+  user gets their own output/SLURM preferences. The nearest project-rule file (`CLAUDE.md` for Claude
+  Code, `AGENTS.md` for Codex) is path-scoped — qgzeng's live under `/data9/home/qgzeng/projects` — so
+  each user should drop an equivalent `CLAUDE.md`/`AGENTS.md` in their own project tree, or rely on the
+  rules already embedded in `SKILL.md`.
+- **Tool/conda-env paths in the playbooks are qgzeng examples.** Absolute paths in
+  `references/playbook-*.md` (e.g. `braker3.sif`, `SURVIVOR`, `ModDotPlot/venv`, `seqkit`,
+  `DeepTE.py`, EviAnn) point at the owner's installed tools as tested evidence. Other users must
+  install those tools themselves and substitute their own paths.
 
 ## Maintenance
 

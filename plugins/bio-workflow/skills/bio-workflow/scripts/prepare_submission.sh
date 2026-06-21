@@ -371,11 +371,12 @@ if [[ -n "$output_dir" ]]; then
         # relative/.. path). We cannot prove it is outside protected trees, so fail closed.
         output_line="$output_dir 无法规范化为绝对路径 (realpath 不可用?), 保守拒绝"
         blockers+=("--output 无法规范化为绝对路径, 无法证明不在保护目录; 请改用绝对路径: $output_dir")
-    elif [[ "$out_norm" == /data9/home/qgzeng/data || "$out_norm" == /data9/home/qgzeng/data/* \
-       || "$out_norm" == /data9/home/qgzeng/tools || "$out_norm" == /data9/home/qgzeng/tools/* ]]; then
+    elif [[ "$out_norm" == "${HOME%/}/data" || "$out_norm" == "${HOME%/}/data"/* \
+       || "$out_norm" == "${HOME%/}/tools" || "$out_norm" == "${HOME%/}/tools"/* \
+       || "$out_norm" =~ ^/data9/home/[^/]+/(data|tools)(/.*)?$ ]]; then
         # P1-a: protected raw-data/tools tree is never a valid output target.
         output_line="$out_norm → 保护目录, 禁止写入"
-        blockers+=("--output 落在保护目录 (/data9/home/qgzeng/data 或 /tools), 禁止写入: $out_norm")
+        blockers+=("--output 落在保护目录 (~/data 或 ~/tools, 含任意 /data9/home/*/data|tools), 禁止写入: $out_norm")
     elif [[ ! -e "$output_dir" ]]; then
         output_line="$output_dir 不存在 (将新建)"
     elif [[ ! -d "$output_dir" ]]; then
