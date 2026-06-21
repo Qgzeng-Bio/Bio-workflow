@@ -1311,6 +1311,18 @@ Keep these as design options, not automatic next tasks:
   output noise justify a DAG.
 - Unify evidence terminology between program cards and interpretation rules when
   program cards are next revised.
+- Extend `check_result_contract.py` / `interpretation-rules.tsv` to more analysis
+  types' biological silent-traps (alignment rate, assembly N50/BUSCO sane ranges,
+  annotation completeness, etc.) — but ONLY by distilling a real "exit 0 yet the
+  result is wrong" case when it actually occurs. Do NOT invent threshold rules up
+  front; that just adds false positives. Pairs with the `UNCERTAIN` item above.
+- Add a lightweight tool/env availability + version precheck at playbook entry
+  (confirm the key tools / conda envs exist and versions match before a run) so a
+  job does not fail halfway on a missing tool/env. Low cost; do it when a real
+  "tool not found / wrong version mid-run" case motivates it. The other "not
+  guaranteed" limits (static scan is not a sandbox; exit 0 ≠ biological success;
+  pilot-driven resource sizing; on-demand card/playbook growth) are accepted
+  boundaries, not optimization targets.
 
 ## Important Caveats
 
