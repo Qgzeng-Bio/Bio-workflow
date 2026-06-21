@@ -1,6 +1,6 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-20 - multi-user portability pass (paths follow $HOME)
+Last updated: 2026-06-21 - multi-user portability committed (7da5271), codex-review hardened (10 rounds), Codex runtime synced
 
 ## Latest Update — 2026-06-20: Multi-user Portability Pass
 
@@ -8,7 +8,7 @@ Purpose: let trusted same-cluster colleagues install and run the skill without
 tripping over hardcoded `/data9/home/qgzeng` paths, while keeping the original
 owner's behavior byte-for-byte unchanged.
 
-What changed (uncommitted; source + synced plugin copy):
+What changed (committed as `7da5271` on `main`; source + synced plugin copy + Codex runtime copy):
 
 - **User-relative paths.** All bash helpers now use `$HOME`; `program_onboard.py`
   uses `Path.home()`. For `$HOME=/data9/home/qgzeng` every code path is identical
@@ -43,7 +43,41 @@ Validation: `bash -n` (all shell + sbatch templates), `py_compile` (all Python),
 `/data9/home/qgzeng/data/x` protected when `$HOME=/data9/home/qgzeng`; (B)
 `/data9/home/alice/data/x` protected (new cross-user); (C)
 `/data9/home/qgzeng/projects/foo/data/x` NOT protected. Plugin wrapper copy
-re-synced and verified identical to source. Not committed.
+re-synced and verified byte-identical to source.
+
+Codex-review hardening: 10 rounds of `codex review --uncommitted`, 0 P0; 8 P2 +
+2 P1, each fixed and independently regression-tested (~40 fixture cases). Almost
+every finding was in `slurm_preflight.sh`'s `check_protected_paths` line-level
+body scan:
+
+- cross-user `/data9/home/*/data|tools` coverage in the body scan (not just the
+  current user); unexpanded home forms `$HOME` / `${HOME...}` (incl. `${HOME%/}`),
+  split-quoted `"$HOME"/data`, and named-tilde `~user/data`.
+- exact-dir boundary so siblings like `data-backup` / `tools-v2` / `datax` are
+  NOT flagged (kept consistent with `value_is_protected`).
+- **read-only-input vs write-target distinction**: a protected path used only as
+  a read-only input (e.g. `tool --input ~/data/ref --output results/x`) is now a
+  WARN; FAIL is reserved for protected paths that are the write/delete TARGET.
+- full write-command set: rm/rmdir/shred/unlink/mv/mkdir/touch/tee/wget/curl/
+  pigz/gzip/bgzip/bzip2/xz, plus cp/rsync/install/ln targets including
+  `-t`/`--target-directory`, trailing options, and inline `# comment` tails
+  (inline comments are stripped before matching).
+- two cross-cutting fixes outside that function: `SKILL.md` startup now reads the
+  active user's `~/.codex/memories` (README aligned); `project_state_audit.sh`
+  refuses ANY `/data9/home/<user>[/projects]` broad root, not just the current
+  user's.
+
+The line-level scan stays an explicit heuristic (not a sandbox): indirect forms
+(a variable holding HOME, `eval`, `$(...)`) cannot be statically enumerated, and
+the authoritative protected-OUTPUT blocks remain the structured hard-FAIL gates
+on `#SBATCH --output/--error/--chdir` (`value_is_protected`), `--output`
+(`prepare_submission.sh`), and `--record` (`submit_and_log.sh`).
+
+Committed as `7da5271` and pushed (`fa28aa0..7da5271`, 36 files). The Codex
+runtime copy at `~/.codex/skills/bio-workflow` was re-synced with
+`scripts/sync_install.sh --yes` and verified identical to source. The separate
+beta-marketplace + Codex/Claude plugin-wrapper publish landed earlier as
+`fa28aa0`.
 
 ## Latest Update - 2026-06-20: Conda Activation PATH-Guard Lint
 
