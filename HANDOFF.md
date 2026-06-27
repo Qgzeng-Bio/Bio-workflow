@@ -50,6 +50,12 @@ content constraints survive while the forced layout is gone.
 Committed as `a58b326` on `main` (9 files: source + plugin wrapper copies);
 not pushed yet. Test transcripts left under `tmp/codex-style-test/` (untracked).
 
+Follow-up (same day): pushed `9b6e224..6444028` to `main`, removed the test
+transcripts, and verified both agents serve the update — `~/.claude/skills/bio-workflow`
+is a symlink to this repo (live, no sync needed) and `~/.codex/skills/bio-workflow`
+is the synced copy; all three `SKILL.md` share md5 `f2272fd5…`. See the updated
+`Current Installation Model` section for the per-agent sync rule.
+
 ## Latest Update — 2026-06-20: Multi-user Portability Pass
 
 Purpose: let trusted same-cluster colleagues install and run the skill without
@@ -1106,12 +1112,22 @@ Result:
 
 ## Current Installation Model
 
-There are two active locations:
+There are three active entry points, with two different sync semantics:
 
-- Source of development: this repository directory.
-- Runtime installation: `/data9/home/qgzeng/.codex/skills/bio-workflow`.
+- **Source of development**: this repository directory.
+- **Codex runtime**: `~/.codex/skills/bio-workflow` is a **real copy**, so source
+  edits are NOT live until `scripts/sync_install.sh --yes` runs.
+- **Claude Code**: `~/.claude/skills/bio-workflow` is a **symlink → this repo**, so
+  it always reflects the source live and needs no separate sync step.
 
-The old Claude skill copy was removed:
+Verified 2026-06-27: `~/.claude/skills/bio-workflow` is a symlink to the source
+repo; `~/.codex/skills/bio-workflow` is a directory copy. After the latest sync,
+all three `SKILL.md` share md5 `f2272fd5…`. Net rule: **after a source edit, only
+Codex needs `sync_install.sh`; Claude is current automatically.** A
+running session of either agent still caches the old `SKILL.md` — start a new
+session to load changes.
+
+The old standalone Claude skill copy was removed earlier:
 
 - Removed directory: `~/.claude/skills/bioinformatics-analysis-workflow/`
 - Temporary backup at removal time:
@@ -1123,8 +1139,8 @@ The old Claude skill copy was removed:
   - `scripts/submit_and_log.sh`
 
 Do not reintroduce the old `~/.claude/skills/bioinformatics-analysis-workflow`
-fallback. `bio-workflow` should have one real source directory and one Codex
-runtime copy.
+fallback. `bio-workflow` has one real source directory, one Codex runtime copy,
+and one Claude symlink back to the source.
 
 ## Recent Uncommitted Change Summary
 
