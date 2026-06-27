@@ -1,6 +1,41 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-21 - multi-user portability committed (7da5271), codex-review hardened (10 rounds), Codex runtime synced
+Last updated: 2026-06-27 - output-style neutralization: skill no longer imposes emoji/fixed response layout on any agent
+
+## Latest Update — 2026-06-27: Output-Style Neutralization
+
+Purpose: the skill was forcing a fixed `📌/🔎/⚠️/🧮/🛠️/✅/▶️` emoji layout (and an
+implied voice) onto the agent's replies. `CLAUDE.md` had already revoked this for
+Claude Code, but **Codex does not read `CLAUDE.md`** — it loads `SKILL.md`
+directly, where the resume route still said "fixed response shape" and the tail
+carried a "Default response shape" emoji template, so Codex kept reproducing it.
+
+Decision: the skill now constrains **what content an answer must cover**, never
+**how it must look or sound**. Tone, voice, section layout, language, and whether
+to use emoji follow the active agent's own style and the user's loaded output
+preferences (`user_output_format_preferences.md`, nearest `CLAUDE.md`/`AGENTS.md`,
+latest user instruction).
+
+What changed (source + Codex runtime + plugin wrapper):
+
+- `SKILL.md` startup: added an explicit style-neutrality paragraph (step 6) — no
+  imposed tone/voice/layout/emoji/template; later "shapes" are content checklists,
+  and a project rule / user instruction always wins over a layout suggestion here.
+- `SKILL.md` resume route: "Use this fixed response shape" + the 4-line emoji block
+  → a plain content checklist (stage / evidence / blockers / smallest next action).
+- `SKILL.md` tail: "Default response shape" emoji template → "Response content
+  checklist"; explicitly says do not reintroduce the mandatory emoji layout.
+- `🧮 资源判断` literal directives reworded to "cover a resource assessment …" in
+  `SKILL.md` (resume + SLURM-review), `references/resume-protocol.md`,
+  `references/validation-checklists.md`, and
+  `references/program-cards/program-onboarding.md`.
+- Decorative emoji inside `references/playbook-*.md` (e.g. `✅ confirmed`,
+  `⚠️ headers`) are documentation markers, not reply-format directives, and were
+  left as-is.
+
+Validation: `quick_validate.py .` → valid; `validate_program_cards.py`
+(active + drafts) → PASS. Synced to `~/.codex/skills/bio-workflow` and the
+`plugins/bio-workflow/skills/bio-workflow` wrapper.
 
 ## Latest Update — 2026-06-20: Multi-user Portability Pass
 

@@ -100,7 +100,7 @@ snippets. Do not treat a zero exit code as enough.
 - Run `scripts/prepare_submission.sh --script <file>` before proposing
   `sbatch` whenever manifest/input/output context is available; use
   `scripts/slurm_preflight.sh --script <file>` only as a fallback.
-- Include a `🧮 资源判断` for CPU, memory, partition, array concurrency, and
+- Cover a resource assessment for CPU, memory, partition, array concurrency, and
   whether the request fits the tool/input scale.
 - Script uses strict mode: `set -euo pipefail` or equivalent.
 - If the script uses `conda activate`, it pins the env bin to PATH front

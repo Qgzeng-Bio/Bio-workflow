@@ -23,6 +23,8 @@ Before substantive work:
 5. If any required file for the active agent is missing or unreadable, state the missing item briefly and continue with available context.
 6. Reply according to loaded output preferences; if they have no stronger preference, Chinese is the default for this user.
 
+This skill does not impose a tone, voice, section layout, emoji set, or fixed response template. Use the active agent's own natural style and the user's loaded output preferences (e.g. Codex `user_output_format_preferences.md`, the nearest `CLAUDE.md`/`AGENTS.md`). Any response structure shown later in this file is a checklist of content that must be covered, not a required wording or layout — express it however the agent and user prefer. When a project rule file or user instruction conflicts with a layout suggestion here, the project rule / user instruction wins.
+
 ## Server safety boundaries
 
 Use only explicit paths from the user or the current project. Keep probes narrow and cheap.
@@ -120,19 +122,17 @@ Read `references/resume-protocol.md` when resuming a project. Classify one prima
 - `Complete_unvalidated`: outputs and completion logs exist, but result acceptance is missing.
 - `Analysis_ready`: results have been validated and are ready for interpretation, plotting, or reporting.
 
-Use this fixed response shape for resume work:
+For resume work, make sure the answer covers this content (in whatever wording, order, and layout the agent/user style prefers — no fixed template or emoji required):
 
-```text
-📌 当前阶段
-🔎 证据
-⚠️ 阻塞
-🛠️ 下一步最小动作
-```
+- the current project stage,
+- the concrete evidence for it,
+- any blockers, and
+- the smallest safe next action.
 
 Minimum next actions:
 
 - `Input_ready`: define missing manifests, methods, and success criteria.
-- `Script_ready`: run `scripts/prepare_submission.sh --script <file>` when inputs/outputs are known, or `scripts/slurm_preflight.sh --script <file>` as the fallback. Always report a `🧮 资源判断` covering CPU, memory, partition, array concurrency, and whether the requested resources are justified by input size/tool behavior before asking about `sbatch`.
+- `Script_ready`: run `scripts/prepare_submission.sh --script <file>` when inputs/outputs are known, or `scripts/slurm_preflight.sh --script <file>` as the fallback. Always cover a resource assessment (CPU, memory, partition, array concurrency, and whether the requested resources are justified by input size/tool behavior) before asking about `sbatch`.
 - `Queued_or_running`: monitor with `squeue`/`sacct`; do not edit scripts or resubmit while active.
 - `Failed`: run `scripts/slurm_failure_triage.sh --jobid <id>` or `--err <file>`, then propose the smallest fix.
 - `Complete_unvalidated`: run result acceptance from `references/validation-checklists.md` before biological interpretation.
@@ -377,7 +377,7 @@ scripts/prepare_submission.sh --script <slurm_script> [--manifest <manifest.tsv>
 
 Hard blockers include preflight `FAIL`, missing/empty inputs, bundled-template manifest headers, protected `--output`, and quota submit-cap overrun. Warnings include preflight `WARN`, non-empty output directories, and unknown quota/header status.
 
-Every SLURM script review must include a simple resource assessment, even when the user only asks for "review". Do not stop at "CPU/memory directives exist". In the answer, include `🧮 资源判断` with:
+Every SLURM script review must include a simple resource assessment, even when the user only asks for "review". Do not stop at "CPU/memory directives exist". The answer must cover (in any wording/layout):
 
 - whether `--cpus-per-task`, `--mem`, and `--partition` match the tool class and input size
 - whether the tool can use the requested CPUs
@@ -478,21 +478,19 @@ scripts/sync_install.sh --yes
 
 The script validates source and installed skill and reports the remaining source-vs-installed differences.
 
-## Default response shape
+## Response content checklist
 
-Use this compact Chinese structure only when the user's memory or the current
-request asks for a compact workflow/status response. Do not enforce it when
-`user_output_format_preferences.md` or the user's latest instruction prefers a
-different style.
+This skill does not prescribe a tone, layout, emoji set, or fixed template. Follow
+the active agent's own style and the user's loaded output preferences
+(`user_output_format_preferences.md`, the nearest `CLAUDE.md`/`AGENTS.md`, or the
+user's latest instruction). The user revoked the old forced compact emoji template;
+do not reintroduce a mandatory `📌/🔎/⚠️/🧮/🛠️/✅/▶️` layout by default.
 
-```text
-📌 结论
-🔎 已确认
-⚠️ 风险
-🧮 资源判断
-🛠️ 将执行/已执行
-✅ 验收
-▶️ 下一步
-```
+For workflow/status answers, just make sure the relevant content is covered when it
+applies — conclusion, what is confirmed, risks, resource assessment, what will be /
+was executed, acceptance, and next step. Express these however the agent and user
+prefer; only adopt a specific emoji/section layout when the user or their memory
+explicitly asks for it.
 
-Keep tables short. Prefer clear bullets with concrete paths, commands, job IDs, and validation criteria.
+Keep tables short. Prefer concrete paths, commands, job IDs, and validation criteria
+over decoration.

@@ -282,7 +282,7 @@ Before submission:
   arguments when available
 - use `scripts/slurm_preflight.sh --script <script>` only as a fallback when
   manifest/input/output context is not available yet
-- include a `🧮 资源判断` for CPU, memory, partition, array concurrency, and
+- cover a resource assessment for CPU, memory, partition, array concurrency, and
   whether the request fits the tool/input scale
 
 Treat `FAIL` as a blocker. Explain `WARN` items before asking for submission.

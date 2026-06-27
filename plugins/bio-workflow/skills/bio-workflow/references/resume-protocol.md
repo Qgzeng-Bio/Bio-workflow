@@ -4,14 +4,12 @@ Use this protocol when taking over an existing qgzeng bioinformatics project fro
 any stage. The goal is to avoid restarting work unnecessarily. First classify the
 current state from bounded evidence, then choose the smallest safe next action.
 
-## Required response shape
+## Response content (no fixed template)
 
-```text
-📌 当前阶段
-🔎 证据
-⚠️ 阻塞
-🛠️ 下一步最小动作
-```
+Make sure a resume answer covers the current stage, the concrete evidence for it,
+any blockers, and the smallest safe next action. Wording, ordering, layout, and
+whether to use emoji are up to the active agent's own style and the user's loaded
+output preferences — this skill does not require a fixed template.
 
 Keep evidence concrete: paths, job IDs, exit codes, recent log snippets, result
 files, and validation records. If evidence is mixed, name secondary candidates but
@@ -105,7 +103,7 @@ Record the evidence path, obsolete route, active route, and next action.
   manifest/input/output paths whenever available.
 - Use `scripts/slurm_preflight.sh --script <script>` only as a fallback when
   inputs/outputs are still unknown.
-- Include a `🧮 资源判断` covering CPU, memory, partition, array concurrency,
+- Cover a resource assessment for CPU, memory, partition, array concurrency,
   and whether those resources fit the tool/input scale.
 - Explain any `WARN` and treat any `FAIL` as a blocker.
 
