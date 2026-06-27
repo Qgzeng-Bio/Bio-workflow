@@ -1,6 +1,6 @@
 # Bio-Workflow Skill Handoff
 
-Last updated: 2026-06-27 - output-style neutralization: skill no longer imposes emoji/fixed response layout on any agent
+Last updated: 2026-06-27 - output-style neutralization committed (a58b326), live codex-exec verified; skill no longer imposes emoji/fixed response layout on any agent
 
 ## Latest Update — 2026-06-27: Output-Style Neutralization
 
@@ -36,6 +36,19 @@ What changed (source + Codex runtime + plugin wrapper):
 Validation: `quick_validate.py .` → valid; `validate_program_cards.py`
 (active + drafts) → PASS. Synced to `~/.codex/skills/bio-workflow` and the
 `plugins/bio-workflow/skills/bio-workflow` wrapper.
+
+Live verification: ran two `codex exec --sandbox read-only` cases against the
+synced runtime copy — (1) a project-takeover/resume prompt (the route that
+previously forced the emoji shape) and (2) an unprompted hifiasm SLURM
+resource-review prompt with no style hint. Both returned natural Chinese prose
+with the full skill substance preserved (agent-surface detection, preference
+reads, six-state classification, broad-scan refusal, minimal next step;
+CPU/memory/partition `<200G`-vs-`>=200G` judgement, CPU-forwarding check,
+no-default-`--time`) and **no** `📌/🔎/⚠️/🧮/🛠️` template — confirming the
+content constraints survive while the forced layout is gone.
+
+Committed as `a58b326` on `main` (9 files: source + plugin wrapper copies);
+not pushed yet. Test transcripts left under `tmp/codex-style-test/` (untracked).
 
 ## Latest Update — 2026-06-20: Multi-user Portability Pass
 
