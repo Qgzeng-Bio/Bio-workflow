@@ -82,6 +82,16 @@ project/
 
 Use tab-separated tables for intermediate and final tabular outputs. Use English column names with initial capitals and underscores, for example `Gene_ID`, `Sample_Name`, and `Read_Count`.
 
+Name human-facing analysis artifacts — result directories, figure files, report files, final TSVs — to label the artifact, not narrate its full context. Keep names short and self-evident. This rule does not apply to the standard project directories (`config/`, `data/`, `scripts/`, `logs/`, `results/`, `reports/`, `tmp/`), tool-mandated output names, or file extensions.
+
+- Initial-capital like column names: each underscore-separated segment starts with a capital letter, and atomic identifiers stay exact — figure labels (`FigA`), sample/accession IDs (`LM134`), metrics (`N50`, `Nx`), all-caps acronyms (`BUSCO`, `LTR`, `TE`). `FigA_Nx_Curves`, `BUSCO_Quinoa`, `N50_Plot` — not `figa_contig_nx_curves_lm_litstyle` or `Figa_NX_Curves_Lm134`.
+- Drop words already implied by the content or location; a path under `reports/` or `results/` already says "report/result".
+- Do not append redundant context, status, or style suffixes (`_Run`, `_Result`, `_Report`, `_Litstyle`, `_New`, `_Final`). Add a discriminator only when needed to avoid collision or record a formal snapshot: `FigA_Nx_Curves_LM134`.
+- For that discriminator, prefer artifact/topic → metric/content → minimum discriminator (`BUSCO_Summary_LM134.tsv`, `FigA_Nx_Curves_20260706.pdf`); use `V2`/`v1.1` only for a real version series and `YYYYMMDD` for snapshots or colliding reruns, never `_Final`.
+- One delimiter style per name; underscore is the default. Use ASCII letters, digits, underscores; keep to about 4-5 segments and 60 characters before the extension; put non-ASCII labels in report text or figure legends, not filenames.
+- Lowercase remains fine for standard project directories, script verbs after numeric prefixes, file extensions (`.tsv`, `.pdf`, `.slurm`), and tool-required filenames.
+- Scripts are exempt: new and existing scripts keep the established step-prefix convention, e.g. `10_pilot_LM42.slurm`.
+
 ## Reference routing map
 
 Keep `SKILL.md` as the routing hub. Load detailed references only when their task is active:
