@@ -1,4 +1,4 @@
-# Bio-workflow
+# Bioflow
 
 A personal **bioinformatics workflow skill** for planning, generating, preflighting,
 submitting, monitoring, and validating analyses on the `gridview` SLURM cluster — without
@@ -32,7 +32,7 @@ These are baked in as defaults so an agent doesn't rediscover them every time:
 ## Repository layout
 
 ```text
-bio-workflow/
+bioflow/
 ├── SKILL.md                 # skill entry point
 ├── HANDOFF.md               # running change log
 ├── agents/openai.yaml       # agent metadata
@@ -51,6 +51,20 @@ generate a              read-only GO/NO-GO         confirmed submit + run record
 preflight-clean         "green-light package"      (dry-run by default; --yes to submit)
 script (by construction) (never submits)
 ```
+
+## Start a project
+
+Preview the minimal seven-directory layout and management templates, then create
+only missing paths after review:
+
+```bash
+scripts/init_project.sh --project /absolute/path/to/project
+scripts/init_project.sh --project /absolute/path/to/project --yes
+```
+
+The initializer never overwrites existing files. Naming, identifier/version, and
+legacy compatibility rules are in
+[`references/project-layout.md`](references/project-layout.md).
 
 **1. Generate** — emits a script that already passes preflight (absolute `%j_%x` logs,
 strict mode, CPU forwarding, array `%N` cap, no default `--time`); it runs `bash -n` and
@@ -95,10 +109,11 @@ scripts/submit_and_log.sh --script align.sbatch --manifest config/samples.tsv --
 
 | Script | Purpose |
 |---|---|
-| `project_state_audit.sh` | take over an existing project — classify it as `Input_ready` / `Script_ready` / `Queued_or_running` / `Failed` / `Complete_unvalidated` / `Analysis_ready` and suggest the smallest next step |
+| `project_state_audit.sh` | take over an existing project — classify it across the nine-stage lifecycle from `Project_intake` through `Delivered` and suggest the smallest next step |
 | `slurm_failure_triage.sh` | classify a failed job (OOM, TIMEOUT, missing input, permission, env/tool, segfault, disk full, shell/pipefail, format incompatibility) and propose a minimal fix |
 
-See [`references/resume-protocol.md`](references/resume-protocol.md) and
+See [`references/project-lifecycle.md`](references/project-lifecycle.md),
+[`references/resume-protocol.md`](references/resume-protocol.md), and
 [`references/validation-checklists.md`](references/validation-checklists.md) for the layered
 acceptance gates (exit code 0 ≠ success).
 
@@ -121,23 +136,23 @@ can share one source checkout:
 
 ```bash
 mkdir -p ~/agent-skills ~/.codex/skills ~/.claude/skills
-git clone https://github.com/Qgzeng-Bio/Bio-workflow.git ~/agent-skills/bio-workflow
-ln -sfn ~/agent-skills/bio-workflow ~/.codex/skills/bio-workflow
-ln -sfn ~/agent-skills/bio-workflow ~/.claude/skills/bio-workflow
+git clone https://github.com/Qgzeng-Bio/Bio-workflow.git ~/agent-skills/bioflow
+ln -sfn ~/agent-skills/bioflow ~/.codex/skills/bioflow
+ln -sfn ~/agent-skills/bioflow ~/.claude/skills/bioflow
 ```
 
-The repo also includes an optional plugin wrapper at `plugins/bio-workflow/`.
+The repo also includes an optional plugin wrapper at `plugins/bioflow/`.
 It contains both Codex and Claude Code manifests:
 
 ```text
-plugins/bio-workflow/
+plugins/bioflow/
 ├── .codex-plugin/plugin.json
 ├── .claude-plugin/plugin.json
-└── skills/bio-workflow/
+└── skills/bioflow/
 ```
 
 The wrapper packages a synchronized copy of the raw skill under
-`plugins/bio-workflow/skills/bio-workflow/` for future marketplace or team distribution.
+`plugins/bioflow/skills/bioflow/` for future marketplace or team distribution.
 It is a distribution layer only; do not edit the copied skill by hand.
 
 Refresh the plugin wrapper from the raw skill source with:
@@ -152,14 +167,14 @@ Validate the wrapper directly with:
 ```bash
 /data9/home/qgzeng/anaconda3/bin/python \
   /data9/home/qgzeng/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py \
-  plugins/bio-workflow
-claude plugin validate plugins/bio-workflow
+  plugins/bioflow
+claude plugin validate plugins/bioflow
 ```
 
 This repository does not write `~/.agents/plugins/marketplace.json` automatically.
 To expose the wrapper through a personal Codex marketplace, point a marketplace entry named
-`bio-workflow` at `./plugins/bio-workflow` and then install it from that marketplace, for example
-`codex plugin add bio-workflow@personal` after the entry exists.
+`bioflow` at `./plugins/bioflow` and then install it from that marketplace, for example
+`codex plugin add bioflow@personal` after the entry exists.
 
 ## Internal beta marketplace
 
@@ -175,13 +190,13 @@ The marketplace name is `qgzeng-bio-beta`. After cloning a reviewed branch or ta
 the local checkout as a marketplace and install the plugin:
 
 ```bash
-git clone https://github.com/Qgzeng-Bio/Bio-workflow.git ~/agent-marketplaces/bio-workflow
+git clone https://github.com/Qgzeng-Bio/Bio-workflow.git ~/agent-marketplaces/bioflow
 
-codex plugin marketplace add ~/agent-marketplaces/bio-workflow
-codex plugin add bio-workflow@qgzeng-bio-beta
+codex plugin marketplace add ~/agent-marketplaces/bioflow
+codex plugin add bioflow@qgzeng-bio-beta
 
-claude plugin marketplace add ~/agent-marketplaces/bio-workflow
-claude plugin install bio-workflow@qgzeng-bio-beta
+claude plugin marketplace add ~/agent-marketplaces/bioflow
+claude plugin install bioflow@qgzeng-bio-beta
 ```
 
 This is intended for private beta testing only. Share a branch, tag, or private repository access
@@ -193,10 +208,10 @@ For Claude Code local testing without publishing a marketplace, launch Claude fr
 with:
 
 ```bash
-claude --plugin-dir plugins/bio-workflow
+claude --plugin-dir plugins/bioflow
 ```
 
-The plugin skill is namespaced as `/bio-workflow:bio-workflow`. Run `/reload-plugins` after
+The plugin skill is namespaced as `/bioflow:bioflow`. Run `/reload-plugins` after
 editing plugin metadata or non-skill plugin components.
 
 This skill targets the qgzeng `/data9` SLURM cluster. It assumes the local SLURM partitions and
@@ -215,7 +230,7 @@ The helper scripts no longer hardcode `/data9/home/qgzeng`. They follow whoever 
   cluster. So a shared install protects every account's raw-data/tools, not just one — while a
   project-internal `…/projects/<x>/data` directory stays writable.
 - **Runtime/plugin sync targets follow `$HOME`.** `sync_install.sh` writes to
-  `$HOME/.codex/skills/bio-workflow`; `sync_install.sh` / `sync_plugin_wrapper.sh` look for the
+  `$HOME/.codex/skills/bioflow`; `sync_install.sh` / `sync_plugin_wrapper.sh` look for the
   skill-creator/plugin-creator validators under `$HOME/.codex`. If those validators are absent
   (a non-Codex install), validation is **skipped with a warning** instead of failing.
 - **Project rules per user.** The skill's own safety rules live in `SKILL.md` and apply wherever it
@@ -234,8 +249,7 @@ The helper scripts no longer hardcode `/data9/home/qgzeng`. They follow whoever 
 `SKILL.md` is the source of truth; validate after changes:
 
 ```bash
-bash -n scripts/*.sh                             # shell syntax
-python3 .../skill-creator/scripts/quick_validate.py .   # needs a python with PyYAML
+scripts/test_skill.sh                            # core maintenance suite
 scripts/sync_install.sh                          # dry-run Codex runtime sync
 scripts/sync_install.sh --yes                    # write Codex runtime sync
 scripts/sync_plugin_wrapper.sh                   # dry-run Codex plugin-wrapper sync

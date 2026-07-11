@@ -5,10 +5,10 @@
   },
   "plugins": [
     {
-      "name": "bio-workflow",
+      "name": "bioflow",
       "source": {
         "source": "local",
-        "path": "./plugins/bio-workflow"
+        "path": "./plugins/bioflow"
       },
       "policy": {
         "installation": "AVAILABLE",

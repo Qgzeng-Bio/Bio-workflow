@@ -7,9 +7,9 @@
   "version": "0.1.0",
   "plugins": [
     {
-      "name": "bio-workflow",
-      "source": "./plugins/bio-workflow",
-      "displayName": "Bio-workflow",
+      "name": "bioflow",
+      "source": "./plugins/bioflow",
+      "displayName": "Bioflow",
       "description": "qgzeng /data9 SLURM bioinformatics workflow skill.",
       "author": {
         "name": "Qgzeng Bio"

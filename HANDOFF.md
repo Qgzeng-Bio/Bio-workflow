@@ -1,6 +1,384 @@
-# Bio-Workflow Skill Handoff
+# Bioflow Skill Handoff
 
-Last updated: 2026-06-27 - output-style neutralization committed (a58b326), live codex-exec verified; skill no longer imposes emoji/fixed response layout on any agent
+Last updated: 2026-07-11 - lifecycle, project management, interpretation, and final validation completed
+
+## Completion Summary — 2026-07-11
+
+The user reviewed the concise feature summary and confirmed the optimization was
+useful. The completed implementation now provides:
+
+- nine evidence-based project lifecycle stages and minimum safe next actions;
+- a ten-part new-project planning contract plus input, status, acceptance,
+  methods, and delivery templates;
+- stable directory, artifact, table, identifier, reference, date, and version
+  naming rules with a non-overwriting project initializer;
+- layered result acceptance and evidence-to-claim interpretation with explicit
+  `UNCERTAIN` handling;
+- one maintenance entry covering lifecycle, initialization, result-contract,
+  SLURM PASS/WARN/FAIL/negative fixtures, program cards, plugins, and whitespace;
+- synchronized bioflow behavior across source, Codex runtime, Claude source
+  link, and the repo-local plugin skill copy at final validation time.
+
+Pre-commit Git status at this documentation checkpoint:
+
+- No Git commit or push had been performed at this checkpoint.
+- Before the authorized commit, `HEAD` and `origin/main` both remained at
+  `8ade19270901bdab04307c6f04340854088362a9`.
+- The checkpoint worktree included the existing
+  `bio-workflow` -> `bioflow` rename and the optimization changes documented
+  below. The user subsequently authorized one local commit of this complete
+  change set; consult `git log -1` for its resulting hash. No push was authorized.
+- That checkpoint edit changed documentation only and was not independently
+  synced; the later pre-push behavior correction is recorded next.
+
+## Pre-push Review Correction — 2026-07-11
+
+An independent review of commit `478b368` found a lifecycle evidence bug before
+push: a `workflow_status.tsv` row could promote a project to `Plan_ready`,
+`Analysis_ready`, or `Delivered` when its pointer resolved to any existing file,
+even if that file did not prove review, acceptance, or delivery. The same path
+also allowed a tab-containing status row to become a malformed suggested
+`Evidence_Path`.
+
+The audit now treats status rows strictly as pointers. A promotion requires the
+resolved project-local artifact itself to contain the applicable marker:
+`Plan_Status: Reviewed|Approved`,
+`Acceptance_Status: Accepted|Validated|Passed`, or
+`Delivery_Status: Delivered`. Delivery additionally requires accepted evidence
+and a real result. Status pointers resolving outside the project are ignored.
+Four negative pointer fixtures cover input/result-only and external evidence;
+they remain `Input_ready` or `Complete_unvalidated`. Two timestamp fixtures prove
+that a complete delivery supersedes an older failure, while an unaccepted
+delivery marker cannot suppress one. The positive `Analysis_ready` fixture now
+points to an accepted report rather than treating a result file as validation
+evidence.
+
+## Latest Update — 2026-07-11: Lifecycle and Project-Startup Contract
+
+Purpose: complete the bioflow optimization goal through small, testable batches.
+The skill previously had six resume states and no single contract for new-project
+intake, reviewed analysis plans, final delivery, or uncertainty-aware result
+interpretation. State definitions were duplicated across `SKILL.md`,
+`resume-protocol.md`, validation guidance, and the audit helper.
+
+Read-only audit before editing:
+
+- Preserved the existing uncommitted `bio-workflow` → `bioflow` rename; no user
+  changes were reverted, staged, committed, or pushed.
+- Confirmed strong existing SLURM safety, program onboarding, resource feedback,
+  result-contract, validation, and task-playbook layers.
+- Confirmed four main goal gaps: incomplete lifecycle/startup planning; naming
+  guidance without mechanical lint; project-management/delivery artifacts not yet
+  standardized end to end; result-contract coverage remains intentionally partial.
+- Chose lifecycle/startup first because every later naming, execution,
+  interpretation, and delivery improvement depends on stable project stages.
+
+What changed:
+
+- Added `references/project-lifecycle.md` as the single contract for nine stages:
+  `Project_intake`, `Input_ready`, `Plan_ready`, `Script_ready`,
+  `Queued_or_running`, `Failed`, `Complete_unvalidated`, `Analysis_ready`, and
+  `Delivered`. Every stage defines evidence, required inputs, allowed/forbidden
+  actions, minimum next action, and transition gate.
+- Added the startup planning contract: question, design, inputs, methods, outputs,
+  acceptance, resources, risks/dependencies, execution checkpoints, and open
+  decisions. `Plan_Status: Reviewed` is required for `Plan_ready`.
+- Added the minimal reproducibility chain and canonical `workflow_status.tsv`
+  stage/status contract.
+- Slimmed `references/resume-protocol.md` from 252 to 74 lines; it now owns only
+  bounded takeover evidence and mixed-evidence precedence instead of duplicating
+  lifecycle definitions.
+- Updated `SKILL.md`, README, and validation checklist routing. `SKILL.md` remains
+  below the skill-creator 500-line target at 482 lines.
+- Extended `scripts/project_state_audit.sh` to identify the three new stages,
+  exclude plan/acceptance/delivery metadata from biological-result counts, and
+  print explicit primary stage/status lines.
+- Added `scripts/test_project_lifecycle.sh`, a standard-library-only `/tmp`
+  regression test covering all nine stages plus boundary cases: an initialized
+  skeleton and a reviewed plan without inputs stay `Project_intake`, while a
+  draft plan with inputs stays `Input_ready`.
+- Synchronized the repo-local `plugins/bioflow/skills/bioflow/` distribution copy.
+
+Follow-up batch — layout, naming, and project initialization:
+
+- Added `references/project-layout.md` as the single detailed rule set for the
+  seven standard directories, raw/config/script/log/tmp/result/report boundaries,
+  two-digit script stages, human-facing artifact names, TSV columns, identifiers,
+  references, dates/versions, examples, and safe legacy/tool compatibility.
+- Moved the long naming detail out of `SKILL.md`; the entry point now routes to the
+  reference and is 475 lines.
+- Added minimal templates under `assets/project-templates/`:
+  `Input_Manifest.tsv`, `Analysis_Plan.md`, `workflow_status.tsv`, and
+  `Delivery_Index.md`.
+- Added `scripts/init_project.sh`. It is dry-run by default, creates only missing
+  standard directories/templates after explicit `--yes`, never overwrites, and
+  refuses broad or protected `~/data`/`~/tools` paths.
+- Added `scripts/test_init_project.sh`: dry-run write check, successful creation,
+  idempotent no-overwrite rerun, and protected-path refusal all PASS.
+- Resynchronized and revalidated the plugin wrapper after this batch; follow-up
+  dry-run reports no drift.
+
+Follow-up batch — evidence-to-claim uncertainty:
+
+- Added `references/result-interpretation.md` with the evidence ladder,
+  Observation/Interpretation/Hypothesis/Limitation categories, claim-record
+  schema, status semantics, and a concise interpretation output contract.
+- Extended `result_manifest.yaml` with `analysis_types` and optional structured
+  `claims`. Legacy assembly/KMERIA/SV blocks can be inferred; unknown analysis
+  types are never inferred as validated.
+- Fixed `check_result_contract.py` so absent rule coverage returns `UNCERTAIN`
+  instead of a false `PASS`. Overall precedence is now
+  `BLOCK > UNCERTAIN > WARN > PASS`; PASS wording is explicitly limited to active
+  rules and cited local evidence.
+- Updated `log_claim_audit.sh` and `submit_and_log.sh` to preserve `UNCERTAIN` as a
+  machine-readable status (exit 3) without treating it as an infrastructure error
+  or cancelling an already submitted job.
+- Added `test_result_contract.py` for PASS, inferred coverage, unknown and mixed
+  coverage, empty scope, BLOCK precedence, and CLI exit/status; added
+  `test_claim_audit.sh` to verify an UNCERTAIN row records `COVERAGE` evidence.
+- One initial CLI test failed because `/usr/bin/env python3` resolved to an active
+  environment without PyYAML. Root-cause evidence confirmed the base Anaconda
+  interpreter had PyYAML; the test now reuses `sys.executable`. Full rerun PASSed.
+
+Follow-up batch — project closure and maintenance entry:
+
+- Added `Acceptance_Report.md` and `Methods_Summary.md` project templates and
+  included them in the non-overwriting initializer.
+- Added `scripts/test_skill.sh` as the single maintenance entry. It uses a Python
+  with PyYAML, redirects bytecode to `/tmp`, runs all shell syntax/Python compile
+  checks and regression fixtures, validates the skill, program cards, Codex and
+  Claude plugin manifests when available, checks plugin drift, and finishes with
+  `git diff --check`.
+- `scripts/test_skill.sh` completed with `PASS | bioflow maintenance suite` after
+  the plugin wrapper was synchronized.
+- Added `scripts/test_slurm_preflight.sh` to satisfy the safety-check fixture
+  contract: generated clean PASS (`PASS=19 WARN=0 FAIL=0`), explicit walltime WARN
+  (`PASS=18 WARN=1 FAIL=0`), uncapped-array FAIL, and a comment-only `rm -rf`
+  negative case that remained clean. The fixture is part of `test_skill.sh`.
+
+Final state-audit correction and forward validation:
+
+- Reproduced an initialized skeleton being falsely classified as `Delivered`.
+  Root cause was three independent existence-only heuristics: the header-only
+  input manifest counted as data, `Methods_Summary.md` counted as a result, and
+  draft acceptance/delivery templates counted as closure evidence.
+- `project_state_audit.sh` now requires a real row in recognized tabular input
+  manifests, excludes management summaries from result evidence, and requires an
+  accepted report, `Delivery_Status: Delivered`, and a real result before direct
+  delivery inference. The initialized-skeleton regression fixture passes as
+  `Project_intake`.
+- A fresh `codex exec` session loaded the installed `$bioflow` runtime and audited
+  an initialized `/tmp` project. It reported `Primary_stage: Project_intake`,
+  distinguished all ten startup-contract known/unknown groups, avoided queue
+  checks, and made no project writes. The complete project SHA-256 fingerprint was
+  identical before and after the call.
+
+Validation completed:
+
+```bash
+bash -n scripts/*.sh
+scripts/test_project_lifecycle.sh
+scripts/test_init_project.sh
+scripts/test_claim_audit.sh
+/data9/home/qgzeng/anaconda3/bin/python scripts/test_result_contract.py
+/data9/home/qgzeng/anaconda3/bin/python \
+  /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .
+/data9/home/qgzeng/anaconda3/bin/python scripts/validate_program_cards.py
+/data9/home/qgzeng/anaconda3/bin/python scripts/validate_program_cards.py --check-drafts
+scripts/sync_plugin_wrapper.sh --yes
+/data9/home/qgzeng/anaconda3/bin/python \
+  /data9/home/qgzeng/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py \
+  plugins/bioflow
+claude plugin validate plugins/bioflow
+scripts/sync_plugin_wrapper.sh
+git diff --check
+scripts/test_skill.sh
+# Fresh Codex runtime forward test against an initialized /tmp project
+```
+
+Results:
+
+- Nine canonical lifecycle states and all boundary/negative cases: PASS.
+- Source quick validation: PASS.
+- Five active and zero draft program cards: PASS.
+- Codex and Claude plugin validation: PASS.
+- Plugin sync follow-up dry-run: no content drift.
+- Literal repository paths referenced from `SKILL.md` and README: all exist.
+- Full maintenance suite, including PASS/WARN/FAIL/negative SLURM fixtures: PASS.
+- Fresh runtime forward test: `Project_intake`; project fingerprint unchanged.
+- Source, plugin, and Claude-symlink `SKILL.md` share md5
+  `031a83d71949e5db47fc5cd0a13cbe27`.
+
+Current final state and known limitations:
+
+- The user-authorized `scripts/sync_install.sh --yes` sync completed; source,
+  Codex runtime, repo-local plugin skill copy, and Claude source symlink use the
+  current bioflow implementation. Re-run `scripts/test_skill.sh` after source
+  changes, then sync the plugin wrapper and runtime deliberately.
+- Result-contract rule coverage remains deliberately limited to supported
+  analysis types. Unsupported or incomplete coverage returns `UNCERTAIN`; it must
+  not be presented as a validated biological claim.
+- The existing uncommitted `bio-workflow` -> `bioflow` rename remains preserved.
+  No commit, push, SLURM action, installation, download, result overwrite, or
+  destructive operation was performed for this goal.
+
+## Latest Update — 2026-07-08: Bioflow Rename Installed and Plan-Mode Ask Tested
+
+Purpose: the planned `bio-workflow` → `bioflow` rename had not been applied to
+the actual Codex/Claude skill entries, so the old longer name still affected
+skill invocation and plugin install commands. The user also asked whether the new
+Codex interactive ask/popup flow can be launched by the agent itself.
+
+What changed in the source tree:
+
+- `SKILL.md` frontmatter is now `name: bioflow`; UI metadata now prompts
+  `Use $bioflow ...`.
+- Codex runtime sync default is now `~/.codex/skills/bioflow`.
+- Repo-local plugin wrapper path is now `plugins/bioflow/`, with the plugin skill
+  copy under `plugins/bioflow/skills/bioflow/`.
+- Codex and Claude plugin manifests are now named/displayed as `bioflow`.
+- Repo-local beta marketplace manifests now expose `bioflow` from
+  `./plugins/bioflow`.
+- README install/plugin commands now use `bioflow`; the GitHub repository and
+  local development checkout directory may remain `Bio-workflow` /
+  `bio-workflow`.
+- Active helper/provenance text in scripts and playbook section headers now says
+  `bioflow`; old `HANDOFF.md` history and already-written historical report
+  artifacts are intentionally not rewritten.
+
+Runtime migration completed:
+
+- Codex now uses a real copy at `~/.codex/skills/bioflow`.
+- Claude now uses a symlink at `~/.claude/skills/bioflow` pointing to this
+  source repo.
+- Old installed entries were moved aside, not deleted:
+  - `~/.codex/skill-backups/bio-workflow-20260708T203500`
+  - `~/.claude/skill-backups/bio-workflow-20260708T203500`
+- `~/.codex/skills/bio-workflow` and `~/.claude/skills/bio-workflow` are absent,
+  so the old skill name should no longer be discovered from local skill dirs.
+
+Commands/tests run:
+
+```bash
+/data9/home/qgzeng/anaconda3/bin/python /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .
+bash -n scripts/*.sh
+/data9/home/qgzeng/anaconda3/bin/python /data9/home/qgzeng/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py plugins/bioflow
+claude plugin validate plugins/bioflow
+scripts/sync_plugin_wrapper.sh --yes
+scripts/sync_install.sh --yes
+/data9/home/qgzeng/anaconda3/bin/python /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py /data9/home/qgzeng/.codex/skills/bioflow
+/data9/home/qgzeng/anaconda3/bin/python /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py /data9/home/qgzeng/.claude/skills/bioflow
+md5sum SKILL.md plugins/bioflow/skills/bioflow/SKILL.md /data9/home/qgzeng/.codex/skills/bioflow/SKILL.md /data9/home/qgzeng/.claude/skills/bioflow/SKILL.md
+rg -n --hidden 'name: bio-workflow|\$bio-workflow|plugins/bio-workflow|skills/bio-workflow|\.codex/skills/bio-workflow|\.claude/skills/bio-workflow|bio-workflow@qgzeng-bio-beta|bio-workflow@personal|agent-skills/bio-workflow|agent-marketplaces/bio-workflow' SKILL.md README.md agents scripts references .agents .claude-plugin plugins/bioflow
+git diff --check
+```
+
+Current conclusion:
+
+- Source, plugin-copy, Codex-runtime, and Claude-symlink `SKILL.md` files share
+  md5 `100e328bf2ecf84a98999cc03d7f0600`.
+- Source skill, Codex installed skill, Claude symlink skill, Codex plugin, Claude
+  plugin, shell syntax, and program-card validations all PASS.
+- `codex plugin list` reported no installed marketplace plugins, so no old
+  `bio-workflow` marketplace plugin was removed.
+- The working tree remains dirty; `git add -A` is needed before commit so Git
+  records `plugins/bio-workflow/` → `plugins/bioflow/` as a rename.
+
+Plan-mode / interactive ask finding:
+
+- In this Default-mode session, calling `request_user_input` returned
+  `request_user_input is unavailable in Default mode`.
+- Official Codex manual fetched on 2026-07-08 says `/plan` switches to plan mode;
+  in the CLI, Shift+Tab can also toggle Plan mode. The agent cannot switch the
+  current conversation into Plan mode by itself from a normal reply.
+- Practical rule: if the user wants popup-style early clarification, they should
+  start the next request with `/plan` (optionally with inline text). Once the
+  conversation is actually in Plan mode, use `request_user_input` for 1-3
+  concise, non-blocking or blocking clarification questions as appropriate.
+- In Default mode, fall back to plain-text questions such as "先问我关键问题再动手".
+
+After this rename, start a new Codex/Claude session or reload plugins so the
+loader sees `bioflow`.
+
+## Latest Update — 2026-07-06: Output File/Directory Naming Convention
+
+Purpose: agents (especially Codex) were creating overly long, all-lowercase,
+suffix-laden output names like `figa_contig_nx_curves_lm_litstyle` when
+`FigA_Nx_Curves` would do. Added a naming-convention rule to `SKILL.md` and
+refined it via a Codex read-only review before commit.
+
+What changed (committed as `8ade192` on `main`, pushed to `origin/main`):
+
+- `SKILL.md` Project layout section: new naming rule for human-facing
+  analysis artifacts (result dirs, figure/report files, final TSVs).
+  Initial-capital underscore segments with atomic identifiers preserved
+  verbatim (`FigA`, `LM134`, `Nx`, `BUSCO`); no redundant status/style
+  suffixes (`_Run`, `_Final`, `_Litstyle`); `YYYYMMDD` dates or `V2`/`v1.1`
+  for snapshots; ASCII; ~4-5 segments / 60 chars. Standard project dirs
+  (`config/`, `data/`, `scripts/`, `logs/`, `results/`, `reports/`, `tmp/`),
+  scripts (step-prefix), and tool-mandated names are exempt.
+- Codex review (`codex exec --sandbox read-only`, gpt-5.5, xhigh reasoning)
+  found 5 must-fix issues; all applied plus high-value nice-to-haves:
+  1. Scope conflict with lowercase standard project dirs → rule scoped to
+     human-facing artifacts; standard dirs / tool-mandated names / extensions
+     explicitly exempt.
+  2. Script exemption now covers new AND existing scripts.
+  3. Atomic identifiers (`FigA`/`LM134`/`Nx`/`BUSCO`) preserved verbatim,
+     not normalized by the initial-capital rule.
+  4. Suffix ban narrowed from "purpose/source/version" to redundant
+     context/status/style tokens (`_Run`, `_Result`, `_Report`, `_Litstyle`,
+     `_New`, `_Final`).
+  5. Version/date guidance: `V2`/`v1.1` for a real version series,
+     `YYYYMMDD` for snapshots or colliding reruns, never `_Final`.
+  Nice-to-haves applied: soft length limit (4-5 segments / ~60 chars),
+  ASCII-only basenames, word-order (artifact → metric → discriminator),
+  lowercase-acceptable clarification.
+
+Commands/tests run:
+
+```bash
+codex exec --sandbox read-only -   # focused review of the naming rule (read via heredoc)
+/data9/home/qgzeng/anaconda3/bin/python /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .
+bash -n scripts/*.sh
+scripts/sync_install.sh --yes
+md5sum SKILL.md /data9/home/qgzeng/.codex/skills/bio-workflow/SKILL.md /data9/home/qgzeng/.claude/skills/bio-workflow/SKILL.md
+git add SKILL.md && git commit -F -   # 8ade192
+git push origin main
+```
+
+Current conclusion:
+
+- Source skill validation: PASS.
+- Shell syntax: PASS.
+- Codex runtime copy synced via `sync_install.sh --yes`; three `SKILL.md`
+  share md5 `0f872b660294188d313cbbab8863846c` (source + Codex copy + Claude
+  symlink target).
+- Claude entry remains a symlink → source, automatically live.
+- Committed `8ade192`, pushed `e1bd56f..8ade192 main -> main`.
+
+Caveats:
+
+- Running Codex/Claude sessions cache the old `SKILL.md`; start a new
+  session to load the new rule.
+- The naming rule is guidance, not a hard gate — no script-level lint
+  enforces it yet.
+- Codex review output is large (~95 KB transcript); the final markdown
+  review is at the tail of the persisted output file.
+
+Deferred (not done this session):
+
+- The `bio-workflow` → `bioflow` rename was discussed and planned in full
+  (frontmatter `name`, plugin wrapper + manifests, installed dirs, sync
+  targets, prose references, README, HANDOFF). It was deferred at the
+  user's request to first land the naming rule. Source repo dir and GitHub
+  repo name were to be kept by default. Resume on user request.
+
+Next steps:
+
+- If the naming rule is mis-applied in real use, add a script-level lint
+  that flags over-long / all-lowercase / suffix-laden artifact names in
+  generated SLURM/workflow scripts.
+- Decide whether to proceed with the `bioflow` rename.
 
 ## Latest Update — 2026-06-27: Output-Style Neutralization
 
@@ -1044,7 +1422,11 @@ Next steps:
   `/usr/bin/time -v` and/or `sacct` evidence before scaling.
 - Keep source and installed Codex copies synced after future runtime edits.
 
-## Current State
+## Historical State Snapshot (pre-2026-07-11; non-authoritative)
+
+The following section records the earlier slimming/annotation pass and contains
+historical paths and commit states. Use the 2026-07-11 update and Current
+Installation Model for current truth.
 
 - Source directory: `/data9/home/qgzeng/projects/3-Biotools_create/bio-workflow`
 - Installed Codex skill: `/data9/home/qgzeng/.codex/skills/bio-workflow`
@@ -1088,7 +1470,7 @@ Next steps:
 The installed `.codex` runtime copy should be kept in sync with this source
 directory after edits. Do not assume source edits are automatically installed.
 
-## Validation Snapshot
+## Historical Validation Snapshot
 
 Last validation in this session:
 
@@ -1115,15 +1497,16 @@ Result:
 There are three active entry points, with two different sync semantics:
 
 - **Source of development**: this repository directory.
-- **Codex runtime**: `~/.codex/skills/bio-workflow` is a **real copy**, so source
+- **Codex runtime**: `~/.codex/skills/bioflow` is a **real copy**, so source
   edits are NOT live until `scripts/sync_install.sh --yes` runs.
-- **Claude Code**: `~/.claude/skills/bio-workflow` is a **symlink → this repo**, so
+- **Claude Code**: `~/.claude/skills/bioflow` is a **symlink → this repo**, so
   it always reflects the source live and needs no separate sync step.
 
-Verified 2026-06-27: `~/.claude/skills/bio-workflow` is a symlink to the source
-repo; `~/.codex/skills/bio-workflow` is a directory copy. After the latest sync,
-all three `SKILL.md` share md5 `f2272fd5…`. Net rule: **after a source edit, only
-Codex needs `sync_install.sh`; Claude is current automatically.** A
+Verified 2026-07-11: `~/.claude/skills/bioflow` is a symlink to the source repo;
+`~/.codex/skills/bioflow` is a directory copy. Source, Claude, and the plugin
+wrapper are current; Codex runtime still needs the latest authorized sync. Net
+rule: **after a source edit, only Codex needs `sync_install.sh`; Claude is current
+automatically.** A
 running session of either agent still caches the old `SKILL.md` — start a new
 session to load changes.
 
@@ -1139,7 +1522,7 @@ The old standalone Claude skill copy was removed earlier:
   - `scripts/submit_and_log.sh`
 
 Do not reintroduce the old `~/.claude/skills/bioinformatics-analysis-workflow`
-fallback. `bio-workflow` has one real source directory, one Codex runtime copy,
+fallback. `bioflow` has one real source directory, one Codex runtime copy,
 and one Claude symlink back to the source.
 
 ## Recent Uncommitted Change Summary
@@ -1327,8 +1710,8 @@ This section replaces the previous 2000-line chronological journal.
 
 - Initial server-adapted skill: qgzeng SLURM defaults, QOS limits, protected paths,
   micromamba policy, input checks, quota checks, and chunked array submission.
-- Resume layer: `project_state_audit.sh`, `slurm_failure_triage.sh`, six project
-  states, and conservative takeover behavior.
+- Resume/lifecycle layer: `project_state_audit.sh`, `slurm_failure_triage.sh`, nine
+  project stages, startup planning, delivery closure, and conservative takeover.
 - Execution safety layer: `slurm_preflight.sh`, `prepare_submission.sh`,
   `gen_sbatch.sh`, and `submit_and_log.sh`.
 - Resource feedback layer: `resource_usage_audit.sh`, `parallelization_audit.sh`,
@@ -1340,7 +1723,8 @@ This section replaces the previous 2000-line chronological journal.
   segmental duplications, genome annotation, repeat annotation, and pan-gene batch
   annotation.
 - Evidence-to-Claim layer: `interpretation-rules.tsv`, `project-anchors.yaml`,
-  `result-manifest-schema.md`, and `check_result_contract.py`.
+  `result-manifest-schema.md`, `result-interpretation.md`, and
+  `check_result_contract.py`, including explicit `UNCERTAIN` coverage.
 - Feedback loop: `log_claim_audit.sh`, `Checker_Status_AtSubmit`, and
   `reports/claim_audit.tsv` for later false-positive/false-negative review.
 - Skill cleanup: removed dead Claude global copy, standardized runtime location
@@ -1353,24 +1737,10 @@ git log --oneline --decorate
 git show <commit>:HANDOFF.md
 ```
 
-## Known Open Design Work
+## Remaining Design Options
 
 Keep these as design options, not automatic next tasks:
 
-- Shorten `SKILL.md` from 707 lines toward 450-500 lines.
-  Suggested split:
-  - keep startup, safety, resume route, program route, task-routing index,
-    claim policy, workflow skeleton, and response shape in `SKILL.md`;
-  - move long SLURM executor details to `references/executor-safety.md`;
-  - move resource feedback details to `references/resource-feedback.md`;
-  - move download/reporting and qp details to targeted references.
-- Add `scripts/test_skill.sh` as the single maintenance entry:
-  quick validate, shell syntax, program-card validation, and representative
-  dry-run fixtures.
-- Add `scripts/sync_install.sh` to copy source files into
-  `/data9/home/qgzeng/.codex/skills/bio-workflow` and validate both sides.
-- Add `UNCERTAIN` to claim checking when an analysis type has no matching rule
-  coverage.
 - Add rule dependencies to `interpretation-rules.tsv` only after rule count and
   output noise justify a DAG.
 - Unify evidence terminology between program cards and interpretation rules when
@@ -1407,22 +1777,14 @@ Keep these as design options, not automatic next tasks:
 Run after editing skill structure:
 
 ```bash
-python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py .
-python3 scripts/validate_program_cards.py
-python3 scripts/validate_program_cards.py --check-drafts
-```
-
-Run after editing shell helpers:
-
-```bash
-bash -n scripts/*.sh
+scripts/test_skill.sh
 ```
 
 Run after changing the installed copy:
 
 ```bash
-python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py /data9/home/qgzeng/.codex/skills/bio-workflow
-diff -qr . /data9/home/qgzeng/.codex/skills/bio-workflow
+python3 /data9/home/qgzeng/.codex/skills/.system/skill-creator/scripts/quick_validate.py /data9/home/qgzeng/.codex/skills/bioflow
+diff -qr . /data9/home/qgzeng/.codex/skills/bioflow
 ```
 
 Expected `diff -qr` noise is limited to source-local development directories:
