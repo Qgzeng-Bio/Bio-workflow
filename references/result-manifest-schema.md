@@ -1,143 +1,185 @@
-# Result manifest schema
+# Result manifest v2 — claim-specific contract
 
-`scripts/check_result_contract.py` consumes a `result_manifest.yaml` that
-captures a single evaluation/finishing run. The schema is intentionally
-narrow: every metric must carry the provenance fields its rule set requires
-in `references/interpretation-rules.tsv`. Missing fields are reported as
-`MISSING` (treated as a soft block on publication-grade claims).
+`scripts/check_result_contract.py` gates a **declared claim**, not the mere
+presence of a metric block. The current schema is:
 
-The fields below are derived from the **real** quinoa V2 evaluation outputs
-under `/data9/home/qgzeng/projects/2-C_quinoa/7-Genome-evalution/`, not
-invented. See "Real output anchoring" below for the source files.
+```yaml
+schema_version: result_manifest.v2
+```
+
+A `PASS` means every explicit claim selected a concrete subject set, a matching
+protocol, complete required provenance, and readable cited evidence. It does not
+replace technical or biological review.
 
 ## Top-level shape
 
 ```yaml
-schema_version: result_manifest.v1
-analysis_id: <str>             # e.g. "quinoa_v2_post_finishing"
-project: <str>                 # used to look up matching anchors
-created_at: <ISO-8601>
-created_by: <str>              # tool that produced this manifest
-analysis_types:                # explicit rule-coverage scope; may be inferred for legacy manifests
-  - assembly_evaluation        # supported: assembly_evaluation, kmeria_association, sv_confidence
+schema_version: result_manifest.v2
+analysis_id: quinoa_v2_evaluation
+project: quinoa_project
+created_at: 2026-08-10T12:00:00Z
+created_by: bioflow
+analysis_types: [assembly_evaluation]
 
 assemblies:
-  - key: <str>                 # short identifier, e.g. Cqu_final / hap1 / hap2
-    role: primary | phased_haplotype | scaffolded | other
-    fasta: <path>              # absolute or project-relative
-    contig_N50: <int?>         # bp, if known
-    scaffold_N50: <int?>       # bp, only if scaffolding ran
-    total_length: <int>
-    n_contigs: <int?>
-    gaps: <int?>
+  - key: asm1
+    role: primary
+    fasta: results/asm1.fa
+    total_length: 1271319056
+    contig_N50: 70111769
+    scaffold_N50: null
+    misjoin_validated: false
 
-busco:                          # one entry per (assembly, lineage) pair
-  - assembly_key: <str>
-    lineage: <str>              # e.g. embryophyta_odb12  -- REQUIRED
-    mode: genome | protein | transcriptome   # REQUIRED
-    db_version: <str>           # e.g. "2025-07-01" -- REQUIRED
-    busco_version: <str>        # e.g. "6.0.0"
-    n_busco: <int>              # total markers in the lineage
-    C: <float>  S: <float>  D: <float>  F: <float>  M: <float>
-    short_summary: <path?>      # path to short_summary.specific.*.txt or .json
+busco:                         # multiple lineages per assembly are legal
+  - assembly_key: asm1
+    lineage: embryophyta_odb12
+    mode: genome
+    db_version: "2025-07-01"
+    busco_version: "6.0.0"
+    n_busco: 2026
+    C: 99.7
+    S: 3.3
+    D: 96.4
+    F: 0.0
+    M: 0.3
 
 merqury:
-  - assembly_key: <str>
-    k: <int>                    # REQUIRED -- different k cannot be ranked
-    read_db_type: illumina_pcrfree | illumina_other | hifi | hybrid | unknown   # REQUIRED
-    read_db_path: <path?>       # the read.meryl directory
-    coverage: <float?>          # x-coverage of the read database, if recorded
-    independence: <bool?>       # false if read_db built from same reads as assembly input
-    QV: <float>                 # aggregate QV
-    error_rate: <float?>
-    qv_file: <path?>            # path to result_<key>.qv
+  - assembly_key: asm1
+    k: 21
+    read_db_type: hifi
+    coverage: 70.0
+    independence: false
+    QV: 63.2366
 
 lai:
-  - assembly_key: <str>
-    LAI: <float>                # whole_genome value (first row of *.out.LAI)
-    raw_LAI: <float?>
-    intact_LTR_RT_pct: <float>  # REQUIRED for ASM_LAI_001 applicability check
-    total_LTR_RT_pct: <float>   # REQUIRED for ASM_LAI_001 applicability check
-    lai_file: <path?>           # path to <asm>.fa.out.LAI
-
-quast:
-  source: <path?>               # path to report.tsv
-  per_assembly: {<assembly_key>: {N50: <int>, total: <int>, ...}}
+  - assembly_key: asm1
+    LAI: 16.09
+    total_LTR_RT_pct: 50.0
+    intact_LTR_RT_pct: 2.0
 
 mapping:
-  - assembly_key: <str>
-    read_type: hifi | ont | illumina
-    rate_pct: <float>
-    flagstat: <path?>
+  - assembly_key: asm1
+    read_type: hifi
+    rate_pct: 100.0
 
 telomere:
-  - assembly_key: <str>
-    repeats: <int>              # tidk telomere count
-    expected: <int?>            # 2 * n_chromosomes if all ends complete
+  - assembly_key: asm1
+    repeats: 36
+    expected: 36
 
-anchors_compared: [<anchor_name>, ...]   # e.g. ["quinoa_v2_reference_frame"]
+sv:
+  callers:
+    - name: Sniffles2
+      evidence_axis: read
+    - name: SyRI
+      evidence_axis: assembly
 
-claims:                         # optional but recommended for important narrative claims
-  - claim_id: <str>
-    category: Observation | Interpretation | Hypothesis | Limitation
-    statement: <str>
-    analysis_type: <str>
-    evidence_paths: [<path>, ...]
-    status: supported | uncertain | blocked
-    caveats: [<str>, ...]
+claims: []
 ```
 
-`analysis_types` prevents a false `PASS` when the checker has no rules for the
-requested analysis. Known legacy blocks are inferred when the field is absent:
-assembly evaluation blocks -> `assembly_evaluation`, `kmeria` ->
-`kmeria_association`, and `sv` -> `sv_confidence`. Any other declared type returns
-`UNCERTAIN` until active coverage exists.
+`analysis_types` currently covered here are `assembly_evaluation`,
+`kmeria_association`, and `sv_confidence`. An unknown or overly broad type returns
+`UNCERTAIN`; omitting it cannot turn absent coverage into `PASS`.
 
-## Required-field minima per metric
+## Claim interface
 
-The checker treats the following as MISSING (soft-block) when absent.
-"Required" here means "needed before a publication-grade claim is allowed",
-not "needed to load the manifest".
+Every v2 claim has these machine-checked fields:
 
-| Block | Required fields |
-| --- | --- |
-| `busco[*]` | `lineage`, `mode`, `db_version`, `C`, `D`, `F`, `M` |
-| `merqury[*]` | `k`, `read_db_type`, `QV` |
-| `lai[*]` | `LAI`, `total_LTR_RT_pct`, `intact_LTR_RT_pct` |
-| `assemblies[*]` | `key`, `fasta`, `total_length`, at least one of `contig_N50` / `scaffold_N50` (labeled) |
+```yaml
+claims:
+  - claim_id: ASM_QV_COMPARE_001
+    claim_type: metric_observation | metric_comparison | assembly_quality_overview | sv_high_confidence
+    metric: N50 | BUSCO | QV | LAI | mapping | telomere | SV | assembly_quality
+    subjects: [asm1, asm2]
+    protocol:
+      lineage: embryophyta_odb12  # BUSCO / overview
+      mode: genome
+      k: 21                       # QV / overview
+      read_db_type: hifi
+      n50_type: contig_N50        # N50 / overview
+      mapping_read_type: hifi     # overview; metric-only mapping uses read_type
+    evidence_paths:
+      - ../results/QV_Summary.tsv
+    status: supported | uncertain | blocked
+    caveats: []
+```
 
-## Rule wiring
+Relative `evidence_paths` resolve against the **manifest directory**, not the
+shell working directory. A `supported` claim whose cited path is absent,
+unreadable, or not a regular file is `BLOCK`. Only paths explicitly listed in the
+manifest are checked; the checker never scans surrounding directories.
 
-The checker first verifies analysis-type coverage, then dispatches one Python function per `rule_id` in
-`references/interpretation-rules.tsv`. Each function reads the manifest plus
-the anchors file and returns one of:
+Claim cardinality:
 
-- `("OK", "")`
-- `("WARN", "<one-line caveat with the relevant provenance values inline>")`
-- `("BLOCK", "<one-line claim constraint with the offending field values>")`
-- `("MISSING", "<dotted.path.to.field>")`
-- `("UNCERTAIN", "<missing analysis-type coverage or evidence>")`
+- `metric_observation`: exactly one subject;
+- `metric_comparison`: at least two subjects;
+- `assembly_quality_overview`: one or more subjects, each with all six axes;
+- `sv_high_confidence`: one or more comparison subjects and orthogonal SV axes.
 
-Output is the short, machine-parseable `Field\tValue` style used by
-`program_card_lookup.py` so a downstream LLM can parse it without a heavy
-template.
+Claim IDs must be unique. `subjects`, `protocol`, `evidence_paths`, `status`, and
+`caveats` are never inferred from narrative prose.
 
-Overall precedence is `BLOCK` > `UNCERTAIN` > `WARN` > `PASS`. A `PASS` means
-only that active rules cover the declared/inferred types and did not fire; it is
-not independent proof of the biological claim. Read
-`references/result-interpretation.md` for narrative categories and evidence use.
+## Metric gates
 
-## Real output anchoring (do not edit unless the source files change)
+### BUSCO
 
-| Tool | Real file | Format | Source-of-truth field on disk |
-| --- | --- | --- | --- |
-| BUSCO v6 | `busco_<lineage>/short_summary.specific.<lineage>.<run>.txt` (and `.json`) | KEY: VALUE / JSON | `results.{Complete,Duplicated,Fragmented,Missing}` + lineage metadata |
-| Merqury | `result_<key>.qv` (aggregate) | 5-col TSV no header | `assembly  n_mismatch  total_bp  QV  error_rate` |
-| Merqury per-contig | `result_<key>.<asm>.qv` | 5-col TSV no header | one row per chromosome |
-| LAI | `<asm>.fa.out.LAI` | 7-col TSV with header | first row `whole_genome` carries the genome-wide `LAI`; per-1Mb windows below |
-| QUAST | `quast/report.tsv` | 2-col TSV | metric / value pairs |
-| FAI | `<asm>.fa.fai` | 5-col TSV | `name length offset linebases linewidth` |
+A selected record requires `lineage`, `mode`, `db_version`, `busco_version`,
+`n_busco`, `C`, `D`, `F`, and `M`. The same manifest may store several lineages.
+Only a `metric_comparison` is blocked when every subject cannot supply exactly one
+record for the claim-selected `protocol.lineage + protocol.mode`.
 
-`scripts/collect_metrics.py` (Phase 3, not in this commit) will populate the
-manifest from these files. Until then, manifests are hand-authored or
-filled by an upstream pipeline.
+### Merqury QV
+
+A selected record requires `k`, `read_db_type`, `coverage`, `independence`, and
+`QV`. A comparison must match both `protocol.k` and
+`protocol.read_db_type`; otherwise ranking is blocked. HiFi-on-HiFi or another
+non-independent truth set remains `WARN`, and the claim must carry an explicit
+non-independence caveat.
+
+### N50
+
+An assembly may legally store both `contig_N50` and `scaffold_N50`. Every N50
+claim must choose one through `protocol.n50_type`, and all subjects must have that
+same field. Scaffold N50 without `misjoin_validated: true` is `WARN`.
+
+### Assembly quality overview
+
+For **each** subject, the claim must resolve six orthogonal evidence axes:
+contiguity (selected N50 type), BUSCO (selected lineage/mode), QV (selected k/read
+database), LAI, mapping (selected read type), and telomere. Missing an axis blocks
+the overview. A single-metric observation is independently valid and is not
+forced to populate the other five axes.
+
+### High-confidence SV
+
+`sv.callers` entries are mappings with `name` and `evidence_axis`. A
+`sv_high_confidence` claim requires at least one `read` and one `assembly` axis.
+Two assembly callers do not satisfy orthogonality.
+
+## Status and overall result
+
+Precedence remains `BLOCK > UNCERTAIN > WARN > PASS`, with stable checker exit
+codes `2/3/1/0` respectively.
+
+- **PASS** — all declared v2 claims are `supported`, complete, protocol-matched,
+  evidence-backed, and have no warning or block.
+- **WARN** — a supported analysis has no explicit claim, publication provenance
+  or caveat is incomplete, QV is non-independent, or a supported status conflicts
+  with a warning. It is not a formal claim PASS.
+- **BLOCK** — invalid comparison, missing evidence for a supported claim,
+  read+assembly SV orthogonality failure, explicit `status: blocked`, or
+  `status: supported` conflicts with a block.
+- **UNCERTAIN** — rule coverage is absent, evidence scope cannot be determined, or
+  a claim explicitly has `status: uncertain`.
+
+## Legacy compatibility
+
+`result_manifest.v1` and unversioned manifests remain parseable. They are not
+automatically or destructively migrated. Even when their known analysis blocks
+are complete, absence of an explicit v2 claim limits the result to `WARN`; an
+unsupported analysis type remains `UNCERTAIN`. The checker prints the fields
+needed for a manual v2 upgrade.
+
+New projects receive `config/result_manifest.yaml` from
+`assets/project-templates/result_manifest.yaml`. `scripts/init_project.sh`
+creates it only when absent and never overwrites an existing manifest.

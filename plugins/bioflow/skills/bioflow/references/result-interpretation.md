@@ -5,80 +5,89 @@ figures, downstream decisions, or manuscript claims.
 
 ## Evidence ladder
 
-1. **Run evidence:** job/program ended as expected; logs and job IDs are complete.
-2. **Data evidence:** expected files, samples, formats, counts, coordinates, and
-   reference versions are correct.
-3. **Analysis evidence:** tool-specific QC and acceptance gates pass.
-4. **Biological evidence:** the result is robust to relevant confounders and is
-   biologically interpretable within the design.
-5. **Claim evidence:** every statement cites specific accepted outputs and carries
-   the caveats required by `check_result_contract.py`.
+1. **Run evidence:** program/job ended as expected and logs are complete.
+2. **Data evidence:** expected files, samples, formats, coordinates, and references
+   are correct.
+3. **Analysis evidence:** method-specific QC and acceptance gates pass.
+4. **Biological evidence:** the result is robust to relevant design confounders.
+5. **Claim evidence:** each statement cites accepted outputs and passes its own
+   subject/protocol gate in `result_manifest.v2`.
 
-Passing a lower layer never proves a higher one. In particular, exit code zero and
-non-empty files do not prove biological validity.
+Passing a lower layer never proves a higher one. Exit code zero and non-empty files
+do not establish a biological claim.
 
 ## Statement categories
 
-- **Observation:** a direct, reproducible description of accepted data, including
-  metric, unit, sample/reference, method, and evidence path.
-- **Interpretation:** a reasoned explanation supported by observations and an
-  applicable method or rule. State alternatives and relevant confounders.
-- **Hypothesis:** a testable biological possibility that exceeds current evidence.
-  State what additional experiment or analysis would support or reject it.
-- **Limitation:** a known boundary caused by design, sampling, method, reference,
-  mapping, batch, coordinate, or rule-coverage constraints.
+- **Observation:** direct accepted result with metric, unit, subject/reference,
+  method/protocol, and evidence path.
+- **Interpretation:** explanation supported by observations and an applicable
+  method; retain alternatives and confounders.
+- **Hypothesis:** testable extension beyond current evidence; state the next test.
+- **Limitation:** boundary caused by design, sampling, method, reference, mapping,
+  batch, coordinate, or rule coverage.
 
-Do not rewrite an Interpretation or Hypothesis as an Observation. Do not describe
-association, overlap, enrichment, or prediction as causation without an explicit
-causal design and evidence.
+Do not rewrite interpretation or hypothesis as observation. Association, overlap,
+enrichment, and prediction are not causation.
 
-## Claim record
+## Claim records
 
-For important claims, add a `claims` entry to `result_manifest.yaml`:
+Important statements use the v2 claim interface. For example, a local N50
+observation needs only the N50 axis:
 
 ```yaml
+schema_version: result_manifest.v2
 analysis_types: [assembly_evaluation]
 claims:
-  - claim_id: ASM_001
-    category: Observation
-    statement: "Cqu_final contig N50 is 70,111,769 bp."
-    analysis_type: assembly_evaluation
+  - claim_id: ASM_N50_OBS_001
+    claim_type: metric_observation
+    metric: N50
+    subjects: [Cqu_final]
+    protocol:
+      n50_type: contig_N50
     evidence_paths:
-      - results/QUAST_Summary.tsv
+      - ../results/QUAST_Summary.tsv
     status: supported
     caveats: []
 ```
 
-Use `status: uncertain` when evidence, provenance, applicability, or rule coverage
-is incomplete. Use `status: blocked` when a `BLOCK` rule fires. Evidence paths must
-resolve to readable accepted artifacts; a status row alone is not evidence.
+A comparative or overview claim must separately name all subjects and protocol
+selectors. Relative evidence paths resolve from the manifest directory. The
+checker tests only those paths and never searches for substitute evidence.
+
+Use `status: uncertain` when scope, applicability, or evidence is unresolved. Use
+`status: blocked` when a blocking gate is known. Do not label a claim `supported`
+merely because a metric block exists; checker warnings/blocks are reported as a
+status inconsistency.
 
 ## Checker statuses
 
-- `PASS`: active rules cover every declared/inferred analysis type and no gate
-  fired. This permits only claims supported by cited local evidence.
-- `WARN`: proceed only with every warning carried into the narrative.
-- `BLOCK`: do not make the constrained claim; state the rule and lifting evidence.
-- `UNCERTAIN`: rule coverage or required analysis evidence is missing. Report
-  observations descriptively, label interpretation uncertain, and do not claim
-  publication-grade validation.
+- `PASS`: every declared v2 claim has complete schema, matching subject/protocol
+  records, readable evidence, and no warning/block.
+- `WARN`: not publication-grade PASS. Carry every warning into prose; typical
+  causes include no explicit claim, incomplete provenance, or non-independent QV.
+- `BLOCK`: do not make the constrained claim. State the rule and evidence needed
+  to lift it.
+- `UNCERTAIN`: active rules cannot decide the claim scope, or the claim itself is
+  declared uncertain. Report accepted observations only.
 
-Never convert `UNCERTAIN` to `PASS` by omitting `analysis_types`. The checker
-infers known types from supported manifest blocks and returns `UNCERTAIN` when it
-cannot establish coverage.
+Overall precedence is `BLOCK > UNCERTAIN > WARN > PASS`. Legacy v1 or unversioned
+manifests remain readable but cannot receive claim-grade PASS without a manual v2
+claim. Never obtain PASS by deleting `analysis_types` or evidence blocks.
 
-## Interpretation output
+## Narrative output
 
 For each important result, report:
 
 ```text
-Observation: <direct result with metric/unit/context>
-Evidence: <accepted path(s), tool/version, reference/coordinates>
+Observation: <direct result with unit, subject, and protocol>
+Evidence: <manifest claim_id and readable accepted path(s)>
 Interpretation: <supported explanation or UNCERTAIN>
 Hypothesis: <optional testable extension>
 Limitations: <design/method/provenance/rule caveats>
-Next validation: <smallest test that would change confidence>
+Next validation: <smallest evidence that changes confidence>
 ```
 
-Keep prose proportional to evidence. When multiple explanations fit, list them
-instead of choosing the most biologically attractive story.
+An `assembly_quality_overview` requires contiguity, BUSCO, QV, LAI, mapping, and
+telomere evidence for every subject. This does not prevent an independently
+supported single-axis N50/BUSCO/QV observation from being reported at its proper
+scope.

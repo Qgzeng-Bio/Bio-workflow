@@ -1,0 +1,29 @@
+schema_version: result_manifest.v2
+analysis_id: replace_me
+project: replace_me
+created_at: null
+created_by: null
+analysis_types: []
+
+# Populate only blocks produced by this analysis. Relative evidence_paths in
+# claims resolve from this manifest's directory (normally config/).
+assemblies: []
+busco: []
+merqury: []
+lai: []
+quast: {}
+mapping: []
+telomere: []
+sv:
+  callers: []
+
+# A formal PASS requires at least one complete claim. Example:
+# - claim_id: ASM_N50_OBS_001
+#   claim_type: metric_observation
+#   metric: N50
+#   subjects: [asm1]
+#   protocol: {n50_type: contig_N50}
+#   evidence_paths: [../results/N50_Summary.tsv]
+#   status: supported
+#   caveats: []
+claims: []
