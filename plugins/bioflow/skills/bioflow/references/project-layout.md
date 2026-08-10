@@ -9,6 +9,7 @@ rules; do not rename a live project merely for style.
 - [Canonical directories](#canonical-directories)
 - [Artifact boundaries](#artifact-boundaries)
 - [Naming rules](#naming-rules)
+- [Executable path management](#executable-path-management)
 - [Identifiers and versions](#identifiers-and-versions)
 - [Examples](#examples)
 - [Compatibility and migration](#compatibility-and-migration)
@@ -53,6 +54,23 @@ task-specific subdirectory only when a real tool or workflow stage needs it.
 
 ## Naming rules
 
+### Managed analysis directories
+
+For newly created stage/result subdirectories, use the executable contract in
+`references/path-management.md`: one to three short semantic tokens, a
+24-character basename budget, and an optional two-digit stage prefix. Examples:
+`20_align`, `30_RNA_DE`, `40_BUSCO`, `50_SV_LM134`.
+
+Do not turn a long Chinese or English purpose sentence into a basename. Keep the
+short operational identity in the directory and record the full purpose in
+`config/Directory_Index.tsv`. Existing active/tool-controlled names are
+compatibility surfaces and are never renamed only for style.
+
+Before creating a new managed directory, run `path_manager.py suggest`; for an
+existing project, use its bounded read-only `audit`. `create` and `register` are
+dry-run by default and still require write disclosure/confirmation before
+`--yes`.
+
 ### Scripts
 
 - Use a two-digit step prefix and a short lowercase verb/topic:
@@ -62,10 +80,11 @@ task-specific subdirectory only when a real tool or workflow stage needs it.
 - Do not renumber stable scripts only to fill gaps. Leave increments of 10 for
   later inserted stages.
 
-### Human-facing artifacts
+### Human-facing files
 
-- Use ASCII letters, digits, and underscores; keep the basename to roughly 4–5
-  segments and 60 characters.
+- Use ASCII letters, digits, and underscores; keep a file basename to roughly
+  4–5 segments and 60 characters. Managed directory names use the stricter
+  24-character contract above.
 - Use artifact/topic -> content/metric -> minimum discriminator:
   `BUSCO_Summary_LM134.tsv`, `FigA_Nx_Curves.pdf`.
 - Preserve atomic identifiers exactly: `LM134`, `FigA`, `N50`, `Nx`, `BUSCO`,
@@ -90,6 +109,19 @@ task-specific subdirectory only when a real tool or workflow stage needs it.
   `Read_Count`, `Job_ID`.
 - Keep atomic identifiers/acronyms exact. Never mix spaces and tabs as delimiters.
 - Include units in names when ambiguity matters: `Length_bp`, `Size_GB`.
+
+## Executable path management
+
+Use:
+
+```bash
+python3 scripts/path_manager.py suggest --kind stage --step 30 --token RNA --token DE
+python3 scripts/path_manager.py audit --project /abs/project --max-depth 3
+```
+
+For the complete CLI, index schema, rule IDs, dry-run writes, protected-path
+checks, and rollback behavior, read `references/path-management.md`. The manager
+has no rename/move/delete operation and does not follow symlinks during audit.
 
 ## Identifiers and versions
 
@@ -127,4 +159,8 @@ task-specific subdirectory only when a real tool or workflow stage needs it.
 - Treat naming lint as advisory for legacy/tool-controlled paths. Safety,
   reproducibility, and compatibility outrank cosmetic uniformity.
 - Use `scripts/init_project.sh` to preview or create the minimal new-project
-  skeleton and templates. It is dry-run by default and never overwrites files.
+  skeleton and templates, including `config/Directory_Index.tsv`. It is dry-run
+  by default and never overwrites files.
+- Use `scripts/path_manager.py audit` for advisory legacy checks. Register
+  tool-mandated names as `tool_managed` and incompatible established names as
+  `legacy`; do not bulk-rename them.

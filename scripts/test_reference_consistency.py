@@ -93,4 +93,16 @@ for header in required_headers:
     assert "  " not in header and "\t" in header
 print("PASS | playbook table schemas use explicit TSV and canonical columns")
 
+path_contract = (REFS / "path-management.md").read_text()
+layout = (REFS / "project-layout.md").read_text()
+agent_metadata = (ROOT / "agents" / "openai.yaml").read_text()
+assert "references/path-management.md" in skill
+assert "scripts/path_manager.py suggest" in skill
+assert "folder naming" in skill.split("---", 2)[1]
+assert "30_RNA_DE" in path_contract and "Directory_Index.tsv" in path_contract
+assert "no rename, move, delete" in path_contract
+assert "Executable path management" in layout and "24-character" in layout
+assert "简洁目录管理" in agent_metadata and "name/audit project directories" in agent_metadata
+print("PASS | concise path management contract, trigger, route, and metadata are linked")
+
 print("PASS | genome evaluation and workflow reference consistency")

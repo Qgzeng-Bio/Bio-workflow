@@ -63,9 +63,25 @@ scripts/init_project.sh --project /absolute/path/to/project --yes
 ```
 
 The initializer never overwrites existing files. It includes an empty
-`reports/Task_Status.tsv` for concurrent work units and a non-claiming
-`config/result_manifest.yaml` v2 template. Naming, identifier/version, and legacy compatibility rules are in
-[`references/project-layout.md`](references/project-layout.md).
+`reports/Task_Status.tsv` for concurrent work units, a non-claiming
+`config/result_manifest.yaml` v2 template, and an empty
+`config/Directory_Index.tsv`. Naming, identifier/version, and legacy compatibility
+rules are in [`references/project-layout.md`](references/project-layout.md).
+
+## Keep directory names concise
+
+Use the deterministic manager instead of turning a long task description into a
+folder name:
+
+```bash
+python3 scripts/path_manager.py suggest --kind stage --step 30 --token RNA --token DE
+python3 scripts/path_manager.py audit --project /abs/project --max-depth 3
+```
+
+`create` and `register` are dry-run by default and write only with `--yes` after
+the normal Bioflow confirmation gate. They update `config/Directory_Index.tsv`;
+there is no rename/move/delete command. Full rules and examples are in
+[`references/path-management.md`](references/path-management.md).
 
 ## Monitor running work
 

@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import csv
 import importlib.util
+import io
 import subprocess
 import sys
 import tempfile
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -47,6 +49,12 @@ def make_project(root: Path) -> Path:
     (project / "config" / "Directory_Index.tsv").write_bytes(TEMPLATE.read_bytes())
     return project
 
+
+parser = manager.build_parser()
+subcommands = next(
+    action.choices for action in parser._actions if isinstance(action, manager.argparse._SubParsersAction)
+)
+assert set(subcommands) == {"suggest", "audit", "create", "register"}
 
 # Deterministic names preserve caller-selected scientific casing and IDs.
 name, stage = manager.build_name("stage", 30, ["RNA", "DE"], None)
@@ -259,7 +267,8 @@ with tempfile.TemporaryDirectory(prefix="bioflow-path-rollback.") as tmp_name:
     original_index = (project / "config" / "Directory_Index.tsv").read_bytes()
     with mock.patch.object(manager, "atomic_write_index", side_effect=OSError("simulated index failure")):
         try:
-            manager.run_create(args)
+            with redirect_stdout(io.StringIO()):
+                manager.run_create(args)
         except OSError:
             pass
         else:

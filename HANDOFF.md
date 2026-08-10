@@ -1880,16 +1880,38 @@ expanded result-contract matrix. Source is mirrored into the repo-local plugin;
 Codex runtime sync is performed only through guarded `sync_install.sh --yes`.
 Remote push remains a separate online action.
 
-A separate future task was requested for concise folder naming/management. Keep
-it outside these five commits: proposed scope is deterministic short-name
-suggestion, bounded read-only lint, and `config/Directory_Index.tsv`; existing
-projects must not be bulk-renamed and any create/rename action needs a new
-reviewed plan and confirmation.
+## Concise directory naming and management
+
+The deferred folder-naming request is now implemented as a bounded Bioflow
+capability:
+
+- `scripts/path_manager.py suggest` emits one validated short name from 1–3
+  explicit semantic tokens (`30_RNA_DE`), with a 24-character budget and optional
+  sibling collision check.
+- `audit` is read-only, deterministic, max-depth bounded (hard cap 5), skips
+  data/log/tmp interiors, never follows symlinks, and reports true TSV rule rows.
+- `create` and `register` are dry-run by default. After write disclosure and
+  confirmation, `--yes` creates one directory or registers one existing path and
+  atomically updates `config/Directory_Index.tsv`.
+- Index replacement failure restores the previous index and rolls back a newly
+  created empty directory. Duplicate IDs/paths, case collisions, broad/protected
+  roots, symlink escapes, missing parents, and overwrite attempts are blocked.
+- `tool_managed` names are exempt and `legacy` names remain advisory; no
+  rename/move/delete/cleanup/archive-mutation surface exists.
+- `init_project.sh` creates the index header only when absent. Dedicated fixtures
+  cover naming budgets, audit exits/ordering, safe writes, and rollback.
+
+Detailed rules live in `references/path-management.md`; `SKILL.md` only routes
+matching requests. The implementation uses the Python standard library and was
+informed by local Agent Skills/skill-creator/audit patterns because the session
+was offline; no external organizer was installed or copied.
 
 ## Remaining Design Options
 
 Keep these as design options, not automatic next tasks:
 
+- Add a read-only `rename-plan` only when real audit output demonstrates a need.
+  Actual `mv` remains a separate high-risk, separately confirmed workflow.
 - Add rule dependencies to `interpretation-rules.tsv` only after rule count and
   output noise justify a DAG.
 - Unify evidence terminology between program cards and interpretation rules when
