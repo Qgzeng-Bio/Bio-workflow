@@ -91,33 +91,42 @@ for i in $(basename -s _primary.fa $(ls *primary.fa)); do quast.py -o "${i}_quas
 conda activate access
 quast.py -o "${name}_quast" -t 16 "${name}.fa"
 conda activate busco
-busco -i "${name}.fa" -c 16 -f -o "busco_${name}" -m genome -l eudicots_odb10 --offline   # BUSCO v6 + miniprot. `-m genome` (the `geno` shorthand is also valid in v6 — `--help`: "geno or genome"). `-c` = threads, tune per node.
+# Headline quinoa lineage: use this exact lineage when comparing with the V2 anchor.
+busco -i "${name}.fa" -c 16 -o "busco_${name}_embryophyta_odb12" -m genome -l embryophyta_odb12 --offline
+# Optional supplemental lineage; keep a distinct output label and never rank it against odb12.
+busco -i "${name}.fa" -c 16 -o "busco_${name}_eudicots_odb10" -m genome -l eudicots_odb10 --offline
 conda activate access
 tidk search -s CCCTAAA -o "${name}_telo" -d . "${name}.fa"                # standard post-assembly QC
 tidk plot   -t "${name}_telo_telomeric_repeat_windows.tsv" -o "${name}_telo"
 ```
 
-BUSCO lineage = **`eudicots_odb10`** (2,326 orthologs; more specific than embryophyta for quinoa).
+BUSCO headline lineage for quinoa = **`embryophyta_odb12`** (2,026 markers in the recorded anchor).
+`eudicots_odb10` or another lineage may be reported as a separate supplemental result, but its percentage
+must not be directly ranked against odb12. Record BUSCO version, database creation/version, mode, and marker count.
 
 ### Acceptance — read these against the quinoa benchmark
 
 - **QUAST**: total length, # contigs, **N50**, largest contig, **# N's per 100 kbp** (HiFi(+ONT) contigs should
   be gap-free, ~0 N's).
-- **BUSCO**: `C:%[S:%,D:%],F:%,M:%,n:2326` — **C ≥ 95% = high quality, ≥ 90% acceptable**; published quinoa
-  reference is **98.4%**, so aim ≥ ~97%. **High D is expected (subgenomes) — do not flag it.**
+- **BUSCO**: report `C/S/D/F/M/n` with exact lineage. For the headline `embryophyta_odb12` comparison,
+  the V2 anchor is **C 99.7%, D 96.4%, n=2026**. General C thresholds are descriptive only; **high D is
+  expected from the A+B subgenomes and is not automatically a defect.**
 - **TIDK telomeres**: `CCCTAAA` arrays at contig ends (~7 ends/haplotype seen) — telomere-bearing ends
   *recovered*, not near-T2T: an 18-chromosome gametic set has 36 ends, so full telomere completeness (both ends
   capped per chromosome) needs the finishing-stage end audit, not this count.
 
 "This is what good looks like for quinoa" (CHLi-134-1 HiFi+ONT, plus the published reference):
 
-| Assembly | # contigs | Total | N50 | Largest | BUSCO (C/S/D/F/M) | N/100kbp |
+| Assembly | # contigs | Total | N50 | Largest | BUSCO (C/S/D/F/M; lineage labeled) | N/100kbp |
 |---|---|---|---|---|---|---|
-| **Primary** | 326 | 1.31 Gb | **70.1 Mb** | 81.8 Mb | 98.4 / 4.2 / 94.2 / 0.0 / 1.6 | 0.00 |
-| Hap1 | 269 | 1.28 Gb | 68.3 Mb | 81.8 Mb | 98.2 / 5.0 / 93.1 / 0.1 / 1.7 | 0.00 |
-| Hap2 | 153 | 1.27 Gb | 70.1 Mb | 81.8 Mb | 98.3 / 5.2 / 93.2 / 0.0 / 1.6 | 0.00 |
-| `p_utg` (pre-phasing) | 4,257 | 1.44 Gb | 9.9 Mb | 40.1 Mb | 98.3 / 4.2 / 94.2 / 0.0 / 1.6 | 0.00 |
-| *Published QQ74-V2* | *18 chr* | *1.326 Gb* | *66.9 Mb* | — | *98.4 (embryophyta)* | — |
+| **Primary** | 326 | 1.31 Gb | **70.1 Mb** | 81.8 Mb | 98.4 / 4.2 / 94.2 / 0.0 / 1.6 (`eudicots_odb10`) | 0.00 |
+| Hap1 | 269 | 1.28 Gb | 68.3 Mb | 81.8 Mb | 98.2 / 5.0 / 93.1 / 0.1 / 1.7 (`eudicots_odb10`) | 0.00 |
+| Hap2 | 153 | 1.27 Gb | 70.1 Mb | 81.8 Mb | 98.3 / 5.2 / 93.2 / 0.0 / 1.6 (`eudicots_odb10`) | 0.00 |
+| `p_utg` (pre-phasing) | 4,257 | 1.44 Gb | 9.9 Mb | 40.1 Mb | 98.3 / 4.2 / 94.2 / 0.0 / 1.6 (`eudicots_odb10`) | 0.00 |
+| *Published QQ74-V2* | *18 chr* | *1.326 Gb* | *66.9 Mb* | — | *98.4 (reported embryophyta lineage; supplemental context only)* | — |
+
+The historical Stage C eudicots rows above are retained as observations, not as direct comparisons to the
+`embryophyta_odb12` anchor. Run odb12 on a candidate before making an anchor comparison.
 
 ### Interpretation hooks
 
@@ -135,7 +144,7 @@ This QC is the *first* look; the systematic, full quality scoring (QV, LAI, mapp
 is the dedicated `playbook-genome-quality-evaluation.md`, run after finishing.
 
 ### Evaluation contract
-- Required report fields: BUSCO `C/S/D/F/M` with `lineage+mode+db_version`; QUAST/faidx N50 labeled `contig_N50` (this stage produces contigs, not scaffolds); per-haplotype size + survey-derived ploidy.
+- Required report fields: BUSCO `C/S/D/F/M` with `lineage+mode+db_version+busco_version+n_busco`; QUAST/faidx N50 labeled `contig_N50` (this stage produces contigs, not scaffolds); per-haplotype size + survey-derived ploidy.
 - Comparator: `references/project-anchors.yaml` (quinoa V2 N50 70.1 Mb / BUSCO 99.7% embryophyta_odb12) first.
 - Invalid comparisons: BUSCO across lineages (`ASM_BUSCO_002` BLOCK); claiming "better assembly" from a single haplotype's lower D when subgenomes might be lost (`ASM_BUSCO_003` NOTE).
 - Silent traps: hifiasm hap1/hap2 each still hold A+B subgenomes — low D in a haplotype is not automatically a quality win, it can be over-purging. The three-way check (survey ploidy ↔ BUSCO duplication ↔ hap1+hap2 ≈ 2× primary) is the gate.

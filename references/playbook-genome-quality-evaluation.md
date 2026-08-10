@@ -15,7 +15,7 @@
 | Axis | Metric | Question it answers | "good" bar |
 |---|---|---|---|
 | **Contiguity** | **0 QUAST** | how few, how long, how gap-free are the pieces? | contigs ≈ #chromosomes, big N50, ~0 N/100 kb |
-| **Base accuracy** | **1 Merqury QV** | how correct is each base? | QV ≥ 40 ok, ≥ 50 great, **≥ 60 ≈ T2T-grade** |
+| **Base accuracy** | **1 Merqury QV** | how correct is each base? | QV ≥ 40 good, ≥ 50 excellent, **≥ 60 very high consensus accuracy** |
 | **Gene space** | **2 BUSCO** | are conserved single-copy genes all present? | Complete ≥ 95 % (≥ 98 % excellent) |
 | **Repeat space** | **3 LAI** | is the LTR/intergenic space assembled? | **< 10 draft, 10–20 reference, > 20 gold** |
 | **Read concordance** | **4 Mapping rate** | do the reads that built it map back? | long ≥ 99 %, short ≥ 98 % |
@@ -48,22 +48,47 @@ Read `quast/report.txt`: `# contigs` (want ≈ #chromosomes), `Total length` (vs
 
 ## 1 — Merqury QV + k-mer completeness (base accuracy) · core
 
+QV = −10·log₁₀(per-base error). Q30 ≈ 1/10³, Q40 ≈ 1/10⁴, Q50 ≈ 1/10⁵, and Q60 ≈ 1/10⁶.
+QV ≥ 60 indicates very high consensus accuracy; it does **not** by itself establish T2T status. Also read
+`*.completeness.stats` and the spectra-cn plot for missing/duplicated k-mers.
+
+### Historical quinoa V2 evaluation
+
+The recorded V2 values came from `k=21` `read.meryl` built from
+`cqu_hifi_70x.fa.gz`, the same HiFi read source used by assembly. This protocol is
+therefore **not independent** (`read_db_type=hifi`, `coverage≈70`,
+`independence=false`) and every citation must carry that caveat.
+
 ```bash
 conda activate access
-meryl k=21 count output read.meryl sr_1.fq.gz sr_2.fq.gz   # k=21 DB from accurate Illumina short reads
-# run merqury PER deliverable (non-trio) — do NOT merge the haplotypes for QV
+meryl k=21 count output read.meryl cqu_hifi_70x.fa.gz
 merqury.sh read.meryl Cqu_final_rename_hap1.fa result_hap1
 merqury.sh read.meryl Cqu_final_rename_hap2.fa result_hap2
-merqury.sh read.meryl Cqu_final.fa            result_cqu   # primary, in its own dir
+merqury.sh read.meryl Cqu_final.fa result_cqu
 ```
 
-QV = −10·log₁₀(per-base error). Q30 ≈ 1/10³, Q40 ≈ 1/10⁴, **Q50 ≈ 1/10⁵ (T2T bar)**, Q60 ≈ 1/10⁶. Also read
-`*.completeness.stats` (k-mer completeness %) and the spectra-cn plot (false-duplication / missing).
+**Historical observations:** hap1 **QV 66.93**, hap2 **65.78**, primary
+`Cqu_final` **63.24**; k-mer completeness was approximately **99.32%** for all
+three. These are three separately evaluated deliverables. `Cqu_final` is the A+B
+primary chromosome set, not a simple concatenation of hap1 and hap2. The reason
+its observed QV differs from the haplotype deliverables is unresolved; do not
+invent a haplotype-merging explanation.
 
-**Quinoa observed:** hap1 **QV 66.93**, hap2 **65.78**, primary **63.24** (all ≫ Q60); k-mer completeness ~**99.32 %**
-for all three. (These per-haplotype QVs are the ones to quote — the merged-`Cqu_final.fa` QV is lower by construction.)
-Non-trio mode (no parental data). Use the same short-read truth-set convention as finishing/NextPolish2; do
-not cite a HiFi-built `read.meryl` and a short-read polishing/QV recipe as the same result. PBS `ppn=16`.
+### Recommended independent evaluation
+
+For a new publication-grade evaluation, prefer an orthogonal high-quality,
+PCR-free Illumina truth set that was not used to build or polish the assembly.
+Confirm library provenance, contamination, coverage, and k before running:
+
+```bash
+meryl k=<audited_k> count output independent.read.meryl <PCR-free_Illumina_R1/R2>
+merqury.sh independent.read.meryl <assembly.fa> <new_result_prefix>
+```
+
+Record `k`, `read_db_type`, `coverage`, and `independence=true`. Do **not** attach
+the historical 63.24/66.93/65.78 values to this recommended command: it is a new
+protocol and needs new outputs. QV records with different k or truth-set type are
+reported separately and are not ranked.
 
 ## 2 — BUSCO (gene-space completeness) · core
 
@@ -73,7 +98,8 @@ for LINEAGE in embryophyta_odb10 embryophyta_odb12 eudicots_odb10; do
     busco -i Cqu_final.fa -c 16 -o "busco_${LINEAGE}" -m genome -l "${LINEAGE}" --offline
 done
 # Do not reuse one `-o busco_odb10 -f` for multiple lineages: it overwrites the previous run.
-# Pick embryophyta_odb12 as the headline; eudicots_odb10 is the stricter, more specific comparison set.
+# Pick embryophyta_odb12 as the headline; report eudicots_odb10 separately as supplemental characterization.
+# Never rank an eudicots percentage against an odb12 percentage.
 ```
 
 **⚠️ Allotetraploid reading:** quinoa is AABB — a **high Duplicated (D)** fraction is **expected and correct**
@@ -135,9 +161,11 @@ tidk plot -t ./cqu_final_telo/telo_telomeric_repeat_windows.tsv -o telo
 ```
 
 Count how many of the **2·#chromosomes** ends carry a telomeric-repeat array (terminal-window copy threshold ≈ 100).
-36/36 (= both ends of all 18 chromosomes) ⇒ every chromosome is capped (T2T-level ends).
+Support at every expected end means all expected chromosome ends have telomeric-repeat support; this is one
+T2T evidence axis, not a T2T verdict.
 
-**Quinoa observed:** 18 chromosomes → **36/36 ends detected, 0 missing, all 18 both-ended** (terminal copies 151–976).
+**Quinoa observed:** 18 chromosomes → telomeric-repeat support at **all 36 expected chromosome ends**, 0 missing,
+all 18 both-ended (terminal copies 151–976).
 Runs alongside the QUAST PBS job (`ppn=16`).
 
 ---
@@ -194,7 +222,7 @@ python3 scripts/build_cqu_blobdir.py \
 | BUSCO C% (embryophyta_odb12) | ≥98 % | **99.7 %** (D 96.4) | 〔run〕 | 〔run〕 |
 | LAI (whole_genome) | 10–20 ref | **16.09** | 10.28 | 9.99 |
 | Mapping rate (HiFi / ONT / Illumina) | ≥99 / ≥98 % | 100 / 99.74 / 99.98 % | HiFi 100 % (ONT 99.74) | HiFi 100 % (ONT 99.80) |
-| Telomere ends | →2·#chr | 36/36 | 〔run〕 | 〔run〕 |
+| Telomere ends | →2·#chr | all 36 expected ends supported | 〔run〕 | 〔run〕 |
 | Snail plot | visual | ✓ `Cqu_final.snail.svg` | — | — |
 
 ### Evaluation contract
@@ -202,7 +230,8 @@ python3 scripts/build_cqu_blobdir.py \
 - Comparator: `references/project-anchors.yaml` (quinoa_v2_reference_frame) first, then close-species public assemblies; absolute-only judgment is not acceptable for publication-grade claims.
 - Invalid comparisons: BUSCO across different lineages (`ASM_BUSCO_002` BLOCK); QV across different `read_db_type`/`k` (`ASM_QV_002` BLOCK); LAI grade across organisms outside the method's plant scope (`ASM_LAI_002` WARN); contig vs scaffold N50 mixed (`ASM_N50_001` BLOCK).
 - Silent traps: HiFi-built `read.meryl` (this project's evaluation Merqury) gives QV that is NOT independent of the assembly — finishing-stage NextPolish2 Merqury uses Illumina, the two QV protocols are different and not directly rankable (`ASM_QV_003` WARN). BUSCO high + LAI low does not mean "whole-genome complete" — gene-space and repeat-space are orthogonal axes (`ASM_REPEAT_001` WARN). LAI is method-applicable only when LTR content meets thresholds (`ASM_LAI_001` BLOCK).
-- Claim allowed only if: all six dashboard rows are filled with their provenance fields, no BLOCK rule fires in `scripts/check_result_contract.py`, and any WARN is carried into the narrative as an explicit caveat.
+- Claim granularity: an `assembly_quality_overview` requires all six axes for every subject and no blocking gate. A single N50/BUSCO/QV `metric_observation` may pass independently when that selected metric, protocol, and evidence are complete; it does not imply whole-assembly quality.
+- T2T language: QV, gap count, or telomere support alone is insufficient. Use near-T2T/T2T wording only when gap-free sequence, all expected telomeric ends, structural continuity, and misjoin/read/contact evidence jointly support it, with remaining limitations stated.
 
 ## How this maps onto the bioflow safety layer
 
@@ -221,8 +250,8 @@ python3 scripts/build_cqu_blobdir.py \
   joined; high QV ≠ complete repeat space. A genome is "good" only when all six pass.
 - **Allotetraploid → BUSCO Duplicated is high BY DESIGN** (~96 %). Don't "fix" it by deduplicating — that would
   collapse the two subgenomes.
-- **QV: quote the per-haplotype values, not the merged `Cqu_final.fa`** (merging two near-identical haplotypes
-  inflates the apparent error rate; merged 63.2 vs per-hap 66.9/65.8). k=21, non-trio.
+- **QV protocol:** historical V2 values used a HiFi-built truth database and are non-independent. Report primary,
+  hap1, and hap2 as separate observations (63.24/66.93/65.78) and mark the reason for their difference unresolved.
 - **LAI `-u` is species-specific** (quinoa 4.79e-9); a wrong neutral-mutation-rate shifts the LAI. Compare to
   published refs of the same species, not across species.
 - **Mapping uses the assembly's own reads** → near-100 % is expected and only weakly diagnostic; a *low* rate is

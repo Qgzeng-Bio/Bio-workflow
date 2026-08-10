@@ -209,26 +209,36 @@ NextPolish2 corrects with the **HiFi** alignment while using the **short-read** 
 choose the right base — HiFi accuracy + short-read truth. (A legacy `run.cfg`/`sgs.fofn` for
 **NextPolish v1** Illumina polishing is present but was **not** the path used.) ONT was not used to polish.
 
-### QV / acceptance (merqury)
+### Recommended independent post-polish QV
+
+Prefer an orthogonal high-quality PCR-free Illumina truth set that was not used to assemble or polish the
+candidate. Verify provenance and coverage before choosing k; the command below is a protocol template and has
+no historical value attached to it.
 
 ```bash
-meryl count k=21 output read.meryl <short reads>             # k-mer DB from the (accurate) short reads
-merqury.sh read.meryl Cqu_final_rename_hap1.fa result_hap1   # run PER haplotype assembly, not the merged Cqu_final.fa
-merqury.sh read.meryl Cqu_final_rename_hap2.fa result_hap2
+meryl count k=<audited_k> output independent.read.meryl <PCR-free_Illumina_R1/R2>
+merqury.sh independent.read.meryl Cqu_final.fa result_primary_independent
+merqury.sh independent.read.meryl Cqu_final_rename_hap1.fa result_hap1_independent
+merqury.sh independent.read.meryl Cqu_final_rename_hap2.fa result_hap2_independent
 ```
 
-- **QV** = log-scaled per-base error: Q30 ≈ 1 err/1 kb, Q40 ≈ 1/10 kb, **Q50 ≈ 1/100 kb (T2T bar)**,
-  Q60 ≈ 1/Mb. The quinoa **hap1 / hap2** renamed assemblies scored **QV 66.9 / 65.8** — gold/near-perfect
-  (~1 err per ~5 Mb); per-chromosome QV 56–87 (repeat-heavy chromosomes pull the low end). These QVs
-  are on the *haplotype-split, renamed* assemblies and were computed by a separate merqury step
-  (`…/7-Genome-evalution/1-QV/`, on the `5-Rename/` outputs) — not on the merged `Cqu_final.fa` in the polish dir.
-- Also read merqury **k-mer completeness** and the spectra-cn plot (false-duplication / missing).
+QV is log-scaled per-base error: Q30 ≈ 1 error/kb, Q40 ≈ 1/10 kb, Q50 ≈ 1/100 kb,
+and Q60 ≈ 1/Mb. QV ≥ 60 is very high consensus accuracy, not a T2T verdict. Also inspect k-mer
+completeness and spectra-cn. Record `k`, `read_db_type`, `coverage`, `independence`, and the exact QV file.
+
+### Historical quinoa V2 QV context
+
+The recorded primary/hap1/hap2 values (**63.24/66.93/65.78**) were produced in the later genome-evaluation
+stage with a `k=21` **HiFi-built** `read.meryl` (`independence=false`), not by the independent Illumina template
+above. They are legitimate historical observations only with that caveat and cannot be numerically attributed
+to the recommended command. `Cqu_final` is the A+B primary chromosome set, not a simple concatenation of the
+haplotype FASTAs; the reason for the QV differences is unresolved.
 
 ### Resources & state
 
 `fat`, 32 CPU, 300 G. **Winnowmap dominates (~26 h)**; nextPolish2 only ~21 min; ~28 h total.
-**Run state: SUCCESSFUL** → `Cqu_final.fa` (18 chr). QV: merged `Cqu_final.fa` ≈ **63.2**; per-haplotype
-(`5-Rename/` hap1 / hap2) **66.9 / 65.8**.
+**Polishing run state: SUCCESSFUL** → `Cqu_final.fa` (18 chromosomes). Independent post-polish QV remains a
+separate evaluation task; the historical non-independent values above do not substitute for it.
 
 ---
 
@@ -237,15 +247,15 @@ merqury.sh read.meryl Cqu_final_rename_hap2.fa result_hap2
 | Stage | Metric | Bar | Quinoa observed |
 |---|---|---|---|
 | F2 gaps | gaps remaining | ≈0 (note intentional skips) | most filled; **Chr04 left open** |
-| F3 polish | **merqury QV** | Q40 ok, **Q50+ T2T-grade** | **66.9 / 65.8** (gold) |
+| F3 polish | **merqury QV** | Q40 good, Q50 excellent, Q60 very high consensus accuracy | historical 66.9 / 65.8 (HiFi truth, non-independent) |
 | F3 polish | k-mer completeness | high; low false-dup | 〔record from merqury〕 |
 
 ### Evaluation contract
-- Required report fields: gap count + intentional-skip list, F3 Merqury QV with `k+read_db_type` (this stage's NextPolish2 Merqury uses Illumina short-read truth set, distinct from the evaluation playbook's HiFi-built read.meryl).
-- Comparator: `references/project-anchors.yaml` quinoa V2 (hap1 QV 66.9, hap2 QV 65.8 — but those are from the HiFi-truth evaluation Merqury, not the finishing-stage Illumina-truth one; do not cross-reference numerically).
-- Invalid comparisons: finishing-stage QV vs evaluation-stage QV (`ASM_QV_002` BLOCK — different `read_db_type`).
-- Silent traps: Merqury inputs MUST be Illumina (NextPolish2 contract); the legacy `yak count -b37` two-positional-arg gotcha (R1 fed twice ≠ R1+R2) is a recurring fail mode — both files must be the merged stream `<(zcat R1 R2)`. F2 gap "filled" status without `get_gaps.py` re-verification can be optimistic.
-- Claim allowed only if: gap count is verified by `get_gaps.py` re-run AND polish QV cites both `k` and `read_db_type=illumina`. (RagTag dot-plot/LAI claims live in the scaffolding playbook's Route B contract.)
+- Required report fields: gap count + intentional-skip list; each Merqury QV carries `k+read_db_type+coverage+independence+QV`.
+- Comparator: `references/project-anchors.yaml` stores historical hap1/hap2 QV 66.93/65.78 under a HiFi, non-independent protocol. Do not bind those values to a new independent Illumina run.
+- Invalid comparisons: QV records with different `k` or `read_db_type` (`ASM_QV_002` BLOCK).
+- Silent traps: NextPolish2's **yak** truth hashes use Illumina, but that does not rewrite the provenance of the separate historical HiFi Merqury run. The `yak count -b37` two-positional-arg gotcha (R1 fed twice ≠ R1+R2) is recurring — both positional streams must each contain the merged R1+R2 stream. F2 `filled` without gap re-detection and join remapping is optimistic.
+- Claim allowed only if: gap status is verified by gap re-detection and two-sided read support; any QV claim cites `k+read_db_type+coverage+independence` and is compared only within the same protocol. (RagTag dot-plot/LAI claims live in the scaffolding playbook's Route B contract.)
 
 ## How this maps onto the bioflow safety layer
 
@@ -265,7 +275,7 @@ merqury.sh read.meryl Cqu_final_rename_hap2.fa result_hap2
   identical streams* of the SAME reads (pass 1 builds the filter, pass 2 counts). Put both mates in each:
   `<(zcat sr_1.fq.gz sr_2.fq.gz) <(zcat sr_1.fq.gz sr_2.fq.gz)`. Splitting `<(R1) <(R2)` counts only R2
   against an R1-only filter; passing R1 twice drops R2. Either bug yields an incomplete k-mer truth set.
-- QV is computed from **short reads** (the accurate truth set) via merqury — keep a clean Illumina library for this.
+- Prefer an independent PCR-free Illumina truth set for a new QV claim. Historical V2 QV used HiFi reads and must remain labeled non-independent.
 
 (RagTag-specific pitfalls — reference structure propagation, dot-plot reading — live in the
 scaffolding playbook's Route B section.)
