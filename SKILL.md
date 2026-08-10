@@ -105,6 +105,7 @@ Keep `SKILL.md` as the routing hub. Load detailed references only when their tas
 - `references/executor-safety.md`: use for SLURM generation, conda activation PATH guards, preflight, submit gates, chunked array submission, array templates, and run recording. It supports `scripts/gen_sbatch.sh`, `scripts/slurm_preflight.sh`, `scripts/prepare_submission.sh`, `scripts/submit_and_log.sh`, and `scripts/submit_chunked.sh`.
 - `references/validation-checklists.md`: use before interpreting completed results, before figures, before SLURM submission, after failures, and when a task has domain-specific acceptance gates.
 - `references/operations-reporting.md`: use for failure monitoring details, raw-data downloads, qp mode, and plotting/reporting handoff details.
+- `references/paperplot-handoff-contract.md`: use before delegating multi-metric genome-quality figures; it defines strict TSV/unit input, within-metric ranking, explicit key samples, readiness JSON, and `scripts/prepare_paperplot_handoff.py`.
 - `references/result-manifest-schema.md`, `references/interpretation-rules.tsv`, and `references/project-anchors.yaml`: use with `scripts/check_result_contract.py` when a result claim may affect a paper, downstream biology, or decision.
 - `references/result-interpretation.md`: use after result acceptance to separate Observation, Interpretation, Hypothesis, and Limitation; cite claim evidence and preserve `WARN`, `BLOCK`, or `UNCERTAIN` status.
 - `references/playbook-genome-annotation.md`: use for repeat annotation, evidence preparation, gene model prediction, functional annotation, release packaging, and annotation QC.
@@ -225,6 +226,15 @@ For scientific plotting, delegate to the installed skill named
   command, not text to pretend was executed.
 - **Other surfaces:** use PaperPlot only when discoverable; otherwise report the
   blocker and do not substitute another plotting skill or claim PaperPlot QA.
+
+For a multi-metric genome-quality figure, first read
+`references/paperplot-handoff-contract.md` and run
+`scripts/prepare_paperplot_handoff.py`. Delegate only its TSV/JSON outputs;
+PaperPlot must use the explicit `Key_Sample` field and must not select labels by
+averaging heterogeneous raw values. In qgzeng projects, project-local plotting
+code reads this sidecar as TSV (`read.delim` or equivalent), not a stock CSV
+path. Bioflow owns data readiness, units, ranking, evidence, and claim status;
+PaperPlot alone owns visual design, export, and rendered-image QA.
 
 ## Task routing
 
@@ -469,12 +479,14 @@ Read `references/operations-reporting.md` for the qp pattern under `/data9/home/
 ### 12. Plot and report
 
 After classifying the figure as QC, exploratory, or publication-grade and
-verifying its biological inputs, load `paperplot-skills` using the
-surface-specific delegation above. Follow its design, export, rendered-image QA,
-and old-vs-new workflow; do not duplicate or replace it inside bioflow. Also
-apply the bioinformatics figure checks in `references/validation-checklists.md`.
-Save data, code, parameters, metadata, QA, and the English legend, and state what
-the figure does and does not prove.
+verifying its biological inputs, prepare any multi-metric genome-quality input
+through `scripts/prepare_paperplot_handoff.py` under
+`references/paperplot-handoff-contract.md`. Then load `paperplot-skills` using
+the surface-specific delegation above. Follow its design, export,
+rendered-image QA, and old-vs-new workflow; do not duplicate or replace it inside
+bioflow. Also apply the bioinformatics figure checks in
+`references/validation-checklists.md`. Save data, code, parameters, metadata,
+QA, and the English legend, and state what the figure does and does not prove.
 
 ## Skill maintenance
 

@@ -35,6 +35,7 @@ scripts/test_slurm_preflight.sh
 "$python_bin" scripts/test_result_contract.py
 "$python_bin" scripts/test_fill_gap_from_spanning_alignment.py
 "$python_bin" scripts/test_reference_consistency.py
+"$python_bin" scripts/test_prepare_paperplot_handoff.py
 
 quick_validate="${HOME%/}/.codex/skills/.system/skill-creator/scripts/quick_validate.py"
 if [[ -f "$quick_validate" ]]; then

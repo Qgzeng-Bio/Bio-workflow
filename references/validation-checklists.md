@@ -325,6 +325,16 @@ snippets. Do not treat a zero exit code as enough.
   than claiming PaperPlot validation.
 - Classify the figure as QC, exploratory, or publication-grade and cite the
   accepted biological input/result evidence appropriate to that purpose.
+- Multi-metric genome-quality figures have a passing
+  `prepare_paperplot_handoff.py` TSV/JSON pair: true tabs, finite values, one
+  explicit unit/direction per metric, no duplicate `Sample_ID+Metric`, and a
+  readiness status appropriate to the figure role.
+- Any unit conversion changes the value and label together and is recorded in the
+  handoff JSON; no unit is guessed from `N50`, genome-size, or another metric name.
+- Heterogeneous raw values are not averaged. PaperPlot preserves the handoff's
+  within-metric `Rank_Score`, `Metric_Coverage`, `Key_Sample`, and sample order.
+- A qgzeng project-local plotting script reads the handoff with `read.delim` or an
+  equivalent explicit TSV reader and does not copy a stock CSV data path.
 - Arial or acceptable sans-serif font is used consistently.
 - Background is pure white; major and minor grids are removed.
 - Top and right spines are removed unless the plot type requires them.

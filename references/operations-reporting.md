@@ -80,7 +80,17 @@ drawing or claiming PaperPlot QA.
 Bioflow still owns biological readiness and provenance: identify whether the
 figure is QC, exploratory, or publication-grade; verify data source,
 reference/version, coordinates, units, transforms, sample design, statistics,
-and claim status before delegation. Always save plotting data, code, parameters,
-metadata, QA, and an English legend with the exported PDF/PNG. Read
-`references/validation-checklists.md` for bioinformatics figure acceptance.
+and claim status before delegation. For a multi-metric genome-quality figure,
+read `references/paperplot-handoff-contract.md` and first run
+`scripts/prepare_paperplot_handoff.py`. PaperPlot receives that strict TSV plus
+readiness JSON and uses its explicit `Key_Sample`; it must not select labels by
+averaging heterogeneous raw values. In qgzeng project-local plotting scripts,
+read the sidecar with `read.delim` (or an equivalent explicit TSV reader), not a
+stock CSV path. Unit conversion is allowed only when the handoff converts both
+number and label and records the factor.
+
+Always save plotting data, code, parameters, metadata, QA, and an English legend
+with the exported PDF/PNG. Read `references/validation-checklists.md` for
+bioinformatics figure acceptance. Visual design, export, and rendered-image QA
+remain entirely in PaperPlot; Bioflow does not modify its templates or runtime.
 
