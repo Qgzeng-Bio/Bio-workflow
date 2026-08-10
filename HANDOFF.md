@@ -1,6 +1,58 @@
 # Bioflow Skill Handoff
 
-Last updated: 2026-07-11 - lifecycle, project management, interpretation, and final validation completed
+Last updated: 2026-08-10 - task dashboard, PaperPlot delegation, and Pi Agent adaptation completed
+
+## Latest Update — 2026-08-10: Dashboard, PaperPlot, and Pi Agent Route
+
+Purpose: strengthen the user's frequent running-task/progress workflow without
+automatic status mutation, delegate scientific plotting to the installed
+`paperplot-skills` instead of duplicating plotting logic, and make Pi a
+first-class bioflow agent surface.
+
+What changed:
+
+- Added `reports/Task_Status.tsv` as a task-level companion to the project-wide
+  `workflow_status.tsv`; the initializer creates only the missing empty template.
+- Added `scripts/project_dashboard.py`, a read-only text/TSV/JSON dashboard that
+  reconciles task rows, `run_record.tsv`, project status, and optionally only the
+  registered Job IDs from `squeue`/`sacct`.
+- Added mixed running/blocked/validated, run-record completion, missing-output,
+  malformed-schema, broad-root, and read-only regression fixtures.
+- Added `references/task-monitoring.md` and routed progress/queue/mixed-state
+  requests through the dashboard while preserving confirmation gates.
+- Scientific plotting now uses surface-aware delegation: Codex invokes
+  `$paperplot-skills`; Pi loads the discovered `paperplot-skills` (user force-load
+  command `/skill:paperplot-skills`). Bioflow retains biological
+  readiness/provenance/claim checks and does not substitute another plotting
+  skill when PaperPlot is unavailable.
+- Added a `PI_CODING_AGENT=true` startup branch using Pi's concatenated context
+  files and `PI_CODING_AGENT_DIR` resource root.
+- Pi settings now explicitly load bioflow and PaperPlot. Pi's PaperPlot symlink
+  points to the same installed copy used by Codex, removing the prior hidden,
+  divergent `disable-model-invocation: true` source entry.
+- The maintenance suite now checks Pi bioflow drift, PaperPlot name/discoverability,
+  PaperPlot skill validity, and Pi settings JSON. `SKILL.md` is 530 lines; the
+  documented increase above the former 450-500 target is the explicit Pi startup
+  and cross-surface plotting contract, not duplicated domain detail.
+
+No job submission, cancellation, result overwrite, or protected-path write was
+part of this update.
+
+Validation completed:
+
+- `scripts/test_skill.sh`: PASS, including dashboard, lifecycle, initialization,
+  result-contract, claim-audit, SLURM fixtures, program cards, plugins, and
+  whitespace.
+- Dashboard regression: mixed states, read-only fingerprint, completed accounting,
+  failed array element, missing output, malformed schema, and broad-root refusal
+  all PASS.
+- Source, Codex runtime, Claude symlink, Pi symlink, and plugin-wrapper `SKILL.md`
+  share md5 `d5370ccc3d99cca201365d812e7663f9` after synchronization.
+- Pi PaperPlot and Codex PaperPlot share md5
+  `6a4bfd0749c3024eb106b598921e0b73`; the active frontmatter has no
+  `disable-model-invocation: true`.
+- Claude CLI plugin validation was skipped because `claude` was unavailable;
+  Codex plugin validation passed.
 
 ## Completion Summary — 2026-07-11
 
@@ -1494,21 +1546,25 @@ Result:
 
 ## Current Installation Model
 
-There are three active entry points, with two different sync semantics:
+There are four active development/runtime entries with two sync semantics, plus
+the generated plugin distribution:
 
 - **Source of development**: this repository directory.
 - **Codex runtime**: `~/.codex/skills/bioflow` is a **real copy**, so source
   edits are NOT live until `scripts/sync_install.sh --yes` runs.
 - **Claude Code**: `~/.claude/skills/bioflow` is a **symlink → this repo**, so
-  it always reflects the source live and needs no separate sync step.
+  it reflects source edits live.
+- **Pi Agent**: `~/.pi/agent/skills/bioflow` is a **symlink → this repo**, so it
+  also reflects source edits live. Pi loads global/parent/current context files
+  and detects its surface with `PI_CODING_AGENT=true`.
 
-Verified 2026-07-11: `~/.claude/skills/bioflow` is a symlink to the source repo;
-`~/.codex/skills/bioflow` is a directory copy. Source, Claude, and the plugin
-wrapper are current; Codex runtime still needs the latest authorized sync. Net
-rule: **after a source edit, only Codex needs `sync_install.sh`; Claude is current
-automatically.** A
-running session of either agent still caches the old `SKILL.md` — start a new
-session to load changes.
+Verified 2026-08-10: Codex uses the synchronized copy; Claude and Pi use source
+symlinks; the plugin wrapper is generated from source. Net rule: **after a source
+edit, only Codex needs `sync_install.sh`; Claude and Pi are current automatically.**
+Running sessions cache skill discovery/content, so use Pi `/reload` or start a new
+Pi/Codex/Claude session after discovery or routing changes. Pi's
+`paperplot-skills` entry points to the same installed copy used by Codex and is
+explicitly listed in Pi settings for surface-aware plotting delegation.
 
 The old standalone Claude skill copy was removed earlier:
 
@@ -1522,8 +1578,8 @@ The old standalone Claude skill copy was removed earlier:
   - `scripts/submit_and_log.sh`
 
 Do not reintroduce the old `~/.claude/skills/bioinformatics-analysis-workflow`
-fallback. `bioflow` has one real source directory, one Codex runtime copy,
-and one Claude symlink back to the source.
+fallback. `bioflow` has one real source directory, one Codex runtime copy, and
+Claude/Pi symlinks back to the source.
 
 ## Recent Uncommitted Change Summary
 

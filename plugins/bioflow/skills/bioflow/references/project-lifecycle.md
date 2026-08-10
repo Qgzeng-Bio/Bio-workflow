@@ -260,19 +260,25 @@ naming rules, identifier/version policy, examples, and compatibility guidance.
 - `logs/`: program and scheduler logs with job IDs.
 - `tmp/`: disposable intermediates, never the only accepted evidence copy.
 - `results/`: analysis outputs with final artifacts clearly identifiable.
-- `reports/`: plan, status, acceptance, methods, interpretation, and delivery index.
+- `reports/`: plan, project status, task status, run record, acceptance, methods,
+  interpretation, and delivery index.
 
 The minimal reproducibility chain is:
 
 ```text
-Question -> Input manifest -> Plan -> Script/config snapshot -> Run record
+Question -> Input manifest -> Plan -> Script/config snapshot -> Task/run record
          -> Output index -> Acceptance evidence -> Claim/report -> Delivery index
 ```
+
+Use `reports/workflow_status.tsv` for one project-wide lifecycle state and
+`reports/Task_Status.tsv` for concurrent stages, samples, pilots, jobs, and
+validation tasks. Read `references/task-monitoring.md` for the task schema and
+read-only dashboard; do not force a mixed project into one task state.
 
 Prefer Markdown, YAML, and tab-separated TSV. Do not add a database or workflow
 framework solely to track these artifacts.
 
-## Status table
+## Project status table
 
 Write `reports/workflow_status.tsv` only after user confirmation. The audit helper
 prints a suggested row but never writes it.

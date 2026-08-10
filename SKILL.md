@@ -18,10 +18,14 @@ Before substantive work:
    - `~/.codex/memories/user_output_format_preferences.md` (the active user's own Codex memories)
    - `~/.codex/memories/slurm_preferences.md`
    - the nearest `AGENTS.md` in the current directory or parent directories
-3. If using Claude Code, read the nearest `CLAUDE.md` in the current directory or parent directories.
-4. If the active agent is unclear, state that briefly and continue without loading agent-specific memory files by default.
-5. If any required file for the active agent is missing or unreadable, state the missing item briefly and continue with available context.
-6. Reply according to loaded output preferences; if they have no stronger preference, Chinese is the default for this user.
+3. If using Pi (`PI_CODING_AGENT=true`), use the context files Pi loaded from
+   `~/.pi/agent/AGENTS.md` and the current directory ancestry (`AGENTS.md` or
+   `CLAUDE.md`); read any memory files required by that loaded context. Resolve
+   Pi resources under `PI_CODING_AGENT_DIR` when set, otherwise `~/.pi/agent`.
+4. If using Claude Code, read the nearest `CLAUDE.md` in the current directory or parent directories.
+5. If the active agent is unclear, state that briefly and continue without loading agent-specific memory files by default.
+6. If any required file for the active agent is missing or unreadable, state the missing item briefly and continue with available context.
+7. Reply according to loaded output preferences; if they have no stronger preference, Chinese is the default for this user.
 
 This skill does not impose a tone, voice, section layout, emoji set, or fixed response template. Use the active agent's own natural style and the user's loaded output preferences (e.g. Codex `user_output_format_preferences.md`, the nearest `CLAUDE.md`/`AGENTS.md`). Any response structure shown later in this file is a checklist of content that must be covered, not a required wording or layout — express it however the agent and user prefer. When a project rule file or user instruction conflicts with a layout suggestion here, the project rule / user instruction wins.
 
@@ -44,7 +48,11 @@ Treat `admin2` as a login/admin node. On `admin2`, run only planning, script edi
 
 ## Permission and confirmation rules
 
-Always apply the active agent's nearest project rule file first: `AGENTS.md` for Codex and `CLAUDE.md` for Claude Code. If it requires write disclosure or confirmation, follow it even for low-risk project files. If no applicable agent-specific project rule file adds stricter limits, use these defaults.
+Always apply the active agent's loaded project rules first: `AGENTS.md` for
+Codex, Pi's concatenated `AGENTS.md`/`CLAUDE.md` context, or `CLAUDE.md` for
+Claude Code. If they require write disclosure or confirmation, follow them even
+for low-risk project files. If no applicable agent-specific rule adds stricter
+limits, use these defaults.
 
 Low-risk actions inside the working project:
 
@@ -78,6 +86,7 @@ seven-directory skeleton and writes only missing templates after explicit `--yes
 Keep `SKILL.md` as the routing hub. Load detailed references only when their task is active:
 
 - `references/project-lifecycle.md`: use when starting, planning, managing, resuming, validating, interpreting, or delivering a project. It is the single contract for the nine project stages, startup plan, management artifacts, and `workflow_status.tsv`.
+- `references/task-monitoring.md`: use for running-task, progress, queue, mixed-status, array, blocker, and next-action requests. It defines `Task_Status.tsv` and the read-only `scripts/project_dashboard.py` route.
 - `references/project-layout.md`: use for directory boundaries, script numbering, artifact/table naming, identifiers, versions, compatibility, and new-project templates.
 - `references/resume-protocol.md`: use with the lifecycle contract when taking over, checking, or recovering an existing project. It defines bounded evidence collection and mixed-evidence precedence.
 - `references/software-resource-cards.md`: use when estimating resources or writing commands for known tools. It gives per-tool modes, memory drivers, parallelism, red flags, and acceptance notes.
@@ -94,6 +103,20 @@ Keep `SKILL.md` as the routing hub. Load detailed references only when their tas
 - `references/program-cards/program-onboarding.md`: use only when no active card exists or the program needs discovery/proposal/capture.
 
 Every new reference must be linked from this map or a task route below; do not create orphan references.
+
+## Monitor running work
+
+When the user asks what is running, what finished, what failed, what is blocked,
+or what should run next, read `references/task-monitoring.md` and start with:
+
+```bash
+python3 scripts/project_dashboard.py --project <project_dir> --check-queue
+```
+
+The dashboard is read-only and queries only Job IDs already registered in
+`Task_Status.tsv`, `run_record.tsv`, or `workflow_status.tsv`. Report concurrent
+tasks separately; SLURM `COMPLETED` means `Complete_unvalidated`, not accepted
+biology. Do not write status, submit, cancel, resubmit, or change concurrency.
 
 ## Resume an existing project
 
@@ -180,6 +203,18 @@ python3 scripts/validate_program_cards.py
 python3 scripts/validate_program_cards.py --check-drafts
 ```
 
+## Scientific plotting delegation
+
+For scientific plotting, delegate to the installed skill named
+`paperplot-skills` after bioflow checks biological readiness and provenance:
+
+- **Codex:** invoke `$paperplot-skills` directly.
+- **Pi:** immediately load the full `paperplot-skills` skill from Pi's available
+  skills before drawing; `/skill:paperplot-skills` is the user's force-load
+  command, not text to pretend was executed.
+- **Other surfaces:** use PaperPlot only when discoverable; otherwise report the
+  blocker and do not substitute another plotting skill or claim PaperPlot QA.
+
 ## Task routing
 
 Pick the narrowest route before reading detailed references or writing scripts.
@@ -207,7 +242,8 @@ Other routes:
 - **Read-based / population SNP-INDEL-SV:** read `bcftools and GATK`; confirm reference compatibility and chromosome names.
 - **Pangenome/orthology:** read `OrthoFinder`, `PanGenie`, and search-tool cards; estimate database/output growth and array concurrency.
 - **K-mer GWAS / KMERIA:** read the `KMERIA` card; run a format-compatibility pilot before scaling and treat wrapper warnings about `count`/`kctm` formats as blockers.
-- **Downloads, qp mode, plotting, reporting:** read `references/operations-reporting.md` plus figure checks in `references/validation-checklists.md`.
+- **Downloads, qp mode, reporting:** read `references/operations-reporting.md` and the relevant validation checks.
+- **Scientific plotting:** use the surface-specific `paperplot-skills` delegation above for figure diagnosis, selection, redesign, rendering, export, and image-level QA.
 
 ## Result claims: source-of-truth policy
 
@@ -401,7 +437,11 @@ delegate to `submit_and_log.sh`.
 
 ### 8. Monitor and diagnose
 
-Read `references/operations-reporting.md` for monitoring and failure-diagnosis details. Record job ID, scripts, configs, resources, submit time, logs, accounting, failure type, and the smallest justified fix. Ask before resubmitting.
+Read `references/task-monitoring.md` and `references/operations-reporting.md`.
+Use `scripts/project_dashboard.py --project <dir> --check-queue` for mixed task
+progress, then inspect bounded logs for failures. Record Job IDs, scripts,
+resources, scheduler evidence, outputs, acceptance state, and the smallest
+justified fix. Ask before resubmitting.
 
 ### 9. Validate results in layers
 
@@ -417,7 +457,13 @@ Read `references/operations-reporting.md` for the qp pattern under `/data9/home/
 
 ### 12. Plot and report
 
-Read `references/operations-reporting.md` and `references/validation-checklists.md`. Save plotting data, code, parameters, and figure legends. Report what the figure proves and what it does not prove.
+After classifying the figure as QC, exploratory, or publication-grade and
+verifying its biological inputs, load `paperplot-skills` using the
+surface-specific delegation above. Follow its design, export, rendered-image QA,
+and old-vs-new workflow; do not duplicate or replace it inside bioflow. Also
+apply the bioinformatics figure checks in `references/validation-checklists.md`.
+Save data, code, parameters, metadata, QA, and the English legend, and state what
+the figure does and does not prove.
 
 ## Skill maintenance
 
@@ -433,8 +479,10 @@ When slimming or reorganizing this skill, preserve behavior before reducing line
 - protected path rules for the current user's `~/data/` and `~/tools/` (and any `/data9/home/*/data|tools`)
 - user confirmation before `sbatch`, `scancel`, resubmission, install, large download, high-resource work, overwrite, or protected write
 - resume route through `project_state_audit.sh` and `references/resume-protocol.md`
+- running-task route through `project_dashboard.py` and `references/task-monitoring.md`
 - program-level route through program cards and onboarding
 - task routing to playbooks and software cards
+- surface-aware scientific plotting delegation to `paperplot-skills`
 - result-claim gate through `check_result_contract.py`, auto-trigger phrases, and `log_claim_audit.sh`
 - SLURM safety layer through `gen_sbatch.sh`, `slurm_preflight.sh`, `prepare_submission.sh`, `submit_and_log.sh`, and `submit_chunked.sh`
 - validation gate through `references/validation-checklists.md`
@@ -446,7 +494,7 @@ Before declaring a slimming pass complete, verify:
 - `SKILL.md` line count is near 450-500 unless there is a documented reason.
 - every moved behavior has an explicit route to a reference.
 - all scripts named in `SKILL.md` still exist.
-- source and installed `.codex` copies have been synchronized when runtime behavior should change.
+- source and installed `.codex` copies have been synchronized when runtime behavior should change; Pi/Claude source symlinks are live and need reload/new sessions for discovery changes.
 
 Run after structural changes:
 
@@ -454,7 +502,7 @@ Run after structural changes:
 scripts/test_skill.sh
 ```
 
-The suite runs shell syntax, Python compile, regression fixtures, skill/card/plugin validation, plugin drift dry-run, and `git diff --check`. For `scripts/slurm_preflight.sh`, also test at least one task-specific passing and failing script before trusting rule changes.
+The suite runs shell syntax, Python compile, regression fixtures, skill/card/plugin/Pi integration validation, plugin drift dry-run, and `git diff --check`. For `scripts/slurm_preflight.sh`, also test at least one task-specific passing and failing script before trusting rule changes.
 
 After source edits that should affect Codex runtime behavior, sync the installed copy at `~/.codex/skills/bioflow` with:
 

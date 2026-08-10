@@ -41,8 +41,10 @@ snippets. Do not treat a zero exit code as enough.
 - For `Script_ready`, run `scripts/prepare_submission.sh --script <file>` with
   known manifest/input/output paths before proposing `sbatch`; use
   `scripts/slurm_preflight.sh --script <file>` only as a fallback.
-- For `Queued_or_running`, monitor with `squeue`/`sacct`; do not edit active-run
-  scripts or resubmit without confirmation.
+- For `Queued_or_running` or mixed concurrent work, read
+  `references/task-monitoring.md` and run `scripts/project_dashboard.py --project
+  <dir> --check-queue`; do not edit active-run scripts or resubmit without
+  confirmation.
 - If `squeue`/`sacct` are unavailable but the newest log has a job ID/start line
   without a terminal marker, keep the state at `Queued_or_running`/unknown instead
   of validating older outputs.
@@ -317,6 +319,12 @@ snippets. Do not treat a zero exit code as enough.
 
 ## Figure acceptance checklist
 
+- Load the installed `paperplot-skills` for figure selection/redesign, export,
+  and rendered-image QA (`$paperplot-skills` on Codex; discovered skill or user
+  `/skill:paperplot-skills` on Pi); if unavailable, report that limitation rather
+  than claiming PaperPlot validation.
+- Classify the figure as QC, exploratory, or publication-grade and cite the
+  accepted biological input/result evidence appropriate to that purpose.
 - Arial or acceptable sans-serif font is used consistently.
 - Background is pure white; major and minor grids are removed.
 - Top and right spines are removed unless the plot type requires them.

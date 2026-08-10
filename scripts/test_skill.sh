@@ -29,6 +29,7 @@ printf '[TEST] Python compile\n'
 printf '[TEST] Regression fixtures\n'
 scripts/test_init_project.sh
 scripts/test_project_lifecycle.sh
+"$python_bin" scripts/test_project_dashboard.py
 scripts/test_claim_audit.sh
 scripts/test_slurm_preflight.sh
 "$python_bin" scripts/test_result_contract.py
@@ -39,6 +40,36 @@ if [[ -f "$quick_validate" ]]; then
     "$python_bin" "$quick_validate" .
 else
     printf '[WARN] Skill validator unavailable; skipped: %s\n' "$quick_validate"
+fi
+
+printf '[TEST] Pi integration\n'
+pi_agent_dir="${PI_CODING_AGENT_DIR:-${HOME%/}/.pi/agent}"
+pi_bioflow="$pi_agent_dir/skills/bioflow/SKILL.md"
+pi_paperplot="$pi_agent_dir/skills/paperplot-skills/SKILL.md"
+if [[ -f "$pi_bioflow" ]]; then
+    cmp -s SKILL.md "$pi_bioflow" \
+        || { printf 'FAIL | Pi bioflow SKILL.md drift: %s\n' "$pi_bioflow" >&2; exit 1; }
+    printf 'PASS | Pi bioflow entry matches source\n'
+else
+    printf '[WARN] Pi bioflow entry unavailable; skipped: %s\n' "$pi_bioflow"
+fi
+if [[ -f "$pi_paperplot" ]]; then
+    grep -Eq '^name:[[:space:]]*paperplot-skills[[:space:]]*$' "$pi_paperplot" \
+        || { printf 'FAIL | Pi PaperPlot name mismatch: %s\n' "$pi_paperplot" >&2; exit 1; }
+    if grep -Eq '^disable-model-invocation:[[:space:]]*true[[:space:]]*$' "$pi_paperplot"; then
+        printf 'FAIL | Pi PaperPlot is hidden from model invocation: %s\n' "$pi_paperplot" >&2
+        exit 1
+    fi
+    if [[ -f "$quick_validate" ]]; then
+        "$python_bin" "$quick_validate" "$(dirname "$pi_paperplot")"
+    fi
+    printf 'PASS | Pi PaperPlot is discoverable for model delegation\n'
+else
+    printf '[WARN] Pi PaperPlot entry unavailable; plotting delegation will report a blocker: %s\n' "$pi_paperplot"
+fi
+if [[ -f "$pi_agent_dir/settings.json" ]]; then
+    "$python_bin" -m json.tool "$pi_agent_dir/settings.json" >/dev/null
+    printf 'PASS | Pi settings JSON valid\n'
 fi
 
 printf '[TEST] Program cards\n'

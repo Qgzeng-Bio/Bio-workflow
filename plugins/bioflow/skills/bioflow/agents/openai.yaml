@@ -1,7 +1,7 @@
 interface:
   display_name: "Bioflow"
   short_description: "qgzeng 生信服务器工作流、程序卡、SLURM 安全与验收规范"
-  default_prompt: "Use $bioflow to resume, plan, resource-check, run program-level tool workflows, monitor, triage, and validate a SLURM-based bioinformatics workflow on qgzeng's server."
+  default_prompt: "Use $bioflow to resume, plan, resource-check, dashboard, run, monitor, triage, and validate qgzeng SLURM bioinformatics work; delegate scientific plotting directly to $paperplot-skills."
 
 policy:
   allow_implicit_invocation: true

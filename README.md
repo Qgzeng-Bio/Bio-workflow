@@ -4,9 +4,9 @@ A personal **bioinformatics workflow skill** for planning, generating, preflight
 submitting, monitoring, and validating analyses on the `gridview` SLURM cluster — without
 wasting shared compute or submitting anything by accident.
 
-It is a Claude Code / codex **skill**, not a pipeline: [`SKILL.md`](SKILL.md) is the entry
-point an agent loads, and the `scripts/` are read-only checks and guarded executors it
-calls.
+It is a Pi / Claude Code / Codex **skill**, not a pipeline:
+[`SKILL.md`](SKILL.md) is the entry point an agent loads, and the `scripts/` are
+read-only checks and guarded executors it calls.
 
 > **Safety first.** Nothing here installs, cancels, or overwrites on its own, and nothing
 > submits a job without an explicit `--yes`. The audit scripts are read-only and only
@@ -62,9 +62,26 @@ scripts/init_project.sh --project /absolute/path/to/project
 scripts/init_project.sh --project /absolute/path/to/project --yes
 ```
 
-The initializer never overwrites existing files. Naming, identifier/version, and
-legacy compatibility rules are in
+The initializer never overwrites existing files. It includes an empty
+`reports/Task_Status.tsv` for concurrent work units. Naming, identifier/version,
+and legacy compatibility rules are in
 [`references/project-layout.md`](references/project-layout.md).
+
+## Monitor running work
+
+Use the read-only dashboard to reconcile task records, submission records, project
+status, and registered SLURM Job IDs:
+
+```bash
+python3 scripts/project_dashboard.py --project /absolute/path/to/project
+python3 scripts/project_dashboard.py --project /absolute/path/to/project --check-queue
+python3 scripts/project_dashboard.py --project /absolute/path/to/project --check-queue --format json
+```
+
+It never writes status or changes the queue. `reports/workflow_status.tsv` remains
+the project-wide lifecycle record; `reports/Task_Status.tsv` records concurrent
+stages, samples, pilots, jobs, blockers, and validation tasks. See
+[`references/task-monitoring.md`](references/task-monitoring.md).
 
 **1. Generate** — emits a script that already passes preflight (absolute `%j_%x` logs,
 strict mode, CPU forwarding, array `%N` cap, no default `--time`); it runs `bash -n` and
@@ -110,12 +127,29 @@ scripts/submit_and_log.sh --script align.sbatch --manifest config/samples.tsv --
 | Script | Purpose |
 |---|---|
 | `project_state_audit.sh` | take over an existing project — classify it across the nine-stage lifecycle from `Project_intake` through `Delivered` and suggest the smallest next step |
+| `project_dashboard.py` | reconcile concurrent task records and registered SLURM jobs into running/queued/failed/blocked/complete-unvalidated/validated summaries; read-only |
 | `slurm_failure_triage.sh` | classify a failed job (OOM, TIMEOUT, missing input, permission, env/tool, segfault, disk full, shell/pipefail, format incompatibility) and propose a minimal fix |
 
 See [`references/project-lifecycle.md`](references/project-lifecycle.md),
 [`references/resume-protocol.md`](references/resume-protocol.md), and
 [`references/validation-checklists.md`](references/validation-checklists.md) for the layered
 acceptance gates (exit code 0 ≠ success).
+
+## Scientific plotting
+
+Bioflow delegates scientific figure diagnosis, redesign, rendering, export, and
+image-level QA to the separately installed skill named `paperplot-skills`.
+Bioflow retains responsibility for biological readiness, reference/coordinate
+consistency, data provenance, statistics, and claim limits; it does not duplicate
+or silently replace PaperPlot's workflow.
+
+- Codex invokes `$paperplot-skills`.
+- Pi loads the discovered `paperplot-skills`; users can force it with
+  `/skill:paperplot-skills`.
+- If PaperPlot is unavailable, bioflow reports the blocker instead of substituting
+  another plotting skill or claiming PaperPlot QA.
+
+Run `/reload` in Pi or start a new Pi/Codex session after changing skill discovery.
 
 ## Safety model
 
@@ -131,15 +165,38 @@ acceptance gates (exit code 0 ≠ success).
 
 ## Plugin wrapper install
 
-The raw skill install remains the recommended path for daily use because Codex and Claude Code
-can share one source checkout:
+The raw skill install remains the recommended path for daily use because Pi,
+Codex, and Claude Code can share one source checkout:
 
 ```bash
-mkdir -p ~/agent-skills ~/.codex/skills ~/.claude/skills
+mkdir -p ~/agent-skills ~/.pi/agent/skills ~/.codex/skills ~/.claude/skills
 git clone https://github.com/Qgzeng-Bio/Bio-workflow.git ~/agent-skills/bioflow
+ln -sfn ~/agent-skills/bioflow ~/.pi/agent/skills/bioflow
 ln -sfn ~/agent-skills/bioflow ~/.codex/skills/bioflow
 ln -sfn ~/agent-skills/bioflow ~/.claude/skills/bioflow
 ```
+
+For Pi plotting delegation, make the same reviewed PaperPlot installation visible
+to Pi and include it in the Pi `skills` setting when explicit resource paths are
+used:
+
+```bash
+ln -sfn ~/.codex/skills/paperplot-skills ~/.pi/agent/skills/paperplot-skills
+```
+
+When `~/.pi/agent/settings.json` uses explicit skill paths, include both entries:
+
+```json
+{
+  "skills": [
+    "~/.pi/agent/skills/bioflow",
+    "~/.pi/agent/skills/paperplot-skills"
+  ]
+}
+```
+
+Pi discovers it on the next `/reload` or new session. The PaperPlot frontmatter
+must not set `disable-model-invocation: true` when automatic delegation is wanted.
 
 The repo also includes an optional plugin wrapper at `plugins/bioflow/`.
 It contains both Codex and Claude Code manifests:
@@ -234,11 +291,11 @@ The helper scripts no longer hardcode `/data9/home/qgzeng`. They follow whoever 
   skill-creator/plugin-creator validators under `$HOME/.codex`. If those validators are absent
   (a non-Codex install), validation is **skipped with a warning** instead of failing.
 - **Project rules per user.** The skill's own safety rules live in `SKILL.md` and apply wherever it
-  is loaded. On Codex, `SKILL.md` startup reads the active user's own `~/.codex/memories`, so each
-  user gets their own output/SLURM preferences. The nearest project-rule file (`CLAUDE.md` for Claude
-  Code, `AGENTS.md` for Codex) is path-scoped — qgzeng's live under `/data9/home/qgzeng/projects` — so
-  each user should drop an equivalent `CLAUDE.md`/`AGENTS.md` in their own project tree, or rely on the
-  rules already embedded in `SKILL.md`.
+  is loaded. Codex reads the active user's `~/.codex/memories`; Pi uses its
+  concatenated global/parent/current `AGENTS.md` or `CLAUDE.md` context and any
+  memory files those rules require; Claude Code reads its nearest `CLAUDE.md`.
+  These files are path-scoped, so each user should keep equivalent rules in their
+  own project tree or rely on the safety rules embedded in `SKILL.md`.
 - **Tool/conda-env paths in the playbooks are qgzeng examples.** Absolute paths in
   `references/playbook-*.md` (e.g. `braker3.sif`, `SURVIVOR`, `ModDotPlot/venv`, `seqkit`,
   `DeepTE.py`, EviAnn) point at the owner's installed tools as tested evidence. Other users must
@@ -249,7 +306,7 @@ The helper scripts no longer hardcode `/data9/home/qgzeng`. They follow whoever 
 `SKILL.md` is the source of truth; validate after changes:
 
 ```bash
-scripts/test_skill.sh                            # core maintenance suite
+scripts/test_skill.sh                            # core suite, including optional Pi integration checks
 scripts/sync_install.sh                          # dry-run Codex runtime sync
 scripts/sync_install.sh --yes                    # write Codex runtime sync
 scripts/sync_plugin_wrapper.sh                   # dry-run Codex plugin-wrapper sync

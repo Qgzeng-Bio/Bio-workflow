@@ -6,8 +6,20 @@ handoff expectations.
 
 ## Monitor and diagnose
 
-After submission, record job ID, script path, config path, resource request, and
-submit time.
+After submission, record job ID, script/config paths, resource request, submit
+time, expected output, and task identity. For a progress, running-task, or mixed
+project request, read `references/task-monitoring.md` and start with the read-only
+dashboard:
+
+```bash
+python3 scripts/project_dashboard.py --project <project_dir>
+python3 scripts/project_dashboard.py --project <project_dir> --check-queue
+```
+
+The dashboard reconciles `Task_Status.tsv`, `run_record.tsv`, project status, and
+only registered Job IDs. It never writes status or changes the queue. Preserve the
+difference between scheduler `COMPLETED`, task `Complete_unvalidated`, and
+accepted `Validated`; report concurrent failed/running/blocked tasks separately.
 
 For failures:
 
@@ -51,16 +63,24 @@ Use qp mode for the user's multi-task queue pattern:
 Each task command must include environment activation and explicit output paths.
 Empty `tasks.txt` does not prove no work is running; inspect `task_log.txt` and
 SLURM state. Do not change `MAX_PARALLEL` for large-memory jobs without
-confirmation.
+confirmation. For a unified bioflow dashboard, register the qp manager or child
+Job IDs in `reports/Task_Status.tsv`; do not parse arbitrary task commands or
+recursively discover qp outputs.
 
 ## Plot and report
 
-For publication figures, follow the user's Nature-style plotting rules from
-`AGENTS.md`: Arial fonts, white background, no grids, clean axes,
-colorblind-aware palettes, PDF first, PNG/JPEG at 300 dpi, and figure legends in
-English.
+Delegate scientific plotting, redesign, export, rendered-image QA, and
+old-vs-new comparison to the installed skill named `paperplot-skills`. Codex
+invokes `$paperplot-skills`; Pi must load the discovered PaperPlot skill before
+drawing (`/skill:paperplot-skills` is the user's force-load command). Do not
+substitute another plotting skill or duplicate PaperPlot's visual workflow inside
+bioflow. If it is unavailable on the active surface, state the blocker before
+drawing or claiming PaperPlot QA.
 
-Always save plotting data, code, and parameters. Report what the figure proves
-and what it does not prove. For figure acceptance, read
-`references/validation-checklists.md`.
+Bioflow still owns biological readiness and provenance: identify whether the
+figure is QC, exploratory, or publication-grade; verify data source,
+reference/version, coordinates, units, transforms, sample design, statistics,
+and claim status before delegation. Always save plotting data, code, parameters,
+metadata, QA, and an English legend with the exported PDF/PNG. Read
+`references/validation-checklists.md` for bioinformatics figure acceptance.
 

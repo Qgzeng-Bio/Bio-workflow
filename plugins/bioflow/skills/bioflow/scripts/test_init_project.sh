@@ -16,7 +16,7 @@ $init --project "$project" --yes >/dev/null
 for path in config data scripts logs tmp results reports; do
     [[ -d "$project/$path" ]] || { echo "FAIL | missing directory: $path" >&2; exit 1; }
 done
-for path in config/Input_Manifest.tsv reports/Analysis_Plan.md reports/workflow_status.tsv reports/Acceptance_Report.md reports/Methods_Summary.md reports/Delivery_Index.md; do
+for path in config/Input_Manifest.tsv reports/Analysis_Plan.md reports/workflow_status.tsv reports/Task_Status.tsv reports/Acceptance_Report.md reports/Methods_Summary.md reports/Delivery_Index.md; do
     [[ -s "$project/$path" ]] || { echo "FAIL | missing template: $path" >&2; exit 1; }
 done
 printf 'PASS | project skeleton created\n'

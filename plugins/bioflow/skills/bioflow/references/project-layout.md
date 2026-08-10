@@ -23,7 +23,7 @@ project/
 ├── logs/     # scheduler and program logs
 ├── tmp/      # disposable intermediates
 ├── results/  # analysis outputs
-└── reports/  # plans, status, acceptance, methods, figures, delivery index
+└── reports/  # plans, project/task status, acceptance, methods, figures, delivery index
 ```
 
 Do not add an empty directory hierarchy beyond these seven defaults. Add a
@@ -45,8 +45,11 @@ task-specific subdirectory only when a real tool or workflow stage needs it.
 - **Results:** store scientific outputs and compact summary tables under
   `results/`. Separate stages with short topic/tool subdirectories only when name
   collisions or rerun boundaries require it.
-- **Reports:** store plans, acceptance evidence, interpretation, methods, figures,
-  and delivery indexes under `reports/`.
+- **Reports:** store plans, project/task status, run records, acceptance evidence,
+  interpretation, methods, figures, and delivery indexes under `reports/`.
+  Keep project-wide lifecycle in `workflow_status.tsv` and concurrent work units
+  in `Task_Status.tsv`; read `references/task-monitoring.md` before changing the
+  task schema.
 
 ## Naming rules
 
