@@ -70,6 +70,7 @@ sources=(
     "$templates/Methods_Summary.md"
     "$templates/Delivery_Index.md"
     "$templates/result_manifest.yaml"
+    "$templates/Directory_Index.tsv"
 )
 targets=(
     "$project_abs/config/Input_Manifest.tsv"
@@ -80,6 +81,7 @@ targets=(
     "$project_abs/reports/Methods_Summary.md"
     "$project_abs/reports/Delivery_Index.md"
     "$project_abs/config/result_manifest.yaml"
+    "$project_abs/config/Directory_Index.tsv"
 )
 
 printf 'PROJECT | %s\n' "$project_abs"
