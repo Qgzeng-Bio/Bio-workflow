@@ -111,6 +111,8 @@ Keep `SKILL.md` as the routing hub. Load detailed references only when their tas
 - `references/playbook-genome-annotation.md`: use for repeat annotation, evidence preparation, gene model prediction, functional annotation, release packaging, and annotation QC.
 - `references/playbook-repeat-annotation.md`: use for TRF, RepeatModeler, EDTA, DeepTE refinement, RepeatMasker, solo LTR, TE density, TEsorter, and RT-domain repeat phylogeny workflows.
 - `references/playbook-pangene-batch-annotation.md`: use for multi-accession or pan-gene genome annotation batches with per-sample directories, EviAnn, BRAKER3, AUGUSTUS, TransDecoder, SPALN3, and BUSCO/GFF3 aggregation.
+- `references/playbook-rnaseq-differential-expression.md`: use for sample design, FASTQ QC, STAR/featureCounts, DESeq2, quinoa homeolog policy, DE acceptance, and plotting handoff.
+- `references/playbook-population-variants-gwas.md`: use for validated-VCF or joint-calling entry, ploidy/model routing, population QC, SNP/INDEL GWAS, and association acceptance.
 - `references/program-cards/README.md` and specific cards: use when the request starts from a program/tool name.
 - `references/program-cards/program-onboarding.md`: use only when no active card exists or the program needs discovery/proposal/capture.
 
@@ -259,8 +261,8 @@ Other routes:
 
 - **Repeat annotation and masking:** read `references/playbook-repeat-annotation.md`; then use `EDTA`, `RepeatModeler`, `RepeatMasker`, `TRF`, `TEsorter`, `BUSCO`, and figure/checklist references as needed.
 - **Annotation:** read `references/playbook-genome-annotation.md`; for multi-accession/pan-gene batches also read `references/playbook-pangene-batch-annotation.md`; then use the relevant software cards.
-- **RNA-seq:** read `fastp, FastQC, and MultiQC`, `STAR`, and `featureCounts`; confirm strandedness, paired-end naming, and index reuse.
-- **Read-based / population SNP-INDEL-SV:** read `bcftools and GATK`; confirm reference compatibility and chromosome names.
+- **RNA-seq differential expression:** read `references/playbook-rnaseq-differential-expression.md` first, then the STAR/featureCounts/fastp/FastQC/MultiQC sections of `references/software-resource-cards.md`; do not route generic `rnaseq` directly to DE without selecting the analysis mode.
+- **Population SNP/INDEL + GWAS:** read `references/playbook-population-variants-gwas.md` first, then the bcftools/GATK and relevant local-tool resource guidance. Choose validated-VCF Route A or joint-calling Route B, then prove D-route disomic assumptions or stop for a validated dosage/polyploid-aware P engine.
 - **Pangenome/orthology:** read `OrthoFinder`, `PanGenie`, and search-tool cards; estimate database/output growth and array concurrency.
 - **K-mer GWAS / KMERIA:** read the `KMERIA` card; run a format-compatibility pilot before scaling and treat wrapper warnings about `count`/`kctm` formats as blockers.
 - **Downloads, qp mode, reporting:** read `references/operations-reporting.md` and the relevant validation checks.

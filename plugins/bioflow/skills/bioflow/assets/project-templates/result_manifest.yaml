@@ -16,6 +16,9 @@ mapping: []
 telomere: []
 sv:
   callers: []
+rnaseq_de: {}
+population_variants: {}
+gwas: {}
 
 # A formal PASS requires at least one complete claim. Example:
 # - claim_id: ASM_N50_OBS_001

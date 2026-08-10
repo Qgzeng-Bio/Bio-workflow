@@ -317,6 +317,50 @@ snippets. Do not treat a zero exit code as enough.
   and intended sample set; high duplicated BUSCOs are interpreted with ploidy and
   subgenome context.
 
+## RNA-seq differential-expression acceptance
+
+- Sample manifest has canonical `Sample_ID`, condition, biological replicate,
+  batch, tissue, and R1/R2; technical replicates are not counted as biological.
+- Every contrasted group has >=2 biological replicates (`2` remains WARN; >=3 is
+  preferred), and condition is not fully confounded with batch/tissue.
+- FASTA/GTF/STAR-index versions, checksums, sequence IDs, read length, paired-end
+  status, and strandedness are verified.
+- Trimming, if used, is justified by pre-QC and has pre/post read counts.
+- STAR mapping and featureCounts assignment/outlier evidence are complete; sample
+  IDs and count-matrix columns match metadata exactly.
+- feature type, grouping attribute, paired/stranded/multimapping policy are
+  recorded. DESeq2 receives raw integer gene counts, never TPM/FPKM.
+- Design matrix is full rank; formula, contrast direction, covariates, exclusions,
+  BH-FDR/alpha, effect threshold, and shrinkage are explicit.
+- PCA, sample correlation/distance, library size, mapping, assignment, and outlier
+  decisions are retained; exclusion does not break replication gates.
+- Quinoa A/B homeologs are not silently merged; unique-attribution primary policy
+  and any multimapping sensitivity branch are labeled.
+- `rnaseq_differential_expression` manifest claim cites readable metadata/count/QC
+  evidence and passes active gates before publication interpretation.
+
+## Population variant-calling and GWAS acceptance
+
+- Reference path/version/checksum, chromosome convention, ploidy assumption,
+  caller/version/mode, sample manifest, and sample-ID mapping are reproducible.
+- Normalization, multiallelic policy, filter expressions, pre/post counts, final
+  compressed VCF/BCF, and index are validated.
+- Sample call rate, site missingness, depth/quality, MAC/MAF, heterozygosity,
+  duplicates/relatedness, and batch/subgenome/homeolog mapping behavior are reviewed.
+- Diploid HWE is used only under an explicitly justified disomic/population model;
+  it is not an unconditional quinoa hard filter.
+- Phenotype units/distribution/transformation, environment/trial/batch, exclusions,
+  and genotype/phenotype sample intersection are explicit.
+- D route demonstrates homeolog-resolved biallelic disomic encoding and validated
+  PLINK2+GEMMA compatibility; otherwise a selected validated dosage/polyploid-aware
+  P engine is required before formal commands.
+- PCA, kinship, covariates, LMM/GLMM/polyploid model, proximal contamination/LOCO
+  decision, multiple-testing method/threshold, QQ evidence, and lambda are reported.
+- Associations retain effect allele, effect/SE, p-value, MAF/MAC, N, model, and
+  reference coordinates. Lead loci carry repeat/centromere/SD/mappability caveats.
+- `population_variant_calling`/`gwas` manifest claims cite readable evidence and
+  pass model/sample/QC/inference gates. Association is not described as causation.
+
 ## Figure acceptance checklist
 
 - Load the installed `paperplot-skills` for figure selection/redesign, export,

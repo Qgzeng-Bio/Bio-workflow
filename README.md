@@ -63,8 +63,8 @@ scripts/init_project.sh --project /absolute/path/to/project --yes
 ```
 
 The initializer never overwrites existing files. It includes an empty
-`reports/Task_Status.tsv` for concurrent work units. Naming, identifier/version,
-and legacy compatibility rules are in
+`reports/Task_Status.tsv` for concurrent work units and a non-claiming
+`config/result_manifest.yaml` v2 template. Naming, identifier/version, and legacy compatibility rules are in
 [`references/project-layout.md`](references/project-layout.md).
 
 ## Monitor running work
@@ -170,7 +170,46 @@ or silently replace PaperPlot's workflow.
 - If PaperPlot is unavailable, bioflow reports the blocker instead of substituting
   another plotting skill or claiming PaperPlot QA.
 
+Multi-metric genome-quality figures first pass the strict TSV/unit/rank layer:
+
+```bash
+python3 scripts/prepare_paperplot_handoff.py \
+  --input Genome_Quality_Metrics.tsv \
+  --output-tsv FigA_PaperPlot_Input.tsv \
+  --output-json FigA_PaperPlot_Handoff.json \
+  --figure-role publication
+```
+
+The handoff never averages heterogeneous raw metrics; PaperPlot uses its explicit
+`Key_Sample` and then performs visual design/export/QA. See
+[`references/paperplot-handoff-contract.md`](references/paperplot-handoff-contract.md).
+
 Run `/reload` in Pi or start a new Pi/Codex session after changing skill discovery.
+
+## Claim-specific results and domain playbooks
+
+`result_manifest.v2` declares each claim's type, metric, subjects, protocol,
+evidence paths, status, and caveats. Relative evidence paths resolve from the
+manifest directory:
+
+```bash
+python3 scripts/check_result_contract.py --manifest config/result_manifest.yaml
+```
+
+Legacy manifests remain readable but cannot receive formal PASS without v2
+claims. Covered routes now include assembly evaluation, orthogonal SV confidence,
+RNA-seq differential expression, population variant calling, and GWAS. Active
+planning/acceptance playbooks:
+
+- [`playbook-rnaseq-differential-expression.md`](references/playbook-rnaseq-differential-expression.md)
+  — STAR + featureCounts + DESeq2, replication/confounding/raw-count gates, and
+  quinoa homeolog policy.
+- [`playbook-population-variants-gwas.md`](references/playbook-population-variants-gwas.md)
+  — existing-VCF or joint-calling routes and explicit disomic D versus
+  dosage/polyploid-aware P association decisions.
+
+These are decision contracts, not evidence that one fixed command set is already
+validated for every local input/tool version.
 
 ## Safety model
 

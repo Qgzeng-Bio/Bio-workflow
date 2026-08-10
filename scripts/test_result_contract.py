@@ -281,6 +281,148 @@ with tempfile.TemporaryDirectory(prefix="bioflow-contract-test.") as tmp_name:
     assert_status("PASS", single, tmp)
     passed("single metric observation does not require six-axis overview")
 
+    # RNA-seq DE: complete design PASS; n=2 WARN; n<2/confounding BLOCK.
+    for filename in (
+        "Sample_Metadata.tsv",
+        "Raw_Counts.tsv",
+        "RNA_QC.tsv",
+        "Reference.fa",
+        "Population_Samples.tsv",
+        "Calls.vcf.gz",
+        "Calls.vcf.gz.tbi",
+        "Phenotypes.tsv",
+        "Genotypes.bed",
+        "PCA.tsv",
+        "Kinship.tsv",
+        "QQ.tsv",
+    ):
+        (tmp / filename).write_text("ID\tValue\nX\t1\n")
+    rnaseq = {
+        "schema_version": "result_manifest.v2",
+        "analysis_types": ["rnaseq_differential_expression"],
+        "rnaseq_de": {
+            "sample_metadata_path": "Sample_Metadata.tsv",
+            "biological_replicates": {"Control": 3, "Treatment": 3},
+            "design_formula": "~ Batch + Condition",
+            "contrast": ["Condition", "Treatment", "Control"],
+            "strandedness": "reverse",
+            "batch_condition_confounding": False,
+            "count_input": {"path": "Raw_Counts.tsv", "type": "raw_integer_counts"},
+            "statistics": {
+                "fdr_method": "BH",
+                "alpha": 0.05,
+                "effect_size": "log2FoldChange",
+                "shrinkage": "apeglm",
+            },
+            "qc_evidence_paths": ["RNA_QC.tsv"],
+        },
+        "claims": [
+            claim(
+                "RNA_DE_001",
+                "rnaseq_differential_expression",
+                "differential_expression",
+                ["Treatment", "Control"],
+                {},
+            )
+        ],
+    }
+    assert_status("PASS", rnaseq, tmp)
+    rnaseq_two = copy.deepcopy(rnaseq)
+    rnaseq_two["rnaseq_de"]["biological_replicates"]["Treatment"] = 2
+    assert_status("WARN", rnaseq_two, tmp, "RNA_DE_002")
+    rnaseq_one = copy.deepcopy(rnaseq)
+    rnaseq_one["rnaseq_de"]["biological_replicates"]["Treatment"] = 1
+    assert_status("BLOCK", rnaseq_one, tmp, "RNA_DE_002")
+    rnaseq_confounded = copy.deepcopy(rnaseq)
+    rnaseq_confounded["rnaseq_de"]["batch_condition_confounding"] = True
+    assert_status("BLOCK", rnaseq_confounded, tmp, "RNA_DE_004")
+    rnaseq_tpm = copy.deepcopy(rnaseq)
+    rnaseq_tpm["rnaseq_de"]["count_input"]["type"] = "TPM"
+    assert_status("BLOCK", rnaseq_tpm, tmp, "RNA_DE_003")
+    passed("RNA DE complete PASS; n=2 WARN; n<2/confounding/non-count input BLOCK")
+
+    # Population variant calling requires reference/ploidy, sample match, normalization, VCF+index.
+    variants = {
+        "schema_version": "result_manifest.v2",
+        "analysis_types": ["population_variant_calling"],
+        "population_variants": {
+            "reference": {"path": "Reference.fa", "version": "V2", "checksum": "sha256:fixture"},
+            "ploidy_assumption": "homeolog_resolved_disomic",
+            "caller": "GATK",
+            "caller_version": "fixture",
+            "calling_mode": "joint_genotyping",
+            "multiallelic_policy": "split_after_joint_calling",
+            "sample_manifest_path": "Population_Samples.tsv",
+            "sample_match": True,
+            "normalization": {
+                "left_aligned": True,
+                "split_multiallelic": True,
+                "tool": "bcftools norm",
+                "version": "fixture",
+            },
+            "filter_provenance": {"Variant_Missing_Max": 0.1, "MAC_Min": 5},
+            "vcf_path": "Calls.vcf.gz",
+            "index_path": "Calls.vcf.gz.tbi",
+        },
+        "claims": [
+            claim(
+                "VARIANT_001",
+                "population_variant_calling",
+                "variant_callset",
+                ["Population_1"],
+                {},
+            )
+        ],
+    }
+    assert_status("PASS", variants, tmp)
+    variants_missing_index = copy.deepcopy(variants)
+    variants_missing_index["population_variants"]["index_path"] = "Missing.tbi"
+    assert_status("BLOCK", variants_missing_index, tmp, "VARIANT_004")
+    variants_mismatch = copy.deepcopy(variants)
+    variants_mismatch["population_variants"]["sample_match"] = False
+    assert_status("BLOCK", variants_mismatch, tmp, "VARIANT_002")
+    passed("population variant complete PASS; sample/index failures BLOCK")
+
+    # GWAS D route must be homeolog-resolved disomic PLINK2+GEMMA and calibrated.
+    gwas = {
+        "schema_version": "result_manifest.v2",
+        "analysis_types": ["gwas"],
+        "gwas": {
+            "route": "D",
+            "ploidy_model": "disomic_diploid_approximation",
+            "homeolog_resolved": True,
+            "biallelic": True,
+            "qc_engine": "PLINK2",
+            "engine": "GEMMA",
+            "engine_validated": True,
+            "model_compatibility": True,
+            "sample_match": True,
+            "phenotype_path": "Phenotypes.tsv",
+            "genotype_path": "Genotypes.bed",
+            "qc_thresholds": {"Sample_Call_Rate_Min": 0.9, "Variant_Missing_Max": 0.1, "MAC_Min": 5},
+            "pca_path": "PCA.tsv",
+            "kinship_path": "Kinship.tsv",
+            "covariates": ["PC1", "PC2", "Trial"],
+            "multiple_testing": {"method": "Bonferroni", "threshold": 5e-8},
+            "qq_evidence_path": "QQ.tsv",
+            "effect_allele_reported": True,
+        },
+        "claims": [claim("GWAS_001", "gwas", "association", ["Trait_1"], {})],
+    }
+    assert_status("PASS", gwas, tmp)
+    incompatible = copy.deepcopy(gwas)
+    incompatible["gwas"]["ploidy_model"] = "allele_dosage_polyploid"
+    assert_status("BLOCK", incompatible, tmp, "GWAS_002")
+    no_match = copy.deepcopy(gwas)
+    no_match["gwas"]["sample_match"] = False
+    assert_status("BLOCK", no_match, tmp, "GWAS_001")
+    p_unselected = copy.deepcopy(gwas)
+    p_unselected["gwas"].update(
+        {"route": "P", "engine": "", "dosage_aware": True, "polyploid_model": True}
+    )
+    assert_status("BLOCK", p_unselected, tmp, "GWAS_002")
+    passed("GWAS D fixture PASS; sample/model/P-engine mismatches BLOCK")
+
     # CLI sections and stable exit codes, including generic RNA uncertainty.
     cli_cases = [
         ("pass.yaml", single, 0, "STATUS\tPASS", None),

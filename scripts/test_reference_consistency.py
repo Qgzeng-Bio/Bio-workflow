@@ -68,4 +68,29 @@ assert "eudicots_odb10" in assembly and "supplemental" in assembly
 assert "must not be directly ranked against odb12" in assembly
 print("PASS | assembly playbook uses odb12 headline and isolates other lineages")
 
-print("PASS | genome evaluation reference consistency")
+rnaseq_path = REFS / "playbook-rnaseq-differential-expression.md"
+population_path = REFS / "playbook-population-variants-gwas.md"
+assert rnaseq_path.is_file() and population_path.is_file()
+rnaseq = rnaseq_path.read_text()
+population = population_path.read_text()
+skill = (ROOT / "SKILL.md").read_text()
+assert "references/playbook-rnaseq-differential-expression.md" in skill
+assert "references/playbook-population-variants-gwas.md" in skill
+assert "analysis_type: rnaseq" in rnaseq and "UNCERTAIN" in rnaseq
+assert "raw integer counts" in rnaseq and "batch" in rnaseq and "homeolog" in rnaseq
+assert "D route" in population and "P route" in population and "KMERIA" in population
+assert not re.search(r"^#SBATCH --time", rnaseq + "\n" + population, re.MULTILINE)
+print("PASS | RNA DE and population GWAS routes exist and are linked")
+
+required_headers = (
+    "Sample_ID\tCondition\tBiological_Replicate\tBatch\tTissue\tRead1\tRead2",
+    "Gene_ID\tBase_Mean\tLog2FC\tLFC_SE\tStatistic\tP_Value\tAdjusted_P_Value\tContrast\tStatus",
+    "Sample_ID\tBAM_or_VCF_ID\tPopulation\tFamily\tBatch\tPloidy_Model\tInput_Path",
+    "Trait\tChr\tPosition_bp\tRef_Allele\tEffect_Allele\tEffect\tSE\tP_Value\tAdjusted_P_Value\tMAF\tMAC\tN\tModel",
+)
+for header in required_headers:
+    assert header in rnaseq or header in population, header
+    assert "  " not in header and "\t" in header
+print("PASS | playbook table schemas use explicit TSV and canonical columns")
+
+print("PASS | genome evaluation and workflow reference consistency")

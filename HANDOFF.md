@@ -1848,6 +1848,44 @@ git log --oneline --decorate
 git show <commit>:HANDOFF.md
 ```
 
+## Claim-specific hardening and new workflow routes
+
+The latest maintenance pass added five bounded improvements without changing
+PaperPlot itself, installing software, running biology, or touching protected data:
+
+1. `fill_gap_from_spanning_alignment.py` now validates complete maximal internal
+   N-runs and safe output paths before BAM fetch, refuses overwrite by default,
+   and transactionally stages FASTA/report outputs. A real indexed pysam fixture
+   covers forward/reverse donors, indels, flags, identities, overwrite, and index
+   failures. `filled` is explicitly sequence replacement, not join acceptance.
+2. `result_manifest.v2` is claim-specific. Claims select subjects/protocols and
+   readable evidence paths. Multi-lineage BUSCO storage and dual N50 fields are
+   legal; only invalid selected comparisons block. QV checks k and truth-set type;
+   high-confidence SV requires read+assembly axes. v1 remains readable but cannot
+   false-PASS without v2 claims.
+3. Historical quinoa Merqury values are now correctly labeled HiFi-built and
+   non-independent, separate from recommended independent PCR-free Illumina
+   evaluation. `Cqu_final` is primary A+B, not a hap1+hap2 concatenation;
+   `embryophyta_odb12` is headline BUSCO; QV/telomeres alone do not establish T2T.
+4. `prepare_paperplot_handoff.py` enforces true TSV, explicit units/directions,
+   audited bp/kb/Mb/Gb conversion, within-metric fractional rank, coverage-aware
+   ordering, deterministic key samples, and readiness JSON before PaperPlot
+   delegation. PaperPlot source/runtime fingerprints are intentionally untouched.
+5. Active RNA-seq DE and population SNP/INDEL+GWAS playbooks now define intake,
+   route/model choices, replication/confounding/ploidy gates, SLURM resource
+   principles, TSV outputs, result-contract fixtures, and PaperPlot handoff.
+
+The maintenance suite includes the four dedicated Python regressions plus the
+expanded result-contract matrix. Source is mirrored into the repo-local plugin;
+Codex runtime sync is performed only through guarded `sync_install.sh --yes`.
+Remote push remains a separate online action.
+
+A separate future task was requested for concise folder naming/management. Keep
+it outside these five commits: proposed scope is deterministic short-name
+suggestion, bounded read-only lint, and `config/Directory_Index.tsv`; existing
+projects must not be bulk-renamed and any create/rename action needs a new
+reviewed plan and confirmation.
+
 ## Remaining Design Options
 
 Keep these as design options, not automatic next tasks:
@@ -1877,9 +1915,10 @@ Keep these as design options, not automatic next tasks:
 - `project_state_audit.sh` is a bounded heuristic. Old logs and mixed outputs can
   produce multiple plausible states; the agent must choose the primary state from
   concrete evidence.
-- `check_result_contract.py` currently covers the first claim-control rules,
-  mostly around quinoa genome evaluation and known silent traps. It should not be
-  treated as universal biological interpretation.
+- `check_result_contract.py` covers explicit active gates for assembly evaluation,
+  SV confidence, RNA differential expression, population variant calling, and
+  GWAS. It is still not universal biological interpretation; unsupported or
+  generic analysis types must remain `UNCERTAIN`.
 - KMERIA-related guidance came from a real failed pilot and is intentionally
   conservative around count-to-matrix format compatibility.
 

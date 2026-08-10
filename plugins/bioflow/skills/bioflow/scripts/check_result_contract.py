@@ -29,6 +29,9 @@ SUPPORTED_ANALYSIS_TYPES = {
     "assembly_evaluation": ("assemblies", "busco", "merqury", "lai", "quast", "mapping", "telomere"),
     "kmeria_association": ("kmeria",),
     "sv_confidence": ("sv",),
+    "rnaseq_differential_expression": ("rnaseq_de",),
+    "population_variant_calling": ("population_variants",),
+    "gwas": ("gwas",),
 }
 ASSEMBLY_METRICS = {"N50", "BUSCO", "QV", "LAI", "MAPPING", "TELOMERE"}
 CLAIM_TYPES = {
@@ -36,6 +39,9 @@ CLAIM_TYPES = {
     "metric_comparison",
     "assembly_quality_overview",
     "sv_high_confidence",
+    "rnaseq_differential_expression",
+    "population_variant_calling",
+    "gwas",
 }
 CLAIM_STATUSES = {"supported", "uncertain", "blocked"}
 
@@ -451,7 +457,181 @@ def sv_findings(manifest: dict[str, Any], claim: dict[str, Any], index: int) -> 
     return []
 
 
-def claim_gate_findings(manifest: dict[str, Any], claim: dict[str, Any], index: int) -> list[Finding]:
+def explicit_path_findings(
+    values: Iterable[tuple[str, Any]], claim_id: str, rule_id: str, manifest_dir: Path
+) -> list[Finding]:
+    findings: list[Finding] = []
+    for label, value in values:
+        if not isinstance(value, str) or not value.strip():
+            findings.append(("BLOCK", rule_id, f"{claim_id}: missing explicit path {label}"))
+            continue
+        raw = Path(value).expanduser()
+        path = raw if raw.is_absolute() else manifest_dir / raw
+        path = path.resolve(strict=False)
+        if not path.exists() or not path.is_file() or not os.access(path, os.R_OK):
+            findings.append(("BLOCK", rule_id, f"{claim_id}: {label} missing or unreadable: {path}"))
+    return findings
+
+
+def rnaseq_de_findings(
+    manifest: dict[str, Any], claim: dict[str, Any], index: int, manifest_dir: Path
+) -> list[Finding]:
+    claim_id = claim_label(claim, index)
+    block = manifest.get("rnaseq_de") if isinstance(manifest.get("rnaseq_de"), dict) else {}
+    findings: list[Finding] = []
+    for field in ("design_formula", "contrast", "strandedness", "biological_replicates"):
+        if not field_present(block, field):
+            findings.append(("BLOCK", "RNA_DE_001", f"{claim_id}: rnaseq_de.{field} is required"))
+    if block.get("strandedness") not in {"unstranded", "forward", "reverse"}:
+        findings.append((
+            "BLOCK", "RNA_DE_003", f"{claim_id}: strandedness must be unstranded, forward, or reverse"
+        ))
+    contrast = block.get("contrast")
+    if not isinstance(contrast, list) or len(contrast) != 3 or any(not str(item).strip() for item in contrast):
+        findings.append((
+            "BLOCK", "RNA_DE_001", f"{claim_id}: contrast must be [Factor, Numerator, Denominator]"
+        ))
+    replicates = block.get("biological_replicates")
+    if not isinstance(replicates, dict) or not replicates:
+        findings.append(("BLOCK", "RNA_DE_002", f"{claim_id}: biological replicate counts are missing"))
+    else:
+        invalid = {group: value for group, value in replicates.items() if not isinstance(value, int) or value < 1}
+        if invalid:
+            findings.append(("BLOCK", "RNA_DE_002", f"{claim_id}: invalid replicate counts {invalid}"))
+        elif any(value < 2 for value in replicates.values()):
+            findings.append((
+                "BLOCK", "RNA_DE_002", f"{claim_id}: each contrasted group needs >=2 biological replicates; {replicates}"
+            ))
+        elif any(value == 2 for value in replicates.values()):
+            findings.append((
+                "WARN", "RNA_DE_002", f"{claim_id}: two biological replicates in at least one group; >=3 is recommended"
+            ))
+    if block.get("batch_condition_confounding") is not False:
+        findings.append((
+            "BLOCK", "RNA_DE_004", f"{claim_id}: batch_condition_confounding must be explicitly false"
+        ))
+    count_input = block.get("count_input") if isinstance(block.get("count_input"), dict) else {}
+    if count_input.get("type") != "raw_integer_counts":
+        findings.append((
+            "BLOCK", "RNA_DE_003", f"{claim_id}: DE input must be type=raw_integer_counts, not TPM/FPKM"
+        ))
+    statistics = block.get("statistics") if isinstance(block.get("statistics"), dict) else {}
+    for field in ("fdr_method", "alpha", "effect_size", "shrinkage"):
+        if not field_present(statistics, field):
+            findings.append(("BLOCK", "RNA_DE_005", f"{claim_id}: statistics.{field} is required"))
+    qc_paths = block.get("qc_evidence_paths")
+    if not isinstance(qc_paths, list) or not qc_paths:
+        findings.append(("BLOCK", "RNA_DE_005", f"{claim_id}: qc_evidence_paths must be non-empty"))
+        qc_paths = []
+    paths: list[tuple[str, Any]] = [
+        ("sample_metadata_path", block.get("sample_metadata_path")),
+        ("count_input.path", count_input.get("path")),
+    ]
+    paths.extend((f"qc_evidence_paths[{position}]", value) for position, value in enumerate(qc_paths))
+    findings.extend(explicit_path_findings(paths, claim_id, "RNA_DE_005", manifest_dir))
+    return findings
+
+
+def population_variant_findings(
+    manifest: dict[str, Any], claim: dict[str, Any], index: int, manifest_dir: Path
+) -> list[Finding]:
+    claim_id = claim_label(claim, index)
+    block = manifest.get("population_variants") if isinstance(manifest.get("population_variants"), dict) else {}
+    findings: list[Finding] = []
+    reference = block.get("reference") if isinstance(block.get("reference"), dict) else {}
+    for field in ("path", "version", "checksum"):
+        if not field_present(reference, field):
+            findings.append(("BLOCK", "VARIANT_001", f"{claim_id}: reference.{field} is required"))
+    for field in ("ploidy_assumption", "caller", "caller_version", "calling_mode", "multiallelic_policy"):
+        if not field_present(block, field):
+            findings.append(("BLOCK", "VARIANT_001", f"{claim_id}: population_variants.{field} is required"))
+    if block.get("sample_match") is not True:
+        findings.append((
+            "BLOCK", "VARIANT_002", f"{claim_id}: genotype/BAM/manifest sample IDs are not explicitly matched"
+        ))
+    normalization = block.get("normalization") if isinstance(block.get("normalization"), dict) else {}
+    if normalization.get("left_aligned") is not True or normalization.get("split_multiallelic") is not True:
+        findings.append((
+            "BLOCK", "VARIANT_003", f"{claim_id}: normalization must record left alignment and multiallelic splitting"
+        ))
+    if not field_present(normalization, "tool") or not field_present(normalization, "version"):
+        findings.append(("BLOCK", "VARIANT_003", f"{claim_id}: normalization tool/version are required"))
+    filters = block.get("filter_provenance")
+    if not isinstance(filters, dict) or not filters:
+        findings.append(("BLOCK", "VARIANT_003", f"{claim_id}: filter_provenance must be explicit"))
+    paths = [
+        ("reference.path", reference.get("path")),
+        ("sample_manifest_path", block.get("sample_manifest_path")),
+        ("vcf_path", block.get("vcf_path")),
+        ("index_path", block.get("index_path")),
+    ]
+    findings.extend(explicit_path_findings(paths, claim_id, "VARIANT_004", manifest_dir))
+    return findings
+
+
+def gwas_findings(
+    manifest: dict[str, Any], claim: dict[str, Any], index: int, manifest_dir: Path
+) -> list[Finding]:
+    claim_id = claim_label(claim, index)
+    block = manifest.get("gwas") if isinstance(manifest.get("gwas"), dict) else {}
+    findings: list[Finding] = []
+    if block.get("sample_match") is not True:
+        findings.append((
+            "BLOCK", "GWAS_001", f"{claim_id}: phenotype/genotype sample IDs are not explicitly matched"
+        ))
+    route = block.get("route")
+    if route == "D":
+        compatible = (
+            block.get("ploidy_model") == "disomic_diploid_approximation"
+            and block.get("homeolog_resolved") is True
+            and block.get("biallelic") is True
+            and str(block.get("engine") or "").upper() == "GEMMA"
+            and str(block.get("qc_engine") or "").upper() == "PLINK2"
+            and block.get("engine_validated") is True
+        )
+        if not compatible:
+            findings.append((
+                "BLOCK", "GWAS_002", f"{claim_id}: D route requires homeolog-resolved biallelic disomic PLINK2+GEMMA"
+            ))
+    elif route == "P":
+        compatible = (
+            block.get("dosage_aware") is True
+            and block.get("polyploid_model") is True
+            and field_present(block, "engine")
+            and block.get("engine_validated") is True
+        )
+        if not compatible:
+            findings.append((
+                "BLOCK", "GWAS_002", f"{claim_id}: P route requires a selected validated dosage/polyploid-aware engine"
+            ))
+    else:
+        findings.append(("BLOCK", "GWAS_002", f"{claim_id}: gwas.route must be D or P"))
+    if block.get("model_compatibility") is not True:
+        findings.append(("BLOCK", "GWAS_002", f"{claim_id}: model_compatibility must be explicitly true"))
+    thresholds = block.get("qc_thresholds")
+    if not isinstance(thresholds, dict) or not thresholds:
+        findings.append(("BLOCK", "GWAS_003", f"{claim_id}: qc_thresholds must be explicit"))
+    if not isinstance(block.get("covariates"), list):
+        findings.append(("BLOCK", "GWAS_003", f"{claim_id}: covariates must be an explicit list"))
+    testing = block.get("multiple_testing") if isinstance(block.get("multiple_testing"), dict) else {}
+    if not field_present(testing, "method") or not field_present(testing, "threshold"):
+        findings.append(("BLOCK", "GWAS_004", f"{claim_id}: multiple_testing method/threshold are required"))
+    if block.get("effect_allele_reported") is not True:
+        findings.append(("BLOCK", "GWAS_004", f"{claim_id}: effect_allele_reported must be true"))
+    paths = [
+        ("phenotype_path", block.get("phenotype_path")),
+        ("genotype_path", block.get("genotype_path")),
+        ("pca_path", block.get("pca_path")),
+        ("kinship_path", block.get("kinship_path")),
+        ("qq_evidence_path", block.get("qq_evidence_path")),
+    ]
+    findings.extend(explicit_path_findings(paths, claim_id, "GWAS_003", manifest_dir))
+    return findings
+
+
+def claim_gate_findings(
+    manifest: dict[str, Any], claim: dict[str, Any], index: int, manifest_dir: Path
+) -> list[Finding]:
     claim_type = claim.get("claim_type")
     if claim_type in {"metric_observation", "metric_comparison"}:
         return metric_findings(manifest, claim, index)
@@ -459,6 +639,12 @@ def claim_gate_findings(manifest: dict[str, Any], claim: dict[str, Any], index: 
         return overview_findings(manifest, claim, index)
     if claim_type == "sv_high_confidence":
         return sv_findings(manifest, claim, index)
+    if claim_type == "rnaseq_differential_expression":
+        return rnaseq_de_findings(manifest, claim, index, manifest_dir)
+    if claim_type == "population_variant_calling":
+        return population_variant_findings(manifest, claim, index, manifest_dir)
+    if claim_type == "gwas":
+        return gwas_findings(manifest, claim, index, manifest_dir)
     return []
 
 
@@ -537,7 +723,7 @@ def run(
             seen_claim_ids.add(claim_id)
             claim_findings.extend(evidence_findings(claim, index, manifest_dir))
             if not any(severity == "BLOCK" and rule == "CLAIM_SCHEMA_001" for severity, rule, _ in claim_findings):
-                claim_findings.extend(claim_gate_findings(manifest, claim, index))
+                claim_findings.extend(claim_gate_findings(manifest, claim, index, manifest_dir))
             claim_findings.extend(status_consistency_findings(claim, index, claim_findings))
             findings.extend(claim_findings)
         internal_ids = {"COVERAGE", "SCHEMA"}

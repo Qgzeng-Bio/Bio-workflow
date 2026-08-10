@@ -78,8 +78,11 @@ claims: []
 ```
 
 `analysis_types` currently covered here are `assembly_evaluation`,
-`kmeria_association`, and `sv_confidence`. An unknown or overly broad type returns
-`UNCERTAIN`; omitting it cannot turn absent coverage into `PASS`.
+`kmeria_association`, `sv_confidence`, `rnaseq_differential_expression`,
+`population_variant_calling`, and `gwas`. An unknown or overly broad type returns
+`UNCERTAIN`; omitting it cannot turn absent coverage into `PASS`. In particular,
+generic `rnaseq` remains uncertain until differential expression, quantification,
+or another explicit mode is selected.
 
 ## Claim interface
 
@@ -88,7 +91,7 @@ Every v2 claim has these machine-checked fields:
 ```yaml
 claims:
   - claim_id: ASM_QV_COMPARE_001
-    claim_type: metric_observation | metric_comparison | assembly_quality_overview | sv_high_confidence
+    claim_type: metric_observation | metric_comparison | assembly_quality_overview | sv_high_confidence | rnaseq_differential_expression | population_variant_calling | gwas
     metric: N50 | BUSCO | QV | LAI | mapping | telomere | SV | assembly_quality
     subjects: [asm1, asm2]
     protocol:
@@ -155,6 +158,34 @@ forced to populate the other five axes.
 `sv.callers` entries are mappings with `name` and `evidence_axis`. A
 `sv_high_confidence` claim requires at least one `read` and one `assembly` axis.
 Two assembly callers do not satisfy orthogonality.
+
+### RNA-seq differential expression
+
+Use an `rnaseq_de` block and `claim_type: rnaseq_differential_expression`.
+Required gates include readable sample metadata/raw-count/QC paths, biological
+replicate counts, explicit design/contrast/strandedness, raw integer count input,
+no complete batch-condition confounding, and FDR/effect/shrinkage provenance.
+Contrasted-group replicate count `<2` is BLOCK, exactly 2 is WARN, and >=3 is the
+recommended starting point.
+
+### Population variant calling
+
+Use `population_variants` and `claim_type: population_variant_calling`. Record
+reference path/version/checksum, ploidy, caller/version/mode, sample match,
+multiallelic policy, normalization tool/version, filter provenance, and readable
+sample-manifest/VCF/index paths.
+
+### GWAS
+
+Use `gwas` and `claim_type: gwas`. Record phenotype/genotype sample match, QC
+thresholds, PCA/kinship/covariates, multiple testing, QQ evidence, and effect
+allele. Route D must be a validated homeolog-resolved biallelic disomic
+PLINK2+GEMMA model. Route P must name and validate a dosage/polyploid-aware engine;
+unselected or incompatible engines block a claim.
+
+See `playbook-rnaseq-differential-expression.md` and
+`playbook-population-variants-gwas.md` for the full planning and acceptance
+contracts.
 
 ## Status and overall result
 
