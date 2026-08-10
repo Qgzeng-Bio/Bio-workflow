@@ -33,6 +33,7 @@ scripts/test_project_lifecycle.sh
 scripts/test_claim_audit.sh
 scripts/test_slurm_preflight.sh
 "$python_bin" scripts/test_result_contract.py
+"$python_bin" scripts/test_fill_gap_from_spanning_alignment.py
 
 quick_validate="${HOME%/}/.codex/skills/.system/skill-creator/scripts/quick_validate.py"
 if [[ -f "$quick_validate" ]]; then

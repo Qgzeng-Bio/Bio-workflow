@@ -96,22 +96,36 @@ a BAM (verified on synthetic spanners, forward + reverse):
 conda activate assembly            # any env with pysam (anaconda3 base works) + minimap2 + samtools
 # 1) align the donor to the GAPPED chromosome — contigs FIRST (fast); reads only as fallback (heavy)
 minimap2 -ax asm5 -t 24 chrom.fa donor_contigs.fa | samtools sort -o donor.bam - && samtools index donor.bam
-# 2) find the spanning donor and splice it in
+# 2) find the spanning donor and splice it in. Output parents must already exist.
+#    Existing outputs are refused by default; choose new names for a normal rerun.
 python scripts/fill_gap_from_spanning_alignment.py \
     --bam donor.bam --ref chrom.fa --gaps gaps.gff3 --donor-type contig \
     --out chrom.gapfilled.fa --report gapfill_report.tsv
 # no spanner found? re-run on a reads BAM:  minimap2 -ax map-hifi … reads.fa  +  --donor-type read
 ```
 
+`--force` is an overwrite operation and is allowed only after the complete affected-path/risk disclosure
+and `confirm_action` approval. It never permits an output to equal an input, a symbolic-link output, or a
+path under `/data9/home/*/data|tools`, and it never bypasses the N-run checks. Before BAM regions are read,
+the script requires a readable FASTA + `.fai`, a readable BAM + index, and a non-empty gap set; it rejects
+unknown seqids, out-of-range or terminal intervals, non-N sequence, partial maximal N-runs, and overlapping
+non-identical intervals. Exact duplicate GFF3 rows are reduced to one interval and reported on stderr.
+Both FASTA and TSV are staged, flushed/fsynced, and committed as a pair so a preflight/write failure does
+not leave a final half-result.
+
 Rules it encodes (so it matches the manual judgement): a valid spanner is **one single linear PRIMARY
 alignment** — a read split across the gap into supplementary (SA) alignments does **not** count as
 bridging; it must anchor **≥ MIN_ANCHOR on both flanks** (contig 50 kb / read 1 kb — reads kept permissive
 so short ones aren't missed) at **MAPQ ≥ 30** (prefer ≥ 50). Among candidates it takes the **highest flank
-identity** (over the anchored flanks only, **excluding the N gap**), ties broken **deterministically**
-(longest anchor → leftmost coord) for reproducibility. The fill is the donor bases between the two flank
-anchors; a **reverse-strand donor needs no manual reverse-complement** — the BAM stores SEQ in reference
-orientation and pysam returns it ref-oriented (confirmed by test). The splice replaces only the N run,
-keeping the flanks; then validate the joins exactly as in Path A (re-map long reads, continuous depth).
+identity** (over the anchored flanks only, **excluding the N gap**), ties broken **deterministically** by
+anchor length, fill length, donor name, and fill sequence. The fill is the donor bases between the two
+flank anchors; a **reverse-strand donor needs no manual reverse-complement** — BAM SEQ is in reference
+orientation and pysam returns those stored bases. The splice replaces only the validated complete N-run.
+
+A report status of `filled` means **sequence replacement completed**, not that either new join is accepted.
+Immediately re-run gap detection on the output, then remap HiFi and, when available, ONT reads. Inspect
+continuous coverage across both sides, seam-local soft clipping, and anomalous indels. Keep any gap that
+fails these gates as an N-run; never relax the interval check into real sequence merely to report gap-free.
 
 ### Step 5 — telomere ends (missing telomeres ≠ internal gaps) — extend by overlap with donor reads/contigs
 

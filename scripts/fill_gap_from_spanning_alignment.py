@@ -1,233 +1,554 @@
 #!/usr/bin/env python3
-"""Fill assembly gaps (N-runs) from a single spanning read/contig alignment.
+"""Fill complete internal assembly N-runs from one spanning primary alignment.
 
-This is the programmatic version of the manual "find a read/contig that bridges the
-gap in IGV, splice it in" step (gap-finishing playbook, Stage F2, path B). It replaces
-eyeballing IGV with deterministic extraction from a BAM.
+The command is deliberately conservative: every requested gap and every output path
+is validated before BAM regions are fetched or output files are created.  A fill
+replaces only a complete, maximal internal N-run.  Outputs are staged in their own
+parent directories and committed as a pair; existing outputs require ``--force``.
 
-Method (locked spec):
-  * Donor (contigs or reads) is aligned to the gapped reference -> sorted, indexed BAM.
-  * A valid spanner is ONE single linear PRIMARY alignment (secondary/supplementary records are
-    skipped; a read clipped/split at the gap fails the exact-edge test) that anchors >= MIN_ANCHOR bp
-    on BOTH flanks AND aligns EXACTLY up to both gap edges — the last ref base before the gap and the
-    first after it must both be aligned, with MAPQ >= MIN_MAPQ.
-  * Per donor type the anchor differs: contigs 50 kb, reads 1 kb (reads kept permissive so short reads
-    are not missed; quality is enforced by ranking + per-flank gates, not by a big anchor).
-  * Each flank, checked LEFT and RIGHT separately (excluding the N gap), must have enough aligned non-N
-    columns and identity >= --min-identity (default 0.80) — a lopsided candidate can't pass on one side.
-  * Among survivors: prefer MAPQ >= PREFER_MAPQ (default 50), then highest combined flank identity, then
-    longest anchor, then longest fill -> query name -> fill (fully deterministic, reproducible).
-  * The fill is the donor bases between the two gap-edge anchors, from the BAM-stored SEQ via pysam
-    aligned-pairs. NOTE: BAM stores SEQ in reference orientation already, so a reverse-strand donor needs
-    NO manual reverse-complement — pysam returns ref-oriented bases. Splice replaces ONLY the N run:
-    ref[..gap_s0-1] + fill + ref[gap_e0+1..]. Overlapping fills on one contig are skipped (reported).
-
-It does NOT validate by re-mapping; after filling, re-align long reads across each new join
-and check for continuous depth (no drop at the seam) — see the playbook.
-
-Read-only on inputs; writes a new FASTA + a per-gap TSV report. No SLURM, no submission.
+This command does not validate the new joins biologically.  A ``filled`` report row
+means only that sequence replacement completed.  Re-run gap detection and remap
+HiFi/ONT reads across both joins before accepting a finished assembly.
 """
+from __future__ import annotations
+
 import argparse
+import os
+import re
 import sys
+import tempfile
+from pathlib import Path
+from typing import Any, Iterable
 
 try:
     import pysam
 except ImportError:
-    sys.exit("[ERROR] pysam not found. Use a python with pysam (e.g. anaconda3) or: micromamba install -c bioconda pysam")
+    sys.exit(
+        "[ERROR] pysam not found. Use an existing Python environment with pysam; "
+        "do not install dependencies implicitly."
+    )
 
 ANCHOR_DEFAULT = {"contig": 50000, "read": 1000}
+REPORT_HEADER = (
+    "Seqid\tGap_Start\tGap_End\tGap_Len\tStatus\tDonor\tStrand\tMAPQ\t"
+    "Flank_Identity\tFill_Len\tAnchor_Total\tN_Candidates\n"
+)
+PROTECTED_RE = re.compile(r"^/data9/home/[^/]+/(?:data|tools)(?:/|$)")
 
 
-def parse_gaps(gaps_path, single_gap):
-    """Yield (seqid, start1, end1) 1-based inclusive. From a get_gaps.py GFF3 or --gap."""
-    gaps = []
-    if single_gap:
-        chrom, rng = single_gap.split(":")
-        s, e = rng.replace(",", "").split("-")
-        gaps.append((chrom, int(s), int(e)))
-        return gaps
-    with open(gaps_path) as fh:
-        for line in fh:
-            if line.startswith("#") or not line.strip():
-                continue
-            c = line.rstrip("\n").split("\t")
-            if len(c) < 5:
-                continue
-            gaps.append((c[0], int(c[3]), int(c[4])))   # GFF3: seqid, .., type, start, end
-    return list(dict.fromkeys(gaps))                     # dedupe identical gap entries
+class GapFillError(ValueError):
+    """Expected input, interval, or output-safety failure."""
 
 
-def analyze(aln, gap_s0, gap_e0, anchor, ref_seq):
-    """Return a candidate dict only if `aln` is a single linear PRIMARY alignment that anchors EXACTLY at
-    both gap edges (last ref base before the gap AND first ref base after it are both aligned, no
-    deletion/clip there) with >= anchor flank on each side — so the fill corresponds exactly to the N run
-    and the splice never touches non-gap reference bases. gap_s0/gap_e0 are 0-based inclusive first/last N."""
+def parse_gap_string(value: str) -> tuple[str, int, int]:
+    """Parse ``SEQID:START-END`` as a 1-based inclusive interval."""
+    match = re.fullmatch(r"([^:\s]+):([0-9][0-9,]*)-([0-9][0-9,]*)", value.strip())
+    if not match:
+        raise GapFillError(f"invalid --gap value {value!r}; expected SEQID:START-END")
+    seqid, start, end = match.groups()
+    return seqid, int(start.replace(",", "")), int(end.replace(",", ""))
+
+
+def parse_gff3(path: Path) -> list[tuple[str, int, int]]:
+    """Read gap coordinates from non-comment GFF3 rows; malformed rows are fatal."""
+    gaps: list[tuple[str, int, int]] = []
+    try:
+        with path.open(encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, 1):
+                if not line.strip() or line.startswith("#"):
+                    continue
+                fields = line.rstrip("\n").split("\t")
+                if len(fields) != 9:
+                    raise GapFillError(
+                        f"{path}:{line_number}: expected 9 tab-separated GFF3 columns, got {len(fields)}"
+                    )
+                try:
+                    start, end = int(fields[3]), int(fields[4])
+                except ValueError as exc:
+                    raise GapFillError(
+                        f"{path}:{line_number}: non-integer GFF3 start/end"
+                    ) from exc
+                gaps.append((fields[0], start, end))
+    except OSError as exc:
+        raise GapFillError(f"cannot read gap GFF3 {path}: {exc}") from exc
+    if not gaps:
+        raise GapFillError(f"gap GFF3 has no data rows: {path}")
+    return gaps
+
+
+def deduplicate_gaps(
+    gaps: Iterable[tuple[str, int, int]],
+) -> tuple[list[tuple[str, int, int]], int]:
+    """Remove exact duplicates while preserving input order."""
+    unique: list[tuple[str, int, int]] = []
+    seen: set[tuple[str, int, int]] = set()
+    duplicates = 0
+    for gap in gaps:
+        if gap in seen:
+            duplicates += 1
+        else:
+            seen.add(gap)
+            unique.append(gap)
+    if not unique:
+        raise GapFillError("no valid gap intervals were supplied")
+    return unique, duplicates
+
+
+def is_protected(path: Path) -> bool:
+    return bool(PROTECTED_RE.match(str(path)))
+
+
+def resolved(path: Path) -> Path:
+    """Resolve symlinked parents without requiring the final path to exist."""
+    return path.expanduser().resolve(strict=False)
+
+
+def validate_readable_file(path: Path, label: str) -> Path:
+    if not path.exists() or not path.is_file():
+        raise GapFillError(f"{label} does not exist or is not a regular file: {path}")
+    if not os.access(path, os.R_OK):
+        raise GapFillError(f"{label} is not readable: {path}")
+    return resolved(path)
+
+
+def validate_output_paths(
+    out: Path,
+    report: Path,
+    inputs: Iterable[Path],
+    force: bool = False,
+) -> tuple[Path, Path]:
+    """Validate output identity, destination, protected-path, and overwrite rules."""
+    outputs = [out.expanduser(), report.expanduser()]
+    input_resolved = {resolved(path) for path in inputs}
+    output_resolved = [resolved(path) for path in outputs]
+    if output_resolved[0] == output_resolved[1]:
+        raise GapFillError("--out and --report must resolve to different paths")
+
+    for raw, target in zip(outputs, output_resolved):
+        if raw.is_symlink():
+            raise GapFillError(f"output path must not be a symbolic link: {raw}")
+        if target in input_resolved:
+            raise GapFillError(f"output path resolves to an input file: {raw}")
+        if is_protected(target):
+            raise GapFillError(f"refusing protected output path: {target}")
+        parent = target.parent
+        if not parent.exists() or not parent.is_dir():
+            raise GapFillError(f"output parent must already exist: {parent}")
+        if not os.access(parent, os.W_OK):
+            raise GapFillError(f"output parent is not writable: {parent}")
+        if target.exists():
+            if not target.is_file():
+                raise GapFillError(f"existing output is not a regular file: {target}")
+            if not force:
+                raise GapFillError(f"output already exists (use --force only after approval): {target}")
+    return output_resolved[0], output_resolved[1]
+
+
+def validate_gap_intervals(
+    gaps: Iterable[tuple[str, int, int]], fasta: Any
+) -> list[dict[str, Any]]:
+    """Validate coordinates and require each interval to be one maximal internal N-run."""
+    references = set(fasta.references)
+    lengths = dict(zip(fasta.references, fasta.lengths))
+    coordinate_checked: list[dict[str, Any]] = []
+    for seqid, start, end in gaps:
+        if seqid not in references:
+            raise GapFillError(f"gap seqid is absent from reference FASTA: {seqid}")
+        length = lengths[seqid]
+        if not 1 <= start <= end <= length:
+            raise GapFillError(
+                f"gap {seqid}:{start}-{end} is outside 1-{length} or has start > end"
+            )
+        coordinate_checked.append(
+            {"seqid": seqid, "s1": start, "e1": end, "gap_s0": start - 1, "gap_e0": end - 1}
+        )
+
+    ordered = sorted(
+        coordinate_checked, key=lambda item: (item["seqid"], item["gap_s0"], item["gap_e0"])
+    )
+    for previous, current in zip(ordered, ordered[1:]):
+        if previous["seqid"] == current["seqid"] and current["gap_s0"] <= previous["gap_e0"]:
+            raise GapFillError(
+                "different gap intervals overlap: "
+                f"{previous['seqid']}:{previous['s1']}-{previous['e1']} and "
+                f"{current['seqid']}:{current['s1']}-{current['e1']}"
+            )
+
+    checked: list[dict[str, Any]] = []
+    for item in coordinate_checked:
+        seqid, start, end = item["seqid"], item["s1"], item["e1"]
+        start0, end0 = item["gap_s0"], item["gap_e0"]
+        length = lengths[seqid]
+        if start0 == 0 or end0 == length - 1:
+            raise GapFillError(
+                f"gap {seqid}:{start}-{end} is terminal; two-sided anchors are required"
+            )
+        sequence = fasta.fetch(seqid)
+        interval = sequence[start0 : end0 + 1]
+        if not interval or any(base.upper() != "N" for base in interval):
+            raise GapFillError(f"gap {seqid}:{start}-{end} contains non-N sequence")
+        if sequence[start0 - 1].upper() == "N" or sequence[end0 + 1].upper() == "N":
+            raise GapFillError(
+                f"gap {seqid}:{start}-{end} covers only part of a maximal N-run"
+            )
+        item["ref_seq"] = sequence
+        checked.append(item)
+    return checked
+
+
+def analyze(aln: Any, gap_s0: int, gap_e0: int, anchor: int, ref_seq: str) -> dict[str, Any] | None:
+    """Return a candidate only for a primary linear two-sided exact-edge spanner."""
     if aln.is_unmapped or aln.is_secondary or aln.is_supplementary:
         return None
-    # hard anchor gate from the alignment's reference span (reference_end is exclusive)
+    if aln.reference_start is None or aln.reference_end is None:
+        return None
     left_anchor = gap_s0 - aln.reference_start
     right_anchor = (aln.reference_end - 1) - gap_e0
     if left_anchor < anchor or right_anchor < anchor:
         return None
 
-    left_ref = gap_s0 - 1            # last ref base before gap (0-based)
-    right_ref = gap_e0 + 1           # first ref base after gap
+    left_ref = gap_s0 - 1
+    right_ref = gap_e0 + 1
     left_lo = gap_s0 - anchor
     right_hi = gap_e0 + anchor
-    qseq = aln.query_sequence
-    if qseq is None:
+    query = aln.query_sequence
+    if query is None:
         return None
 
     q_left = r_left = q_right = r_right = None
-    lm = lc = rm = rc = 0            # left/right flank: matches, aligned non-N columns
-    for q, r in aln.get_aligned_pairs():
-        if r is None or q is None:   # insertion (r None) or deletion (q None) -> not an anchor/identity column
+    left_matches = left_columns = right_matches = right_columns = 0
+    for qpos, rpos in aln.get_aligned_pairs():
+        if rpos is None or qpos is None:
             continue
-        if r > right_hi:             # aligned ref positions are monotonic; nothing useful past here
+        if rpos > right_hi:
             break
-        if r <= left_ref and (r_left is None or r > r_left):
-            r_left, q_left = r, q
-        if r >= right_ref and (r_right is None or r < r_right):
-            r_right, q_right = r, q
-        if left_lo <= r <= left_ref:
-            rb = ref_seq[r].upper()
-            if rb != "N":
-                lc += 1
-                lm += (qseq[q].upper() == rb)
-        elif right_ref <= r <= right_hi:
-            rb = ref_seq[r].upper()
-            if rb != "N":
-                rc += 1
-                rm += (qseq[q].upper() == rb)
+        if rpos <= left_ref and (r_left is None or rpos > r_left):
+            r_left, q_left = rpos, qpos
+        if rpos >= right_ref and (r_right is None or rpos < r_right):
+            r_right, q_right = rpos, qpos
+        if left_lo <= rpos <= left_ref:
+            ref_base = ref_seq[rpos].upper()
+            if ref_base != "N":
+                left_columns += 1
+                left_matches += query[qpos].upper() == ref_base
+        elif right_ref <= rpos <= right_hi:
+            ref_base = ref_seq[rpos].upper()
+            if ref_base != "N":
+                right_columns += 1
+                right_matches += query[qpos].upper() == ref_base
 
-    # the donor must align EXACTLY up to both gap edges (else the splice would delete flank bases), and
-    # have genuinely-aligned bases on each flank
-    if r_left != left_ref or r_right != right_ref or q_left is None or q_right is None or q_right <= q_left:
+    if (
+        r_left != left_ref
+        or r_right != right_ref
+        or q_left is None
+        or q_right is None
+        or q_right <= q_left + 1
+        or left_columns == 0
+        or right_columns == 0
+    ):
         return None
-    if lc == 0 or rc == 0:
+    fill = query[q_left + 1 : q_right]
+    if not fill:
         return None
     return {
         "qname": aln.query_name,
         "strand": "-" if aln.is_reverse else "+",
         "mapq": aln.mapping_quality,
-        "left_cols": lc, "right_cols": rc,
-        "left_identity": lm / lc, "right_identity": rm / rc,
-        "identity": (lm + rm) / (lc + rc),     # combined, for ranking only
+        "left_cols": left_columns,
+        "right_cols": right_columns,
+        "left_identity": left_matches / left_columns,
+        "right_identity": right_matches / right_columns,
+        "identity": (left_matches + right_matches) / (left_columns + right_columns),
         "anchor_total": left_anchor + right_anchor,
-        "fill": qseq[q_left + 1:q_right],
+        "fill": fill,
     }
 
 
-def pick(cands, prefer_mapq):
-    """Deterministic selection: MAPQ tier (>=prefer first) -> flank identity -> longest anchor ->
-    longest fill -> query name -> fill (equal candidates resolve reproducibly, not by BAM order)."""
-    cands.sort(key=lambda c: (
-        0 if c["mapq"] >= prefer_mapq else 1,
-        -round(c["identity"], 6),
-        -c["anchor_total"],
-        -len(c["fill"]),
-        c["qname"], c["fill"],
-    ))
-    return cands[0] if cands else None
+def candidate_sort_key(candidate: dict[str, Any], prefer_mapq: int) -> tuple[Any, ...]:
+    return (
+        0 if candidate["mapq"] >= prefer_mapq else 1,
+        -round(candidate["identity"], 6),
+        -candidate["anchor_total"],
+        -len(candidate["fill"]),
+        candidate["qname"],
+        candidate["fill"],
+    )
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Fill N-gaps from a single spanning read/contig alignment.")
-    ap.add_argument("--bam", required=True, help="donor (contigs|reads) aligned to the gapped reference, sorted+indexed")
-    ap.add_argument("--ref", required=True, help="the gapped reference FASTA (faidx-indexed)")
-    g = ap.add_mutually_exclusive_group(required=True)
-    g.add_argument("--gaps", help="GFF3 of gaps from get_gaps.py")
-    g.add_argument("--gap", help="single gap as CHR:START-END (1-based inclusive)")
-    ap.add_argument("--donor-type", choices=["contig", "read"], default="contig",
-                    help="sets default min-anchor (contig 50kb, read 1kb)")
-    ap.add_argument("--min-anchor", type=int, default=None, help="override per-flank min anchor (bp)")
-    ap.add_argument("--min-mapq", type=int, default=30, help="hard MAPQ floor (default 30)")
-    ap.add_argument("--prefer-mapq", type=int, default=50, help="preferred MAPQ tier (default 50)")
-    ap.add_argument("--min-identity", type=float, default=0.80,
-                    help="reject a fill whose flank identity is below this -> mark unfilled (0 disables)")
-    ap.add_argument("--out", required=True, help="output gap-filled FASTA")
-    ap.add_argument("--report", required=True, help="output per-gap TSV report")
-    args = ap.parse_args()
+def pick(candidates: Iterable[dict[str, Any]], prefer_mapq: int) -> dict[str, Any] | None:
+    """Pick deterministically without mutating the caller's collection."""
+    ordered = sorted(candidates, key=lambda item: candidate_sort_key(item, prefer_mapq))
+    return ordered[0] if ordered else None
 
-    anchor = args.min_anchor if args.min_anchor is not None else ANCHOR_DEFAULT[args.donor_type]
-    fasta = pysam.FastaFile(args.ref)
+
+def splice_sequence(sequence: str, fills: Iterable[tuple[int, int, str]]) -> str:
+    """Replace validated, non-overlapping 0-based inclusive intervals."""
+    pieces: list[str] = []
+    position = 0
+    previous_end = -1
+    for start0, end0, fill in sorted(fills, key=lambda item: item[0]):
+        if start0 <= previous_end:
+            raise GapFillError("internal error: overlapping fills reached FASTA splice")
+        pieces.extend((sequence[position:start0], fill))
+        position = end0 + 1
+        previous_end = end0
+    pieces.append(sequence[position:])
+    return "".join(pieces)
+
+
+def render_fasta(fasta: Any, applied: dict[str, list[tuple[int, int, str]]]) -> str:
+    chunks: list[str] = []
+    for seqid in fasta.references:
+        sequence = splice_sequence(fasta.fetch(seqid), applied.get(seqid, []))
+        chunks.append(f">{seqid}\n")
+        chunks.extend(sequence[offset : offset + 60] + "\n" for offset in range(0, len(sequence), 60))
+    return "".join(chunks)
+
+
+def render_report(results: Iterable[dict[str, Any]]) -> str:
+    lines = [REPORT_HEADER]
+    for result in results:
+        best = result["best"]
+        if best is not None:
+            row = [
+                result["seqid"],
+                result["s1"],
+                result["e1"],
+                result["e1"] - result["s1"] + 1,
+                "filled",
+                best["qname"],
+                best["strand"],
+                best["mapq"],
+                f"{min(best['left_identity'], best['right_identity']):.4f}",
+                len(best["fill"]),
+                best["anchor_total"],
+                result["n_cands"],
+            ]
+        else:
+            status = "unfilled_low_identity_or_coverage" if result["n_cands"] else "unfilled_no_spanner"
+            row = [
+                result["seqid"],
+                result["s1"],
+                result["e1"],
+                result["e1"] - result["s1"] + 1,
+                status,
+                "NA",
+                "NA",
+                "NA",
+                "NA",
+                0,
+                0,
+                result["n_cands"],
+            ]
+        lines.append("\t".join(map(str, row)) + "\n")
+    return "".join(lines)
+
+
+def _stage_text(target: Path, text: str) -> Path:
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
+    temp_path = Path(temporary)
     try:
-        bam = pysam.AlignmentFile(args.bam, "rb")
-    except Exception as e:
-        sys.exit(f"[ERROR] cannot open BAM (is it sorted+indexed?): {e}")
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        return temp_path
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
 
-    if not 0.0 <= args.min_identity <= 1.0:
-        sys.exit("[ERROR] --min-identity must be in [0, 1]")
 
-    gaps = parse_gaps(args.gaps, args.gap)
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
-    # phase 1: per gap, pick the best clean spanner (gate on per-flank coverage AND per-flank identity)
-    results = []
-    for seqid, s1, e1 in gaps:
-        gap_s0, gap_e0 = s1 - 1, e1 - 1
-        ref_seq = fasta.fetch(seqid)
-        fetch_lo = max(0, gap_s0 - anchor)
-        fetch_hi = min(len(ref_seq), gap_e0 + anchor + 1)
-        cands = []
-        for aln in bam.fetch(seqid, fetch_lo, fetch_hi):
-            if aln.mapping_quality < args.min_mapq:
-                continue
-            c = analyze(aln, gap_s0, gap_e0, anchor, ref_seq)
-            if c:
-                cands.append(c)
-        good = [c for c in cands
-                if c["left_cols"] >= anchor // 2 and c["right_cols"] >= anchor // 2
-                and c["left_identity"] >= args.min_identity and c["right_identity"] >= args.min_identity]
-        results.append({"seqid": seqid, "s1": s1, "e1": e1, "gap_s0": gap_s0, "gap_e0": gap_e0,
-                        "best": pick(good, args.prefer_mapq), "n_cands": len(cands), "status": None})
 
-    # phase 2: per contig, sort the filled gaps and drop any that overlaps an already-applied fill
-    applied = {}
-    for seqid in {r["seqid"] for r in results}:
-        prev_end = -1
-        for r in sorted((x for x in results if x["seqid"] == seqid and x["best"]), key=lambda x: x["gap_s0"]):
-            if r["gap_s0"] <= prev_end:
-                r["status"] = "skipped_overlap"
-                sys.stderr.write(f"[WARN] {seqid}: skipping overlapping fill at gap {r['s1']}-{r['e1']}\n")
-                continue
-            r["status"] = "filled"
-            applied.setdefault(seqid, []).append((r["gap_s0"], r["gap_e0"], r["best"]["fill"]))
-            prev_end = r["gap_e0"]
-
-    # phase 3: write the gap-filled FASTA, replacing ONLY each N run [gap_s0..gap_e0] with its fill
-    with open(args.out, "w") as out:
-        for seqid in fasta.references:
-            seq = fasta.fetch(seqid)
-            af = sorted(applied.get(seqid, []), key=lambda x: x[0])
-            if af:
-                parts, pos = [], 0
-                for gs, ge, fill in af:
-                    parts.append(seq[pos:gs]); parts.append(fill); pos = ge + 1
-                parts.append(seq[pos:])
-                seq = "".join(parts)
-            out.write(f">{seqid}\n")
-            for i in range(0, len(seq), 60):
-                out.write(seq[i:i + 60] + "\n")
-
-    # report (status now matches exactly what went into the FASTA)
-    with open(args.report, "w") as rep:
-        rep.write("Seqid\tGap_Start\tGap_End\tGap_Len\tStatus\tDonor\tStrand\tMAPQ\tFlank_Identity\tFill_Len\tAnchor_Total\tN_Candidates\n")
-        for r in results:
-            b = r["best"]
-            if b and r["status"] == "filled":
-                row = [r["seqid"], r["s1"], r["e1"], r["e1"] - r["s1"] + 1, "filled", b["qname"], b["strand"],
-                       b["mapq"], f"{min(b['left_identity'], b['right_identity']):.4f}", len(b["fill"]),
-                       b["anchor_total"], r["n_cands"]]
+def atomic_write_pair(out: Path, fasta_text: str, report: Path, report_text: str) -> None:
+    """Stage and transactionally replace two outputs, restoring old files on failure."""
+    staged: dict[Path, Path] = {}
+    backups: dict[Path, Path] = {}
+    committed: list[Path] = []
+    targets = [(out, fasta_text), (report, report_text)]
+    try:
+        for target, text in targets:
+            staged[target] = _stage_text(target, text)
+        for target, _ in targets:
+            if target.exists():
+                descriptor, backup_name = tempfile.mkstemp(
+                    prefix=f".{target.name}.", suffix=".backup", dir=target.parent
+                )
+                os.close(descriptor)
+                backup = Path(backup_name)
+                backup.unlink()
+                os.replace(target, backup)
+                backups[target] = backup
+        try:
+            for target, _ in targets:
+                os.replace(staged[target], target)
+                committed.append(target)
+            for parent in {target.parent for target, _ in targets}:
+                _fsync_directory(parent)
+        except Exception:
+            for target in committed:
+                target.unlink(missing_ok=True)
+            for target, backup in backups.items():
+                if backup.exists():
+                    os.replace(backup, target)
+            raise
+        for backup in backups.values():
+            backup.unlink(missing_ok=True)
+    finally:
+        for temporary in staged.values():
+            temporary.unlink(missing_ok=True)
+        for target, backup in backups.items():
+            if backup.exists() and not target.exists():
+                os.replace(backup, target)
             else:
-                status = r["status"] or ("unfilled_low_identity_or_coverage" if r["n_cands"] else "unfilled_no_spanner")
-                row = [r["seqid"], r["s1"], r["e1"], r["e1"] - r["s1"] + 1, status, "NA", "NA", "NA", "NA", 0, 0, r["n_cands"]]
-            rep.write("\t".join(map(str, row)) + "\n")
+                backup.unlink(missing_ok=True)
 
-    n_fill = sum(1 for r in results if r["status"] == "filled")
-    sys.stderr.write(f"[fill_gap] donor_type={args.donor_type} anchor={anchor} min_mapq={args.min_mapq} "
-                     f"prefer_mapq={args.prefer_mapq} min_identity={args.min_identity} -> filled {n_fill}/{len(results)} gaps\n")
-    sys.stderr.write(f"[fill_gap] wrote {args.out} and {args.report}\n")
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Fill complete internal N-runs from a single spanning donor alignment."
+    )
+    parser.add_argument("--bam", required=True, help="sorted and indexed donor-to-reference BAM")
+    parser.add_argument("--ref", required=True, help="faidx-indexed gapped reference FASTA")
+    gaps = parser.add_mutually_exclusive_group(required=True)
+    gaps.add_argument("--gaps", help="9-column GFF3 of gap intervals")
+    gaps.add_argument("--gap", help="single gap as SEQID:START-END (1-based inclusive)")
+    parser.add_argument("--donor-type", choices=["contig", "read"], default="contig")
+    parser.add_argument("--min-anchor", type=int, default=None, help="minimum aligned anchor per flank")
+    parser.add_argument("--min-mapq", type=int, default=30)
+    parser.add_argument("--prefer-mapq", type=int, default=50)
+    parser.add_argument("--min-identity", type=float, default=0.80)
+    parser.add_argument("--out", required=True, help="new gap-filled FASTA")
+    parser.add_argument("--report", required=True, help="per-gap TSV report")
+    parser.add_argument("--force", action="store_true", help="replace existing safe outputs")
+    return parser
+
+
+def run(args: argparse.Namespace) -> tuple[int, int]:
+    if not 0.0 <= args.min_identity <= 1.0:
+        raise GapFillError("--min-identity must be in [0, 1]")
+    anchor = args.min_anchor if args.min_anchor is not None else ANCHOR_DEFAULT[args.donor_type]
+    if anchor < 1:
+        raise GapFillError("--min-anchor must be at least 1")
+    if not 0 <= args.min_mapq <= 255 or not 0 <= args.prefer_mapq <= 255:
+        raise GapFillError("MAPQ thresholds must be in [0, 255]")
+
+    ref_path = Path(args.ref).expanduser()
+    bam_path = Path(args.bam).expanduser()
+    validate_readable_file(ref_path, "reference FASTA")
+    validate_readable_file(bam_path, "BAM")
+    input_paths = [ref_path, bam_path]
+    if args.gaps:
+        gaps_path = Path(args.gaps).expanduser()
+        validate_readable_file(gaps_path, "gap GFF3")
+        input_paths.append(gaps_path)
+        raw_gaps = parse_gff3(gaps_path)
+    else:
+        raw_gaps = [parse_gap_string(args.gap)]
+    gaps, duplicate_count = deduplicate_gaps(raw_gaps)
+
+    out_path, report_path = validate_output_paths(
+        Path(args.out), Path(args.report), input_paths, force=args.force
+    )
+    fai_path = Path(f"{ref_path}.fai")
+    if not fai_path.exists() or not fai_path.is_file():
+        raise GapFillError(f"reference FASTA index is missing: {fai_path}")
+
+    try:
+        fasta = pysam.FastaFile(str(ref_path))
+    except Exception as exc:
+        raise GapFillError(f"cannot open indexed reference FASTA {ref_path}: {exc}") from exc
+    try:
+        checked = validate_gap_intervals(gaps, fasta)
+        try:
+            bam = pysam.AlignmentFile(str(bam_path), "rb")
+        except Exception as exc:
+            raise GapFillError(f"cannot open BAM {bam_path}: {exc}") from exc
+        try:
+            if not bam.has_index():
+                raise GapFillError(f"BAM index is missing or unreadable: {bam_path}")
+            results: list[dict[str, Any]] = []
+            for gap in checked:
+                fetch_start = max(0, gap["gap_s0"] - anchor)
+                fetch_end = min(len(gap["ref_seq"]), gap["gap_e0"] + anchor + 1)
+                candidates: list[dict[str, Any]] = []
+                try:
+                    alignments = bam.fetch(gap["seqid"], fetch_start, fetch_end)
+                    for alignment in alignments:
+                        if alignment.mapping_quality < args.min_mapq:
+                            continue
+                        candidate = analyze(
+                            alignment,
+                            gap["gap_s0"],
+                            gap["gap_e0"],
+                            anchor,
+                            gap["ref_seq"],
+                        )
+                        if candidate is not None:
+                            candidates.append(candidate)
+                except (ValueError, OSError) as exc:
+                    raise GapFillError(
+                        f"BAM region is not fetchable: {gap['seqid']}:{fetch_start + 1}-{fetch_end}: {exc}"
+                    ) from exc
+                acceptable = [
+                    candidate
+                    for candidate in candidates
+                    if candidate["left_cols"] >= max(1, anchor // 2)
+                    and candidate["right_cols"] >= max(1, anchor // 2)
+                    and candidate["left_identity"] >= args.min_identity
+                    and candidate["right_identity"] >= args.min_identity
+                ]
+                result = dict(gap)
+                result.pop("ref_seq")
+                result.update(
+                    {
+                        "best": pick(acceptable, args.prefer_mapq),
+                        "n_cands": len(candidates),
+                    }
+                )
+                results.append(result)
+        finally:
+            bam.close()
+
+        applied: dict[str, list[tuple[int, int, str]]] = {}
+        for result in results:
+            if result["best"] is not None:
+                applied.setdefault(result["seqid"], []).append(
+                    (result["gap_s0"], result["gap_e0"], result["best"]["fill"])
+                )
+        fasta_text = render_fasta(fasta, applied)
+        report_text = render_report(results)
+        atomic_write_pair(out_path, fasta_text, report_path, report_text)
+    finally:
+        fasta.close()
+
+    filled = sum(result["best"] is not None for result in results)
+    if duplicate_count:
+        sys.stderr.write(f"[fill_gap] removed {duplicate_count} exact duplicate gap row(s)\n")
+    sys.stderr.write(
+        f"[fill_gap] donor_type={args.donor_type} anchor={anchor} min_mapq={args.min_mapq} "
+        f"prefer_mapq={args.prefer_mapq} min_identity={args.min_identity} -> "
+        f"filled {filled}/{len(results)} gaps\n"
+    )
+    sys.stderr.write(f"[fill_gap] atomically wrote {out_path} and {report_path}\n")
+    return filled, len(results)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        run(args)
+    except (GapFillError, OSError, ValueError) as exc:
+        sys.stderr.write(f"[ERROR] {exc}\n")
+        return 2
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
