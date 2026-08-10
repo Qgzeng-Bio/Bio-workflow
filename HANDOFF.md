@@ -1,6 +1,47 @@
 # Bioflow Skill Handoff
 
-Last updated: 2026-08-10 - task dashboard, PaperPlot delegation, and Pi Agent adaptation completed
+Last updated: 2026-08-10 - reusable Pi interaction package added locally
+
+## Latest Local Update — 2026-08-10: Reusable `pi-ask` Dialogs
+
+Purpose: let users give short requests while any Pi skill can collect only the
+consequential missing decisions through reusable TUI dialogs.
+
+What changed locally:
+
+- Created independent project
+  `/data9/home/qgzeng/projects/3-Biotools_create/pi-ask` and initialized an empty
+  `main` Git repository; no commit or remote exists yet.
+- Added global model tools `ask_user` (clarification only) and `confirm_action`
+  (fully disclosed gated-action approval), plus exported `ask()`/`confirm()` APIs
+  for extension reuse.
+- The extension is UI-only: static safety tests reject filesystem/process/network
+  APIs and `pi.exec`; non-TUI confirmation fails closed.
+- Installed the local package with `pi install`; Pi stored the settings-relative
+  package path `../../projects/3-Biotools_create/pi-ask`.
+- Added `/ask-demo` for a model-free TUI check. Run Pi `/reload` before using it.
+- Bioflow now prefers bounded read-only inference, calls `ask_user` only for
+  consequential unknown choices, and reserves `confirm_action` for actions after
+  complete purpose/method/path/output/risk disclosure. Text fallback remains.
+- Bioflow maintenance now runs the optional `pi-ask` contract suite and verifies
+  its local package registration when present.
+
+Validation so far:
+
+- `pi-ask/scripts/test.sh`: PASS (manifest, UI-only static guard, Jiti extension
+  load, choice/custom-input/confirmation/non-TUI contracts, whitespace).
+- `PI_OFFLINE=1 pi -e <pi-ask> --list-models`: PASS without a model call.
+- Installed resource load via `PI_OFFLINE=1 pi --list-models`: PASS.
+- Bioflow source regression suite: PASS, including optional `pi-ask` registration
+  and contract checks. The Pi interaction contract brings `SKILL.md` to 541 lines
+  with source md5 `ead03c65dff5ccdf24f17c3add5a8d7f` before synchronization.
+- No network access, SLURM action, analysis-data write, or protected-path write.
+
+Publication state before the authorized follow-up: the previous Bioflow change
+was at pushed commit `4d0b2c0`; the HANDOFF refresh and optional-tool integration
+were local changes. The user subsequently authorized committing and pushing only
+the Bioflow integration. The independent `pi-ask` repository remains local with
+no commit, remote, or push and must not be included in the Bioflow commit.
 
 ## Latest Update — 2026-08-10: Dashboard, PaperPlot, and Pi Agent Route
 
@@ -53,6 +94,20 @@ Validation completed:
   `disable-model-invocation: true`.
 - Claude CLI plugin validation was skipped because `claude` was unavailable;
   Codex plugin validation passed.
+
+Commit and publication state:
+
+- The complete dashboard + PaperPlot + Pi adaptation change set was committed as
+  `4d0b2c0 feat: add task dashboard and Pi plotting integration` on `main`.
+- Push completed successfully: `2293287..4d0b2c0 main -> main`; local `HEAD` and
+  local tracking `origin/main` both resolve to `4d0b2c0`.
+- The working tree was clean immediately after push. This HANDOFF-only refresh is
+  the first follow-up local edit and is not yet committed or pushed.
+- No force push or history rewrite was used.
+- User-local Pi discovery state is intentionally outside Git:
+  `~/.pi/agent/settings.json` explicitly lists bioflow and PaperPlot, and
+  `~/.pi/agent/skills/paperplot-skills` points to the Codex-installed PaperPlot.
+  Run Pi `/reload` or start a new session after discovery changes.
 
 ## Completion Summary — 2026-07-11
 

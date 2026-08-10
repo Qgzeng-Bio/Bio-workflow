@@ -73,6 +73,17 @@ Require user confirmation before:
 
 Before any write or job action, state purpose, logic, exact command or edit method, affected paths and approximate size, expected outputs, and risks including overwrite, disk, runtime, and queue impact.
 
+## Interactive clarification on Pi
+
+When Pi exposes the optional `ask_user` and `confirm_action` tools, use them to
+make short user requests sufficient:
+
+- inspect bounded project evidence first and do not ask for facts that can be inferred reliably;
+- call `ask_user` only for consequential missing choices, with concise distinct options, consequences, and an evidence-based recommendation when available;
+- keep questionnaires short and allow a custom answer when fixed options are incomplete;
+- never treat `ask_user` as authorization; after the disclosure required above, use `confirm_action` for a write, submit, overwrite, install, delete, move, cancellation, resubmission, or concurrency change;
+- if either tool is unavailable or reports non-TUI mode, fall back to concise text choices and keep all confirmation gates.
+
 ## Project layout
 
 Read `references/project-layout.md` when starting a project, choosing paths, naming

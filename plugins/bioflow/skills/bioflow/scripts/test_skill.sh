@@ -71,6 +71,31 @@ if [[ -f "$pi_agent_dir/settings.json" ]]; then
     "$python_bin" -m json.tool "$pi_agent_dir/settings.json" >/dev/null
     printf 'PASS | Pi settings JSON valid\n'
 fi
+pi_ask_dir="${PI_ASK_DIR:-${HOME%/}/projects/3-Biotools_create/pi-ask}"
+if [[ -x "$pi_ask_dir/scripts/test.sh" ]]; then
+    "$pi_ask_dir/scripts/test.sh"
+    if [[ -f "$pi_agent_dir/settings.json" ]]; then
+        "$python_bin" - "$pi_agent_dir/settings.json" "$pi_ask_dir" <<'PY'
+import json
+import sys
+from pathlib import Path
+settings = Path(sys.argv[1]).resolve()
+expected = Path(sys.argv[2]).resolve()
+data = json.loads(settings.read_text())
+resolved = []
+for item in data.get("packages", []):
+    source = item if isinstance(item, str) else item.get("source") if isinstance(item, dict) else None
+    if not source or source.startswith(("npm:", "git:", "http:", "https:", "ssh:")):
+        continue
+    path = Path(source)
+    resolved.append((path if path.is_absolute() else settings.parent / path).resolve())
+assert expected in resolved, f"pi-ask is not registered in {settings}"
+PY
+        printf 'PASS | pi-ask package registered in Pi settings\n'
+    fi
+else
+    printf '[WARN] Optional pi-ask package unavailable; Bioflow will use text questions: %s\n' "$pi_ask_dir"
+fi
 
 printf '[TEST] Program cards\n'
 "$python_bin" scripts/validate_program_cards.py

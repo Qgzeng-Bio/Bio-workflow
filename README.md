@@ -135,6 +135,27 @@ See [`references/project-lifecycle.md`](references/project-lifecycle.md),
 [`references/validation-checklists.md`](references/validation-checklists.md) for the layered
 acceptance gates (exit code 0 ≠ success).
 
+## Interactive clarification in Pi
+
+Bioflow can use the optional global `pi-ask` package so short
+requests such as “帮我跑 BUSCO” are enough. It first performs bounded read-only
+inspection, then calls `ask_user` only for consequential choices that cannot be
+inferred safely. Options may include explanations, an evidence-based
+recommendation, and custom text.
+
+`ask_user` never grants execution permission. After Bioflow discloses the exact
+action, method/command, affected paths, expected outputs, and risks, it may call
+`confirm_action` for a gated write or job action. Missing/non-TUI tools fall back
+to concise text questions and do not weaken safety gates.
+
+Local Pi installation:
+
+```bash
+pi install /data9/home/qgzeng/projects/3-Biotools_create/pi-ask
+```
+
+Run `/reload`, then `/ask-demo` to test the model-free dialog.
+
 ## Scientific plotting
 
 Bioflow delegates scientific figure diagnosis, redesign, rendering, export, and
