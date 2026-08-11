@@ -19,14 +19,14 @@ printf 'PASS | init explicitly installs workspace contracts\n'
 
 cat > "$project/config/Workspace_Modules.tsv" <<'TSV'
 Module_ID	Parent_Module	Stage	Short_Name	Module_Kind	Depends_On	Purpose	Owner	Compatibility	Notes
-M001	ROOT	01	core	analysis		Core fixture	tester	Managed	
+M001	ROOT	01	core	analysis		Core fixture	tester	Managed	NA
 TSV
 cat > "$project/config/Workspace_Routes.tsv" <<'TSV'
 Route_ID	Module_ID	Path_Type	Path_Role	Relative_Path	Producer_Tasks	Consumer_Tasks	Retention	Required	Compatibility	Purpose	Notes
-R001	M001	Directory	Script	scripts/01_core	T001		Working	Yes	Managed	Core scripts	
-R002	M001	Directory	Log	logs/01_core	T001		Working	Yes	Managed	Core logs	
-R003	M001	Directory	Temporary	tmp/01_core	T001		Disposable	Yes	Managed	Core temporary	
-R004	M001	Directory	Result	results/01_core	T001		Retained	Yes	Managed	Core results	
+R001	M001	Directory	Script	scripts/01_core	T001		Working	Yes	Managed	Core scripts	NA
+R002	M001	Directory	Log	logs/01_core	T001		Working	Yes	Managed	Core logs	NA
+R003	M001	Directory	Temporary	tmp/01_core	T001		Disposable	Yes	Managed	Core temporary	NA
+R004	M001	Directory	Result	results/01_core	T001		Retained	Yes	Managed	Core results	NA
 TSV
 cat > "$project/reports/Task_Status.tsv" <<'TSV'
 Task_ID	Stage	Sample_ID	Status	Job_ID	Dependency	Script_Path	Log_Path	Output_Path	Acceptance_Path	Retry_Count	Updated_Time

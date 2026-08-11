@@ -23,6 +23,9 @@ task-specific playbooks add domain checks but must not redefine these stages.
   or acceptance thresholds.
 - Keep the default audit read-only and bounded to `config/`, `data/`, `scripts/`,
   `logs/`, `results/`, `reports/`, and `tmp/`.
+- When `config/Workspace_Policy.tsv` exists, read
+  `references/workspace-steward.md`: a Draft/drifted workspace is planning
+  evidence, not permission to generate or submit managed work.
 
 ## Lifecycle
 
@@ -87,7 +90,8 @@ cites the input manifest, and has no unresolved blocking design choice; no runna
 script has yet reached execution preparation.
 
 **Required inputs:** Reviewed plan and manifest; tool/environment route, resource
-model, output paths, and acceptance gates.
+model, output paths, and acceptance gates. In a steward-enabled project, the
+module DAG and canonical role routes must validate before script generation.
 
 **Allowed:** Generate scripts/configuration and run syntax, environment, and input
 prechecks without changing the agreed scientific design.
@@ -98,7 +102,9 @@ before formal preflight and user confirmation.
 **Minimum next action:** Generate the smallest runnable workflow linked to the plan.
 
 **Transition gate:** Advance to `Script_ready` when runnable scripts/configs exist,
-inputs and outputs are known, and formal pre-submit review is next.
+inputs and outputs are known, and formal pre-submit review is next. A managed
+workspace must be `Reviewed`, match its SHA256, and have had every script/log/tmp/
+output location resolved from the declared module routes.
 
 ### Script_ready
 
@@ -109,7 +115,9 @@ no newer active, failed, or completed run supersedes them.
 environment, and justified CPU/memory/partition/concurrency.
 
 **Allowed:** Run `prepare_submission.sh` or fallback `slurm_preflight.sh`; correct
-preflight failures without changing agreed analysis parameters.
+preflight failures without changing agreed analysis parameters. For an enabled
+workspace, pass project/module/task and explicit output/tmp context so Workspace
+preflight is part of the GO/NO-GO package.
 
 **Forbidden:** Do not run `sbatch` without a passing gate and explicit user
 confirmation, silently add short walltime, or overwrite existing results.
@@ -262,6 +270,12 @@ naming rules, identifier/version policy, examples, and compatibility guidance.
 - `results/`: analysis outputs with final artifacts clearly identifiable.
 - `reports/`: plan, project status, task status, run record, acceptance, methods,
   interpretation, and delivery index.
+
+When explicitly enabled, `Workspace_Policy.tsv`, `Workspace_Modules.tsv`, and
+`Workspace_Routes.tsv` add static module/dependency/path contracts. They do not
+replace runtime status, claims, or delivery records. Use
+`scripts/workspace_steward.py inspect` at intake/takeover, `plan/apply` before
+managed scripts, and `audit` before acceptance/delivery.
 
 The minimal reproducibility chain is:
 

@@ -139,35 +139,43 @@ tool does not infer biology or chronology from names.
 
 ### Real read-only tuning example: TEMR results
 
-A bounded inspection of an existing quinoa TEMR result directory showed that a
-purely cosmetic/alphabetic order would be misleading. The evidence supported
-this hypothetical from-scratch layout:
+A bounded inspection of an existing quinoa TEMR result directory first showed
+that alphabetic ordering was wrong. It also showed that putting
+`intermediate/QC/tables/Cq3B analyses/plot_data/figures/docs` into one numbered
+flat `results/` list is still not project management: it mixes artifact roles
+with scientific modules.
+
+The corrected hypothetical structure starts with modules:
 
 ```text
-results/
-├── 01_intermediate/
-├── 02_QC/
-├── 03_tables/
-├── 04_Cq3B_INV_review/
-├── 05_phenotype_INV_WT/
-├── 06_LD_Fst/
-├── 07_gene_impact/
-├── 08_INV_downstream/
-├── 09_plot_data/
-├── 10_figures/
-└── 11_docs/
+01_TEMR_core
+02_Cq3B_INV/
+├── 01_grouping
+├── 02_phenotype
+├── 03_LD_Fst
+├── 04_gene_impact
+└── 05_evolution
+03_publication
 ```
 
-The logic was preparation -> QC -> accepted core tables -> inversion grouping
-review -> phenotype/population/function branches -> integrated downstream
-analysis -> plot data -> figures -> documentation. In particular, grouping
-review precedes analyses that consume INV/WT membership, and plot data precedes
-figures. This is a reasoning example, not a universal directory template and not
-a request to rename that protected legacy project.
+Then Workspace Steward routes each module to canonical roots:
+
+```text
+scripts/<module>/     logs/<module>/       tmp/<module>/
+results/<module>/     reports/<module>/
+```
+
+Intermediate BEDs belong in `tmp`, `.out/.err` in `logs`, accepted QC/tables in
+`results`, and figures/plans/methods/summaries/handoff in `reports`. Grouping
+precedes analyses that consume INV/WT membership; plot data precedes figures.
+Read `references/workspace-steward.md` for that architecture. This file remains
+the lower-level one-directory naming contract.
 
 For existing active directories, do not renumber merely to make the sequence
-continuous. Apply consecutive numbering when planning a new sibling set; later
-insertions use a reviewed next stage or a branch rather than automatic renaming.
+continuous. Apply consecutive numbering when planning a new sibling module set;
+later insertions use a reviewed next stage or branch rather than automatic
+renaming. The protected real TEMR project was read only and is not a migration
+target.
 
 ## Suggest one name
 

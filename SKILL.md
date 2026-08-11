@@ -1,6 +1,6 @@
 ---
 name: bioflow
-description: "规划、接管、实现、提交前检查、监控和验收 qgzeng 个人分析服务器上的生物信息学工作流。Use under /data9/home/qgzeng/projects for quinoa genomics, assembly, annotation, repeats, pan-genome, RNA-seq, GWAS, SNP/INDEL/SV, synteny, centromeres, genome structure, program execution, plotting, SLURM, Singularity/Conda, downloads, resource sizing, job arrays, failure diagnosis, project takeover, result validation, reproducible reports, concise folder naming, safe directory creation/indexing, or bounded path audits. Enforces no broad scans, no login-node compute, no protected data/tools writes, no wasteful resources/external raw-data proxy, and no default non-debug SLURM time limit."
+description: "规划、接管、实现、提交前检查、监控和验收 qgzeng 个人分析服务器上的生物信息学工作流。Use under /data9/home/qgzeng/projects for quinoa genomics, assembly, annotation, repeats, pan-genome, RNA-seq, GWAS, SNP/INDEL/SV, synteny, centromeres, genome structure, project workspace stewardship, module DAGs, script/log/tmp/result/report routing, program execution, plotting, SLURM, Singularity/Conda, downloads, resource sizing, job arrays, failure diagnosis, project takeover, result validation, reproducible reports, concise folder naming, safe directory creation/indexing, or bounded path audits. Enforces no broad scans, no login-node compute, no protected data/tools writes, no wasteful resources/external raw-data proxy, and no default non-debug SLURM time limit."
 ---
 
 # Bioflow
@@ -91,8 +91,21 @@ artifacts, or reviewing project organization. Preserve compatible established
 layouts and tool-mandated names. Use tab-separated project tables with English
 initial-capital underscore columns. `scripts/init_project.sh` previews the minimal
 seven-directory skeleton and writes only missing templates after explicit `--yes`.
+For a new Bioflow-managed project, explicitly add `--workspace-steward`; never
+silently enable strict workspace policy when rerunning init on an old project.
 
-When naming or creating an analysis directory, read
+When starting/taking over a project, planning modules, choosing output paths,
+writing scripts, preparing submission, or auditing project organization, read
+`references/workspace-steward.md`. Use `scripts/workspace_steward.py inspect` first,
+let the Agent derive a module DAG and role routes from bounded evidence, then run
+`plan`. No managed execution may leave Draft status. Before writing a script use
+`route`; preview `apply` and obtain normal write confirmation before `--yes`;
+pass project/module/task and explicit output/tmp routes through generation and
+submission gates. Run `audit` before acceptance/delivery. Existing projects stay
+unchanged until explicitly enabled; use `migration-plan` only and never mutate
+legacy paths automatically.
+
+When naming or creating one analysis directory, read
 `references/path-management.md`. Reduce the purpose to at most three short tokens,
 then run `scripts/path_manager.py suggest`; do not turn a long user sentence into
 a basename. For multiple new siblings, inspect bounded project evidence first,
@@ -111,7 +124,8 @@ Keep `SKILL.md` as the routing hub. Load detailed references only when their tas
 - `references/project-lifecycle.md`: use when starting, planning, managing, resuming, validating, interpreting, or delivering a project. It is the single contract for the nine project stages, startup plan, management artifacts, and `workflow_status.tsv`.
 - `references/task-monitoring.md`: use for running-task, progress, queue, mixed-status, array, blocker, and next-action requests. It defines `Task_Status.tsv` and the read-only `scripts/project_dashboard.py` route.
 - `references/project-layout.md`: use for directory boundaries, script numbering, artifact/table naming, identifiers, versions, compatibility, and new-project templates.
-- `references/path-management.md`: use for overlong folder names, dependency-ordered consecutive stage numbering, short-name suggestions, bounded directory audits, safe directory creation/registration, `Directory_Index.tsv`, and path-manager rule IDs.
+- `references/path-management.md`: use for one-directory short-name suggestions, bounded naming audits, safe single-directory creation/registration, `Directory_Index.tsv`, and path-manager rule IDs; it is not the project architecture manager.
+- `references/workspace-steward.md`: use for project module trees/DAGs, canonical role routes, workspace planning/application, key artifacts, legacy migration plans, execution preflight, and workspace drift.
 - `references/resume-protocol.md`: use with the lifecycle contract when taking over, checking, or recovering an existing project. It defines bounded evidence collection and mixed-evidence precedence.
 - `references/software-resource-cards.md`: use when estimating resources or writing commands for known tools. It gives per-tool modes, memory drivers, parallelism, red flags, and acceptance notes.
 - `references/resource-feedback.md`: use for CPU/memory sizing, pilot or benchmark interpretation, partition choice, array concurrency, resource down-tuning, and serial-to-array audits. It supports `scripts/resource_usage_audit.sh` and `scripts/parallelization_audit.sh`.
@@ -525,6 +539,7 @@ When slimming or reorganizing this skill, preserve behavior before reducing line
 - SLURM safety layer through `gen_sbatch.sh`, `slurm_preflight.sh`, `prepare_submission.sh`, `submit_and_log.sh`, and `submit_chunked.sh`
 - validation gate through `references/validation-checklists.md`
 - concise path management through `references/path-management.md` and `scripts/path_manager.py`, with bounded audit, dry-run writes, protected-path guards, and no rename/delete surface
+- project workspace stewardship through `references/workspace-steward.md` and `scripts/workspace_steward.py`, with explicit Agent-authored module DAG/routes, reviewed fingerprints, transactional apply, execution-gate routing, hybrid legacy compatibility, and no path mutation surface
 
 If content is moved out of `SKILL.md`, ensure the destination reference is linked from `Reference routing map`, from a task route, or from the relevant workflow step. Do not create orphan references.
 

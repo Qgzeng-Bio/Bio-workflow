@@ -1907,14 +1907,44 @@ informed by local Agent Skills/skill-creator/audit patterns because the session
 was offline; no external organizer was installed or copied.
 
 A later read-only tuning exercise against the protected quinoa TEMR results
-clarified directory-stage semantics. New sibling directories are now planned by
-bounded evidence and real dependency/scientific reading order, then numbered
-consecutively (`01`, `02`, `03`, ...), without default ten-step gaps. Alphabetic,
-mtime, listing, and accidental legacy order are forbidden as sequencing evidence.
-The documented TEMR example places preparation/QC/core tables before inversion
-group review and its consumers, then plot data before figures and final docs.
-This changes guidance only: no TEMR path was modified, stable legacy directories
-are not renumbered, and script files retain their separate 10-step prefix policy.
+clarified that even dependency-aware flat numbering is not project workspace
+management. Numbering now applies to sibling scientific modules; artifact roles
+are routed across canonical roots. Intermediate BEDs belong in `tmp`, scheduler
+logs in `logs`, accepted results/QC/tables in `results`, and figures/plans/methods/
+summaries/handoff in `reports`. The real TEMR project remained read-only.
+
+## Workspace Steward v1
+
+Workspace Steward now sits above `path_manager.py`:
+
+- `config/Workspace_Modules.tsv` stores the Agent-authored module tree and DAG;
+  `Workspace_Routes.tsv` stores directory/key-artifact roles and task links;
+  `Workspace_Policy.tsv` stores Draft/Reviewed state and plan fingerprint.
+- `workspace_steward.py` exposes bounded `bootstrap`, `inspect`, `plan`, `route`,
+  `audit`, transactional `apply`, execution `preflight`, and read-only
+  `migration-plan`. It uses Python stdlib only.
+- Managed sibling modules require consecutive stages and valid DAG/root routes.
+  Agent evidence supplies semantics; the script never guesses biology from names
+  or mtime.
+- `apply --yes` is lock-serialized, creates only missing Managed directories,
+  updates the unchanged Directory Index schema, and restores index/policy bytes
+  plus new empty directories on injected failure.
+- Hybrid enforcement is new-strict/old-wide: Draft/fingerprint drift/unplanned
+  Managed paths block, Legacy warns, Tool_managed is layout-exempt but not exempt
+  from project/protected/symlink boundaries.
+- `init_project.sh --workspace-steward` is explicit opt-in. gen/prepare/submit
+  accept project/module/task/output/tmp context and enforce reviewed routes;
+  non-Steward projects retain old behavior.
+- Dashboard text/JSON reports Workspace PASS/WARN/BLOCK and drift counts while
+  task TSV remains stable.
+- There is no daemon, broad scan, auto semantic inference, per-file bulk index,
+  rename/move/delete/copy/archive mutation, real-job test, or automatic legacy
+  migration.
+
+The full contract and schemas live in `references/workspace-steward.md`.
+Dedicated core and integration fixtures cover DAG/path errors, bounded inventory,
+route resolution, artifact timing, hybrid exceptions, lock/transaction rollback,
+SLURM gate argument forwarding, dashboard status, and no-submit dry-runs.
 
 ## Remaining Design Options
 

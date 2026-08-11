@@ -26,6 +26,16 @@ refuses to emit output that would FAIL. Use `"$THREADS"` for tool thread count
 and `"$TASK_LINE"` for the per-task manifest row. The generator checks the SLURM
 envelope; it does not prove that the biological command is correct.
 
+For an enabled Workspace Steward project, also pass:
+
+```text
+--project DIR --module M001 --task-id T001 --output-dir DIR [--tmp-dir DIR]
+```
+
+`--out` must then be an absolute Script route and `--log-dir` a Log route. The
+explicit output/tmp paths are checked without trying to parse arbitrary command
+text. Read `references/workspace-steward.md` before generating managed scripts.
+
 Use strict shell mode:
 
 ```bash
@@ -125,12 +135,18 @@ For a single read-only GO/NO-GO gate:
 
 ```bash
 scripts/prepare_submission.sh --script <slurm_script> [--manifest <manifest.tsv>] \
-    [--input-list <filelist.txt>] [--output <output_dir>] [--mode <partition>] [--conc <N>]
+    [--input-list <filelist.txt>] [--output <output_dir>] [--mode <partition>] [--conc <N>] \
+    [--project DIR --module M001 --task-id T001 [--tmp PATH ...]]
 ```
 
 It bundles input checks, SLURM preflight, lightweight resource sanity, array/manifest
 checks, quota checks, and overwrite checks into one verdict and prints the exact
 unsubmitted `sbatch` command.
+
+When the current project contains Workspace Policy, project/module/task/output
+context is mandatory and Workspace preflight becomes a formal gate. Reviewed
+fingerprint drift, unregistered task/module, or script/log/tmp/output outside the
+module routes is NO-GO. Explicit Legacy routes remain WARN.
 
 Hard blockers include:
 

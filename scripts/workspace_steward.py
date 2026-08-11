@@ -543,12 +543,21 @@ def plan_sha256(modules: dict[str, dict[str, str]], routes: dict[str, dict[str, 
 
 
 def load_workspace(project: Path) -> tuple[dict[str, str], dict[str, dict[str, str]], dict[str, str], dict[str, dict[str, str]], str]:
-    policy = read_policy(project)
     paths = workspace_paths(project)
-    module_rows = read_exact_tsv(paths["modules"], MODULE_COLUMNS, "Workspace_Modules.tsv")
-    route_rows = read_exact_tsv(paths["routes"], ROUTE_COLUMNS, "Workspace_Routes.tsv")
-    modules, module_paths = validate_modules(module_rows)
-    routes = validate_routes(route_rows, modules, module_paths)
+    try:
+        policy = read_policy(project)
+        module_rows = read_exact_tsv(paths["modules"], MODULE_COLUMNS, "Workspace_Modules.tsv")
+        route_rows = read_exact_tsv(paths["routes"], ROUTE_COLUMNS, "Workspace_Routes.tsv")
+    except WorkspaceError as exc:
+        raise WorkspaceError(f"[WS001] schema/contract error: {exc}") from exc
+    try:
+        modules, module_paths = validate_modules(module_rows)
+    except WorkspaceError as exc:
+        raise WorkspaceError(f"[WS002] module tree/DAG/stage error: {exc}") from exc
+    try:
+        routes = validate_routes(route_rows, modules, module_paths)
+    except WorkspaceError as exc:
+        raise WorkspaceError(f"[WS003] route/root/path error: {exc}") from exc
     fingerprint = plan_sha256(modules, routes)
     return policy, modules, module_paths, routes, fingerprint
 
@@ -608,23 +617,34 @@ def run_bootstrap(args: argparse.Namespace) -> int:
     write_tsv(("Mode", "Action", "Path"), actions)
     if not args.yes:
         return 0
+    lock_handle = paths["lock"].open("a+")
     created: list[Path] = []
     try:
-        for key in ("policy", "modules", "routes"):
-            target = paths[key]
-            if target.exists():
-                continue
-            data = sources[key].read_bytes()
-            descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
-            with os.fdopen(descriptor, "wb") as handle:
-                handle.write(data)
-                handle.flush()
-                os.fsync(handle.fileno())
-            created.append(target)
-    except Exception:
-        for target in reversed(created):
-            target.unlink(missing_ok=True)
-        raise
+        try:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise WorkspaceError(f"workspace writer lock is already held: {paths['lock']}") from exc
+        try:
+            for key in ("policy", "modules", "routes"):
+                target = paths[key]
+                if target.exists():
+                    continue
+                data = sources[key].read_bytes()
+                descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+                with os.fdopen(descriptor, "wb") as handle:
+                    handle.write(data)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                created.append(target)
+        except Exception:
+            for target in reversed(created):
+                target.unlink(missing_ok=True)
+            raise
+    finally:
+        try:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            lock_handle.close()
     return 0
 
 
@@ -942,7 +962,10 @@ def audit_workspace(project: Path, max_depth: int | None = None) -> tuple[list[d
         path = Path(relative)
         if path.parent == Path(".") and path.name in ROOT_CONTROL_NAMES:
             continue
-        matches = matching_routes(routes, relative)
+        if entry["Entry_Type"] == "Directory":
+            matches = [route for route in routes.values() if route["Relative_Path"].casefold() == relative.casefold()]
+        else:
+            matches = matching_routes(routes, relative)
         indexed_row = index.get(relative)
         if entry["Entry_Type"] == "Symlink":
             status = "BLOCK" if matches and matches[0]["Compatibility"] == "Managed" else "WARN"

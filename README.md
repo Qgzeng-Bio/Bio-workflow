@@ -58,17 +58,41 @@ Preview the minimal seven-directory layout and management templates, then create
 only missing paths after review:
 
 ```bash
-scripts/init_project.sh --project /absolute/path/to/project
-scripts/init_project.sh --project /absolute/path/to/project --yes
+scripts/init_project.sh --project /absolute/path/to/project --workspace-steward
+scripts/init_project.sh --project /absolute/path/to/project --workspace-steward --yes
 ```
 
 The initializer never overwrites existing files. It includes an empty
 `reports/Task_Status.tsv` for concurrent work units, a non-claiming
 `config/result_manifest.yaml` v2 template, and an empty
-`config/Directory_Index.tsv`. Naming, identifier/version, and legacy compatibility
-rules are in [`references/project-layout.md`](references/project-layout.md).
+`config/Directory_Index.tsv`. `--workspace-steward` explicitly adds Draft policy,
+module, and route contracts; omitting it preserves legacy initialization behavior.
+Naming, identifier/version, and compatibility rules are in
+[`references/project-layout.md`](references/project-layout.md).
 
-## Keep directory names concise
+## Manage the whole project workspace
+
+Workspace Steward organizes scientific modules and routes scripts, logs,
+temporary files, results, plot data, figures, reports, and key artifacts across
+the seven canonical roots:
+
+```bash
+python3 scripts/workspace_steward.py inspect --project /abs/project
+python3 scripts/workspace_steward.py plan --project /abs/project
+python3 scripts/workspace_steward.py route --project /abs/project --module M001 --role Log
+python3 scripts/workspace_steward.py apply --project /abs/project       # dry-run
+python3 scripts/workspace_steward.py audit --project /abs/project
+```
+
+The Agent derives module semantics/DAG from bounded project evidence; the CLI
+validates explicit TSV contracts and never guesses biology from names or mtime.
+`apply --yes` transactionally creates/registers the approved tree. Reviewed
+managed routes are strict in script/submission gates; Legacy warns and
+Tool_managed is layout-exempt. Existing projects are not implicitly enabled, and
+`migration-plan` never changes paths. See
+[`references/workspace-steward.md`](references/workspace-steward.md).
+
+## Keep individual directory names concise
 
 Use the deterministic manager instead of turning a long task description into a
 folder name:
@@ -78,13 +102,10 @@ python3 scripts/path_manager.py suggest --kind stage --step 3 --token RNA --toke
 python3 scripts/path_manager.py audit --project /abs/project --max-depth 3
 ```
 
-For multiple new sibling directories, Bioflow first derives the dependency and
-scientific reading order from bounded project evidence, then assigns consecutive
-stages `01`, `02`, `03`, ...—not alphabetic order or default `10`, `20`, `30`
-gaps. `create` and `register` are dry-run by default and write only with `--yes`
-after the normal Bioflow confirmation gate. They update
-`config/Directory_Index.tsv`; there is no rename/move/delete command. Full rules
-and the TEMR tuning example are in
+`path_manager.py` is the low-level one-directory name/create/register engine;
+it is not the project architecture manager. `create` and `register` are dry-run
+by default and update `config/Directory_Index.tsv` only after confirmation and
+`--yes`. There is no rename/move/delete command. See
 [`references/path-management.md`](references/path-management.md).
 
 ## Monitor running work
@@ -98,8 +119,10 @@ python3 scripts/project_dashboard.py --project /absolute/path/to/project --check
 python3 scripts/project_dashboard.py --project /absolute/path/to/project --check-queue --format json
 ```
 
-It never writes status or changes the queue. `reports/workflow_status.tsv` remains
-the project-wide lifecycle record; `reports/Task_Status.tsv` records concurrent
+It never writes status or changes the queue. Enabled workspaces add a read-only
+PASS/WARN/BLOCK summary to text/JSON while task TSV remains stable.
+`reports/workflow_status.tsv` remains the project-wide lifecycle record;
+`reports/Task_Status.tsv` records concurrent
 stages, samples, pilots, jobs, blockers, and validation tasks. See
 [`references/task-monitoring.md`](references/task-monitoring.md).
 

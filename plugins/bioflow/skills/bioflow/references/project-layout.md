@@ -8,6 +8,7 @@ rules; do not rename a live project merely for style.
 
 - [Canonical directories](#canonical-directories)
 - [Artifact boundaries](#artifact-boundaries)
+- [Workspace stewardship](#workspace-stewardship)
 - [Naming rules](#naming-rules)
 - [Executable path management](#executable-path-management)
 - [Identifiers and versions](#identifiers-and-versions)
@@ -52,6 +53,29 @@ task-specific subdirectory only when a real tool or workflow stage needs it.
   in `Task_Status.tsv`; read `references/task-monitoring.md` before changing the
   task schema.
 
+## Workspace stewardship
+
+The seven roots define artifact roles; they do not by themselves define the
+scientific module tree. For a steward-enabled project, read
+`references/workspace-steward.md` and declare:
+
+- modules and parent/dependency DAG in `config/Workspace_Modules.tsv`;
+- role-specific directory/key-artifact routes in `config/Workspace_Routes.tsv`;
+- reviewed plan status/fingerprint in `config/Workspace_Policy.tsv`;
+- actual created directories in the unchanged `Directory_Index.tsv`.
+
+Mirror a module path under the roots it uses. For example an `01_RNA` analysis
+may have `scripts/01_RNA`, `logs/01_RNA`, `tmp/01_RNA`, and
+`results/01_RNA`. Do not flatten path roles such as intermediate, QC, tables,
+figures, and docs into one fake scientific dependency chain. Temporary work goes
+to `tmp/`; scheduler/program logs to `logs/`; result/QC/plot tables to
+`results/`; figures, methods, summaries, handoff, and acceptance/delivery records
+to `reports/`.
+
+Use `workspace_steward.py route` before writing scripts, `apply` after plan
+review, execution preflight before submit, and `audit` before acceptance/delivery.
+Existing projects are not implicitly enabled or rearranged.
+
 ## Naming rules
 
 ### Managed analysis directories
@@ -59,11 +83,13 @@ task-specific subdirectory only when a real tool or workflow stage needs it.
 For newly created stage/result subdirectories, use the executable contract in
 `references/path-management.md`: one to three short semantic tokens, a
 24-character basename budget, and an optional two-digit stage prefix. Within a
-new sibling set, determine data dependencies/scientific reading order first and
-then number directories consecutively: `01_prep`, `02_QC`, `03_RNA_DE`,
-`04_figures`. Do not alphabetically number or default to `10`, `20`, `30` gaps.
-This consecutive-directory rule is separate from the stable script-prefix rule
-below.
+new sibling **module** set, determine data dependencies/scientific reading order
+first and then number modules consecutively, for example `01_RNA`, `02_GWAS`,
+`03_publication`. Child modules restart their own sibling sequence. Do not assign
+stage numbers to artifact roles merely to make a flat list, do not alphabetically
+number, and do not default to `10`, `20`, `30` directory gaps. This module-stage
+rule is separate from both unnumbered role subdirectories and the stable
+script-prefix rule below.
 
 Do not turn a long Chinese or English purpose sentence into a basename. Keep the
 short operational identity in the directory and record the full purpose in
@@ -116,17 +142,23 @@ dry-run by default and still require write disclosure/confirmation before
 
 ## Executable path management
 
-Use:
+For one-directory naming/registration use:
 
 ```bash
 python3 scripts/path_manager.py suggest --kind stage --step 3 --token RNA --token DE
 python3 scripts/path_manager.py audit --project /abs/project --max-depth 3
 ```
 
-For the complete dependency-order procedure, CLI, index schema, rule IDs,
-dry-run writes, protected-path checks, and rollback behavior, read
-`references/path-management.md`. The manager has no rename/move/delete operation
-and does not follow symlinks during audit.
+For whole-project modules and role routing use:
+
+```bash
+python3 scripts/workspace_steward.py inspect --project /abs/project
+python3 scripts/workspace_steward.py plan --project /abs/project
+```
+
+Read `references/path-management.md` for the low-level naming/index contract and
+`references/workspace-steward.md` for project architecture. Neither tool exposes
+rename/move/delete operations or follows audit symlinks.
 
 ## Identifiers and versions
 

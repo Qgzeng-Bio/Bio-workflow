@@ -1,7 +1,7 @@
 interface:
   display_name: "Bioflow"
-  short_description: "qgzeng 生信工作流、简洁目录管理、SLURM 安全与结果验收"
-  default_prompt: "Use $bioflow to name/audit project directories concisely, resume and plan analyses, resource-check, run, monitor, triage, and validate qgzeng SLURM bioinformatics work; delegate scientific plotting to $paperplot-skills."
+  short_description: "qgzeng 生信项目工作区管理、SLURM 安全与结果验收"
+  default_prompt: "Use $bioflow to steward project module DAGs and script/log/tmp/result/report routes, resume and plan analyses, resource-check, run, monitor, triage, and validate qgzeng SLURM bioinformatics work; delegate scientific plotting to $paperplot-skills."
 
 policy:
   allow_implicit_invocation: true

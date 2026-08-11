@@ -8,6 +8,8 @@ status are related but different:
 - `reports/Task_Status.tsv` records concurrent work units such as stages, samples,
   array groups, pilots, validation tasks, and plotting tasks.
 - `reports/run_record.tsv` records submissions made through `submit_and_log.sh`.
+- An enabled Workspace Steward supplies static module/route expectations; it does
+  not own task runtime status.
 
 Do not collapse a mixed project into one task state. A project may have running,
 failed, validated, and blocked tasks at the same time.
@@ -35,6 +37,12 @@ biological validation. A completed scheduler job becomes
 `Complete_unvalidated` unless a project-local task row already cites validation.
 A terminal failure or a missing explicitly registered output remains a blocker.
 
+When `config/Workspace_Policy.tsv` exists, the dashboard also performs the
+bounded read-only Workspace audit. Text reports Workspace PASS/WARN/BLOCK plus
+module/route/missing/unplanned counts; JSON adds a `Workspace` object. Task TSV
+remains unchanged. A malformed workspace is reported as a dashboard warning and
+Workspace BLOCK, not silently ignored.
+
 ## Task status table
 
 Use tab-separated columns:
@@ -58,6 +66,10 @@ Recommended `Status` values:
 - `Unknown`: evidence is insufficient.
 
 Use `NA` for fields that do not apply. `Task_ID` must be stable and unique.
+In a managed workspace, `Stage` is the stable `Module_ID` (`M001`), and
+`Script_Path`, `Log_Path`, `Output_Path`, and applicable acceptance paths must
+resolve under that module's reviewed routes. The Workspace route may list the
+same stable Task ID in `Producer_Tasks`/`Consumer_Tasks`.
 Repeated rows for one `Task_ID` are allowed as an append-only history; the last
 row is the current record. Separate multiple dependencies with commas. A task
 with unresolved dependencies is reported as `Blocked` unless scheduler evidence
@@ -97,7 +109,8 @@ A progress answer should cover:
 
 Do not automatically append or rewrite `Task_Status.tsv` or
 `workflow_status.tsv`. Show a proposed TSV row and obtain confirmation before a
-persistent status update. Ask before `sbatch`, `scancel`, resubmission, changing
+persistent status update. Workspace audit/preflight reads the latest row only;
+it never copies task state into Workspace tables. Ask before `sbatch`, `scancel`, resubmission, changing
 concurrency, deleting partial output, or overwriting results.
 
 ## qp compatibility

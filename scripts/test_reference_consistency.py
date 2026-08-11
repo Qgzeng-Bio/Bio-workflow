@@ -94,20 +94,37 @@ for header in required_headers:
 print("PASS | playbook table schemas use explicit TSV and canonical columns")
 
 path_contract = (REFS / "path-management.md").read_text()
+workspace_contract = (REFS / "workspace-steward.md").read_text()
 layout = (REFS / "project-layout.md").read_text()
+lifecycle = (REFS / "project-lifecycle.md").read_text()
+monitoring = (REFS / "task-monitoring.md").read_text()
+executor = (REFS / "executor-safety.md").read_text()
 agent_metadata = (ROOT / "agents" / "openai.yaml").read_text()
 assert "references/path-management.md" in skill
+assert "references/workspace-steward.md" in skill
 assert "scripts/path_manager.py suggest" in skill
-assert "folder naming" in skill.split("---", 2)[1]
+assert "scripts/workspace_steward.py inspect" in skill
+assert "project workspace stewardship" in skill.split("---", 2)[1]
 assert "03_RNA_DE" in path_contract and "Directory_Index.tsv" in path_contract
-assert "01_intermediate" in path_contract and "11_docs" in path_contract
+assert "01_TEMR_core" in path_contract and "tmp/<module>" in path_contract
 assert "Never derive stage order from alphabetic sorting" in path_contract
 assert "assign consecutive stages `01`, `02`, `03`, ..." in path_contract
 assert "no rename, move, delete" in path_contract
-assert "Executable path management" in layout and "24-character" in layout
-assert "separate from the stable script-prefix rule" in layout
+assert "Workspace stewardship" in layout and "24-character" in layout
+assert "separate from both unnumbered role subdirectories" in layout
 assert "Leave increments of 10 for" in layout
-assert "简洁目录管理" in agent_metadata and "name/audit project directories" in agent_metadata
-print("PASS | concise path management contract, trigger, route, and metadata are linked")
+assert "Workspace_Policy.tsv" in lifecycle and "Workspace" in monitoring
+assert "--project DIR --module M001 --task-id T001" in executor
+assert "workspace_steward.py" in workspace_contract and "WS014" in workspace_contract
+assert "项目工作区管理" in agent_metadata and "module DAGs" in agent_metadata
+expected_headers = {
+    "Workspace_Policy.tsv": "Schema_Version\tEnforcement_Mode\tPlan_Status\tPlan_SHA256\tMax_Audit_Depth\tUpdated_Time",
+    "Workspace_Modules.tsv": "Module_ID\tParent_Module\tStage\tShort_Name\tModule_Kind\tDepends_On\tPurpose\tOwner\tCompatibility\tNotes",
+    "Workspace_Routes.tsv": "Route_ID\tModule_ID\tPath_Type\tPath_Role\tRelative_Path\tProducer_Tasks\tConsumer_Tasks\tRetention\tRequired\tCompatibility\tPurpose\tNotes",
+}
+for filename, header in expected_headers.items():
+    assert (ROOT / "assets" / "project-templates" / filename).read_text().splitlines()[0] == header
+    assert header in workspace_contract
+print("PASS | path manager and Workspace Steward contracts, triggers, schemas, and gates are linked")
 
 print("PASS | genome evaluation and workflow reference consistency")
