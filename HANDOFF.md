@@ -1923,18 +1923,21 @@ Workspace Steward now sits above `path_manager.py`:
 - `workspace_steward.py` exposes bounded `bootstrap`, `inspect`, `plan`, `route`,
   `audit`, transactional `apply`, execution `preflight`, and read-only
   `migration-plan`. It uses Python stdlib only.
-- Managed sibling modules require consecutive stages and valid DAG/root routes.
-  Agent evidence supplies semantics; the script never guesses biology from names
-  or mtime.
-- `apply --yes` is lock-serialized, creates only missing Managed directories,
-  updates the unchanged Directory Index schema, and restores index/policy bytes
-  plus new empty directories on injected failure.
+- Managed sibling modules require consecutive stages, a non-empty combined
+  parent/dependency DAG, parent-before-child output, module-owned Artifact paths,
+  and Managed parent/root routes. Agent evidence supplies semantics; the script
+  never guesses biology from names or mtime.
+- `apply --yes` uses a non-following project lock, creates only missing Managed
+  directories, updates the unchanged Directory Index schema, and restores
+  index/policy bytes and modes plus new empty directories on injected failure.
 - Hybrid enforcement is new-strict/old-wide: Draft/fingerprint drift/unplanned
   Managed paths block, Legacy warns, Tool_managed is layout-exempt but not exempt
   from project/protected/symlink boundaries.
-- `init_project.sh --workspace-steward` is explicit opt-in. gen/prepare/submit
-  accept project/module/task/output/tmp context and enforce reviewed routes;
-  non-Steward projects retain old behavior.
+- `init_project.sh --workspace-steward` is explicit opt-in and validates all
+  canonical/control paths before writing. gen/prepare/submit accept
+  project/module/task/output/tmp context, bind the exact registered script, and
+  propagate every bounded Workspace audit BLOCK rather than trusting a route
+  match alone; non-Steward projects retain old behavior.
 - Dashboard text/JSON reports Workspace PASS/WARN/BLOCK and drift counts while
   task TSV remains stable.
 - There is no daemon, broad scan, auto semantic inference, per-file bulk index,
@@ -1942,9 +1945,12 @@ Workspace Steward now sits above `path_manager.py`:
   migration.
 
 The full contract and schemas live in `references/workspace-steward.md`.
-Dedicated core and integration fixtures cover DAG/path errors, bounded inventory,
-route resolution, artifact timing, hybrid exceptions, lock/transaction rollback,
-SLURM gate argument forwarding, dashboard status, and no-submit dry-runs.
+Dedicated core and integration fixtures cover empty/combined DAG and path errors,
+Artifact ownership, bounded inventory, route resolution, Task/acceptance links,
+artifact timing, hybrid exceptions, canonical/control/lock symlinks, mode-aware
+transaction rollback, full-audit SLURM gates, dashboard status, and no-submit
+dry-runs. A real-path trial also exposed and closed the `NA` dependency-sentinel
+dashboard bug.
 
 ## Remaining Design Options
 

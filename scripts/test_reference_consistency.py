@@ -115,7 +115,13 @@ assert "separate from both unnumbered role subdirectories" in layout
 assert "Leave increments of 10 for" in layout
 assert "Workspace_Policy.tsv" in lifecycle and "Workspace" in monitoring
 assert "--project DIR --module M001 --task-id T001" in executor
+assert "exact `Task_Status.Script_Path`" in executor and "every BLOCK" in executor
 assert "workspace_steward.py" in workspace_contract and "WS014" in workspace_contract
+assert "must contain at least one row" in workspace_contract
+assert "combined parent/dependency" in workspace_contract
+assert "root/control/lock symlinks are never followed" in workspace_contract
+assert "supplied\nscript path must exactly match" in workspace_contract
+assert "Producer_Tasks`/`Consumer_Tasks` must exist" in monitoring
 assert "项目工作区管理" in agent_metadata and "module DAGs" in agent_metadata
 expected_headers = {
     "Workspace_Policy.tsv": "Schema_Version\tEnforcement_Mode\tPlan_Status\tPlan_SHA256\tMax_Audit_Depth\tUpdated_Time",

@@ -86,9 +86,10 @@ python3 scripts/workspace_steward.py audit --project /abs/project
 
 The Agent derives module semantics/DAG from bounded project evidence; the CLI
 validates explicit TSV contracts and never guesses biology from names or mtime.
-`apply --yes` transactionally creates/registers the approved tree. Reviewed
-managed routes are strict in script/submission gates; Legacy warns and
-Tool_managed is layout-exempt. Existing projects are not implicitly enabled, and
+`apply --yes` transactionally creates/registers the approved non-empty tree.
+Managed Artifacts remain under their owning modules. Script/submission gates
+require the task's exact registered script and propagate every Workspace audit
+BLOCK; Legacy warns and Tool_managed is layout-exempt. Existing projects are not implicitly enabled, and
 `migration-plan` never changes paths. See
 [`references/workspace-steward.md`](references/workspace-steward.md).
 

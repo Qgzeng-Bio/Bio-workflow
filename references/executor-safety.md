@@ -32,9 +32,13 @@ For an enabled Workspace Steward project, also pass:
 --project DIR --module M001 --task-id T001 --output-dir DIR [--tmp-dir DIR]
 ```
 
-`--out` must then be an absolute Script route and `--log-dir` a Log route. The
-explicit output/tmp paths are checked without trying to parse arbitrary command
-text. Read `references/workspace-steward.md` before generating managed scripts.
+`--out` must then be the exact `Task_Status.Script_Path` resolved as an absolute
+Script route, and `--log-dir` must be a Log route. The explicit output/tmp paths
+are checked without trying to parse arbitrary command text. The gate also
+propagates every BLOCK from the bounded Workspace audit; a route match cannot
+hide missing required directories, unplanned paths, symlinks, index drift, or
+invalid Task references. Read `references/workspace-steward.md` before
+generating managed scripts.
 
 Use strict shell mode:
 

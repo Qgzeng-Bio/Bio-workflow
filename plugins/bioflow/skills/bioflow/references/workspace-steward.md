@@ -86,10 +86,12 @@ Module_ID	Parent_Module	Stage	Short_Name	Module_Kind	Depends_On	Purpose	Owner	Co
 - `Depends_On`: comma-separated existing Module IDs;
 - `Compatibility`: `Managed` or `Legacy`.
 
-Managed sibling stages must be exactly consecutive (`01..N`). Parent links and
-dependencies must be acyclic. A dependency between siblings must point to an
-earlier stage. Parallel work may share a parent without depending on each other;
-do not invent a false dependency merely to justify numbering.
+Managed sibling stages must be exactly consecutive (`01..N`). The combined
+parent/dependency graph must be acyclic, and plan output always places a parent
+before its children. A dependency between siblings must point to an earlier
+stage. Parallel work may share a parent without depending on each other; do not
+invent a false dependency merely to justify numbering. The module table must
+contain at least one row before a plan can be reviewed.
 
 ### `config/Workspace_Routes.tsv`
 
@@ -100,13 +102,16 @@ Route_ID	Module_ID	Path_Type	Path_Role	Relative_Path	Producer_Tasks	Consumer_Tas
 - `Route_ID`: stable `R001`, `R002`, ... ID;
 - `Path_Type`: `Directory` or exact key `Artifact`;
 - `Producer_Tasks`/`Consumer_Tasks`: comma-separated stable IDs from
-  `reports/Task_Status.tsv`;
+  `reports/Task_Status.tsv`; audit rejects unknown IDs, and each producer must
+  belong to the route's module;
 - `Retention`: `Disposable`, `Working`, `Retained`, or `Delivery`;
 - `Required`: `Yes` or `No`;
 - `Compatibility`: `Managed`, `Tool_managed`, or `Legacy`.
 
-Globs are forbidden. An Artifact route names one exact critical path. Ordinary
-files below a planned directory route do not each require a route row.
+Globs are forbidden. The route table must contain at least one row. A Managed
+Artifact names one exact critical path under its module path and below a Managed
+Directory route owned by that module; it cannot claim another module's branch.
+Ordinary files below a planned directory route do not each require a route row.
 
 The steward does not replace these authorities:
 
@@ -130,8 +135,9 @@ The steward does not replace these authorities:
 | `Result`, `QC`, `Plot_Data`, `Source_Table` | `results/` |
 | `Figure`, `Report`, `Acceptance`, `Delivery` | `reports/` |
 
-Managed Directory routes follow the module path under their canonical root. For
-example module `M002` with stage/name `02_Cq3B_INV`, child `M004` with
+Managed Directory routes follow the module path under their canonical root, and
+a non-canonical parent route must itself be Managed rather than a Legacy or
+Tool_managed exception. For example module `M002` with stage/name `02_Cq3B_INV`, child `M004` with
 `03_LD_Fst`, and a result role maps to:
 
 ```text
@@ -155,6 +161,10 @@ a Directory route, so `apply` never invents an implicit hierarchy.
 
 `Tool_managed` and `Legacy` may be explicit layout exceptions, but remain inside
 the project/canonical roots and still obey protected-path and symlink safety.
+The seven canonical roots, controlled metadata files, and
+`config/.Workspace_Steward.lock` must be regular project-local paths: canonical
+root/control/lock symlinks are never followed. `init_project.sh` validates every
+controlled path before its first write.
 
 ## CLI workflow
 
@@ -203,9 +213,10 @@ python3 "$STEWARD" plan --project /abs/project
 python3 "$STEWARD" plan --project /abs/project --format json
 ```
 
-`plan` checks exact schemas, IDs, module tree, continuous stages, DAG, route
-roots, module path prefixes, parent route coverage, duplicate/case collisions,
-and minimum role sets. It prints the deterministic plan fingerprint and writes
+`plan` requires non-empty contracts and checks exact schemas, IDs, module tree,
+continuous stages, the combined parent/dependency DAG, route roots, module and
+Artifact ownership, Managed parent coverage, duplicate/case collisions, and
+minimum role sets. It prints the deterministic plan fingerprint and writes
 nothing.
 
 ### Resolve a route
@@ -233,8 +244,8 @@ After disclosure/confirmation, add `--yes`. The write run:
 2. creates missing Managed Directory routes in depth order;
 3. registers directories in `Directory_Index.tsv` with stable IDs;
 4. atomically updates index and Reviewed policy/fingerprint;
-5. restores previous bytes and removes only this run's new empty directories on
-   failure.
+5. restores previous bytes and file modes and removes only this run's new empty
+   directories on failure.
 
 Existing unindexed Managed paths are refused. Explicit existing Legacy or
 Tool_managed routes can be registered, but missing exception paths are never
@@ -257,7 +268,8 @@ Stable findings include `WS001` schema, `WS002` module/DAG/order, `WS003`
 role/root, `WS004` review/fingerprint, `WS005` required directory,
 `WS006` unplanned path, `WS007` legacy, `WS008` tool-managed, `WS009` strong
 file-placement evidence, `WS010` key artifact timing, `WS011` Directory Index,
-`WS012` Task Status route, `WS013` symlink, and `WS014` root clutter.
+`WS012` Task/module/producer/consumer/script/output/acceptance routing, `WS013`
+canonical/control/planned-path symlink, and `WS014` root clutter.
 
 A required Artifact is not considered failed merely because it does not exist
 during planning/running. It becomes BLOCK when a declared producer is
@@ -275,10 +287,13 @@ python3 "$STEWARD" preflight \
   --tmp-path /abs/project/tmp/01_core
 ```
 
-Policy must be Reviewed and unmodified. The latest Task row must use the Module
-ID in `Stage`. Every explicit path must match that module's allowed role and, if
-the route lists producers, the Task ID must be listed. Scheduler `%j/%x`
-basenames are legal.
+Policy must be Reviewed and unmodified. Preflight first imports every BLOCK from
+the bounded workspace audit, so missing required roots, unplanned paths, index
+or key-artifact drift, bad Task references, and symlinks stop generation and
+submission. The latest Task row must use the Module ID in `Stage`; the supplied
+script path must exactly match its declared `Task_Status.Script_Path`. Every
+explicit path must match that module's allowed role and, if the route lists
+producers, the Task ID must be listed. Scheduler `%j/%x` basenames are legal.
 
 ### Existing-project migration plan
 

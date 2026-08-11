@@ -66,10 +66,12 @@ Recommended `Status` values:
 - `Unknown`: evidence is insufficient.
 
 Use `NA` for fields that do not apply. `Task_ID` must be stable and unique.
-In a managed workspace, `Stage` is the stable `Module_ID` (`M001`), and
-`Script_Path`, `Log_Path`, `Output_Path`, and applicable acceptance paths must
-resolve under that module's reviewed routes. The Workspace route may list the
-same stable Task ID in `Producer_Tasks`/`Consumer_Tasks`.
+In a managed workspace, `Stage` is an existing stable `Module_ID` (`M001`), and
+`Script_Path`, `Log_Path`, `Output_Path`, and `Acceptance_Path` must resolve under
+that module's reviewed roles. Submission must use exactly the registered
+`Script_Path`. Every ID in Workspace `Producer_Tasks`/`Consumer_Tasks` must exist
+in this table, and a producer task's `Stage` must equal the owning route module;
+consumers may belong to downstream modules.
 Repeated rows for one `Task_ID` are allowed as an append-only history; the last
 row is the current record. Separate multiple dependencies with commas; an empty,
 `NA`, `N/A`, `None`, or `Null` dependency value means that no dependency is
