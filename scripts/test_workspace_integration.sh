@@ -43,7 +43,20 @@ script="$project/scripts/01_core/job.slurm"
     --output-dir "$project/results/01_core" --tmp-dir "$project/tmp/01_core" \
     >/dev/null
 [[ -s "$script" ]] || { echo 'FAIL | steward-aware sbatch script was not generated' >&2; exit 1; }
-printf 'PASS | gen_sbatch validates script/log/output/tmp routes\n'
+wrong_script="$project/scripts/01_core/other.slurm"
+set +e
+wrong_gen_out="$("$gen" \
+    --job-name ws_wrong --cpus 1 --mem 4G \
+    --log-dir "$project/logs/01_core" \
+    --out "$wrong_script" --cmd 'echo wrong' \
+    --project "$project" --module M001 --task-id T001 \
+    --output-dir "$project/results/01_core" --tmp-dir "$project/tmp/01_core" 2>&1)"
+wrong_gen_rc=$?
+set -e
+[[ "$wrong_gen_rc" -eq 1 && ! -e "$wrong_script" ]] \
+    || { printf 'FAIL | unregistered script path was generated\n%s\n' "$wrong_gen_out" >&2; exit 1; }
+grep -Fq 'does not match Task_Status.Script_Path' <<< "$wrong_gen_out"
+printf 'PASS | gen_sbatch validates routes and binds the registered script path\n'
 
 prepare_out="$(cd "$project" && "$prepare" \
     --script "$script" --output "$project/results/01_core" \
@@ -61,6 +74,18 @@ set -e
 [[ "$wrong_rc" -eq 1 ]] || { printf 'FAIL | wrong route was not blocked\n%s\n' "$wrong_out" >&2; exit 1; }
 grep -Fq 'Workspace Steward 路由闸门 BLOCK' <<< "$wrong_out"
 printf 'PASS | prepare_submission blocks a managed output-route mismatch\n'
+
+mkdir "$project/results/01_core/unplanned_dir"
+set +e
+drift_out="$(cd "$project" && "$prepare" \
+    --script "$script" --output "$project/results/01_core" \
+    --project "$project" --module M001 --task-id T001 --tmp "$project/tmp/01_core" 2>&1)"
+drift_rc=$?
+set -e
+[[ "$drift_rc" -eq 1 ]] || { printf 'FAIL | workspace audit drift did not block submission\n%s\n' "$drift_out" >&2; exit 1; }
+grep -Fq $'WS006\tWorkspace_Audit\tresults/01_core/unplanned_dir' <<< "$drift_out"
+rmdir "$project/results/01_core/unplanned_dir"
+printf 'PASS | prepare_submission propagates full workspace audit blockers\n'
 
 submit_out="$(cd "$project" && "$submit" \
     --script "$script" --output "$project/results/01_core" \

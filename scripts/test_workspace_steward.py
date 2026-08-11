@@ -101,8 +101,8 @@ def base_routes() -> list[dict[str, str]]:
 
 
 def install_plan(project: Path, modules: list[dict[str, str]] | None = None, routes: list[dict[str, str]] | None = None) -> None:
-    write_tsv(project / "config" / "Workspace_Modules.tsv", workspace.MODULE_COLUMNS, modules or base_modules())
-    write_tsv(project / "config" / "Workspace_Routes.tsv", workspace.ROUTE_COLUMNS, routes or base_routes())
+    write_tsv(project / "config" / "Workspace_Modules.tsv", workspace.MODULE_COLUMNS, base_modules() if modules is None else modules)
+    write_tsv(project / "config" / "Workspace_Routes.tsv", workspace.ROUTE_COLUMNS, base_routes() if routes is None else routes)
 
 
 def write_tasks(project: Path, status: str = "Ready") -> None:
@@ -146,7 +146,13 @@ with tempfile.TemporaryDirectory(prefix="bioflow-workspace-bootstrap.") as tmp_n
     assert rerun.returncode == 0 and sentinel.read_text().endswith("# sentinel\n")
     protected = cli(["bootstrap", "--project", str(Path.home() / "data")])
     assert protected.returncode == 2
-passed("bootstrap dry-run, write, preserve, and protected-root gates")
+    unsafe_project = make_project(Path(tmp_name) / "unsafe", plan=False)
+    dangling_target = Path(tmp_name) / "outside-lock"
+    (unsafe_project / "config" / ".Workspace_Steward.lock").symlink_to(dangling_target)
+    unsafe = cli(["bootstrap", "--project", str(unsafe_project), "--yes"])
+    assert unsafe.returncode == 2 and "symbolic-link" in unsafe.stderr
+    assert not dangling_target.exists()
+passed("bootstrap dry-run, write, preserve, protected-root, and secure-lock gates")
 
 with tempfile.TemporaryDirectory(prefix="bioflow-workspace-plan.") as tmp_name:
     project = make_project(Path(tmp_name))
@@ -157,6 +163,18 @@ with tempfile.TemporaryDirectory(prefix="bioflow-workspace-plan.") as tmp_name:
     payload = json.loads(planned.stdout)
     assert len(payload["Plan_SHA256"]) == 64
     assert {row["Module_ID"] for row in payload["Modules"]} == {"M001", "M002"}
+    nested = base_modules()
+    nested[0]["Module_ID"] = "M999"
+    nested[0]["Short_Name"] = "parent"
+    nested[0]["Module_Kind"] = "group"
+    nested[1]["Module_ID"] = "M001"
+    nested[1]["Parent_Module"] = "M999"
+    nested[1]["Stage"] = "01"
+    nested[1]["Short_Name"] = "child"
+    nested[1]["Depends_On"] = ""
+    nested[1]["Module_Kind"] = "analysis"
+    nested_modules, _ = workspace.validate_modules(nested)
+    assert workspace.topological_modules(nested_modules) == ["M999", "M001"]
     planned_again = cli(["plan", "--project", str(project), "--format", "json"])
     assert json.loads(planned_again.stdout)["Plan_SHA256"] == payload["Plan_SHA256"]
     resolved = cli(["route", "--project", str(project), "--module", "M001", "--role", "Log", "--path-type", "Directory"])
@@ -181,6 +199,12 @@ with tempfile.TemporaryDirectory(prefix="bioflow-workspace-invalid.") as tmp_nam
     routes = base_routes(); routes[1]["Route_ID"] = "R001"; cases.append((base_modules(), routes, "duplicate Route_ID"))
     routes = base_routes(); routes[4]["Relative_Path"] = "results/01_CORE"; cases.append((base_modules(), routes, "duplicate/case-colliding"))
     routes = [row for row in base_routes() if row["Path_Role"] != "Temporary"]; cases.append((base_modules(), routes, "missing Directory roles"))
+    routes = base_routes(); routes[4]["Relative_Path"] = "results/02_publication/Cross_Module.tsv"; cases.append((base_modules(), routes, "must follow module path"))
+    routes = base_routes() + [
+        route("R010", "M002", "Directory", "Figure", "reports/02_publication/native", required="No", compatibility="Tool_managed"),
+        route("R011", "M002", "Directory", "Figure", "reports/02_publication/native/figures", required="No"),
+    ]; cases.append((base_modules(), routes, "requires a managed parent route"))
+    modules = base_modules(); modules[0]["Parent_Module"] = "M002"; modules[0]["Stage"] = "01"; modules[1]["Stage"] = "01"; modules[1]["Module_Kind"] = "group"; cases.append((modules, base_routes(), "combined parent/dependency graph"))
     for modules, routes, fragment in cases:
         install_plan(project, modules, routes)
         result = cli(["plan", "--project", str(project)])
@@ -196,7 +220,10 @@ with tempfile.TemporaryDirectory(prefix="bioflow-workspace-invalid.") as tmp_nam
     routes = base_routes(); routes[0]["Relative_Path"] = "logs/01_core"; install_plan(project, base_modules(), routes)
     route_error = cli(["plan", "--project", str(project)])
     assert "[WS003]" in route_error.stderr
-passed("exact schema, module tree, DAG, stage, path, role, and route gates")
+    install_plan(project, [], [])
+    empty = cli(["plan", "--project", str(project)])
+    assert empty.returncode == 2 and "at least one module" in empty.stderr
+passed("non-empty exact schemas, module tree, combined DAG, ownership, stage, path, role, and route gates")
 
 with tempfile.TemporaryDirectory(prefix="bioflow-workspace-inspect.") as tmp_name:
     project = make_project(Path(tmp_name))
@@ -249,6 +276,13 @@ with tempfile.TemporaryDirectory(prefix="bioflow-workspace-apply.") as tmp_name:
     ])
     assert preflight.returncode == 0, preflight.stdout + preflight.stderr
     assert all(row["Status"] in {"PASS", "EXEMPT"} for row in read_tsv_text(preflight.stdout))
+    wrong_script = cli([
+        "preflight", "--project", str(project), "--module", "M001", "--task-id", "T001",
+        "--script-path", "scripts/01_core/other.slurm", "--log-path", "logs/01_core/%j_%x.out",
+        "--output-path", "results/01_core",
+    ])
+    assert wrong_script.returncode == 2
+    assert any("does not match Task_Status.Script_Path" in row["Detail"] for row in read_tsv_text(wrong_script.stdout))
     wrong = cli([
         "preflight", "--project", str(project), "--module", "M001", "--task-id", "T001",
         "--script-path", "scripts/01_core/job.slurm", "--log-path", "results/01_core/job.err",
@@ -264,7 +298,14 @@ with tempfile.TemporaryDirectory(prefix="bioflow-workspace-apply.") as tmp_name:
     assert any(row["Rule_ID"] == "WS006" and row["Relative_Path"] == "results/01_core/nested_rogue" for row in findings)
     assert any(row["Rule_ID"] == "WS009" for row in findings)
     assert any(row["Rule_ID"] == "WS014" for row in findings)
-passed("apply lock/transaction, stable IDs, clean audit, preflight, and managed drift blockers")
+    drift_preflight = cli([
+        "preflight", "--project", str(project), "--module", "M001", "--task-id", "T001",
+        "--script-path", "scripts/01_core/job.slurm", "--log-path", "logs/01_core/%j_%x.out",
+        "--output-path", "results/01_core",
+    ])
+    assert drift_preflight.returncode == 2
+    assert any(row["Path_Type"] == "Workspace_Audit" and row["Rule_ID"] == "WS006" for row in read_tsv_text(drift_preflight.stdout))
+passed("apply lock/transaction, stable IDs, registered-script binding, and full-audit preflight blockers")
 
 with tempfile.TemporaryDirectory(prefix="bioflow-workspace-symlink.") as tmp_name:
     project = make_project(Path(tmp_name))
@@ -276,6 +317,21 @@ with tempfile.TemporaryDirectory(prefix="bioflow-workspace-symlink.") as tmp_nam
     assert blocked.returncode == 2 and "symlink" in blocked.stderr.lower()
     assert not (outside / "Summary.tsv").exists()
 passed("planned symlink target is blocked without traversal")
+
+with tempfile.TemporaryDirectory(prefix="bioflow-workspace-root-symlink.") as tmp_name:
+    project = make_project(Path(tmp_name))
+    install_plan(project)
+    write_tasks(project)
+    assert cli(["apply", "--project", str(project), "--yes"]).returncode == 0
+    saved_logs = Path(tmp_name) / "saved-logs"
+    (project / "logs").rename(saved_logs)
+    (project / "logs").symlink_to(saved_logs, target_is_directory=True)
+    audited = cli(["audit", "--project", str(project), "--format", "json"])
+    assert audited.returncode == 2
+    assert any(row["Rule_ID"] == "WS013" and row["Relative_Path"] == "logs" for row in json.loads(audited.stdout)["Findings"])
+    reapplied = cli(["apply", "--project", str(project), "--yes"])
+    assert reapplied.returncode == 2 and "symbolic-link" in reapplied.stderr
+passed("canonical-root symlink replacement blocks audit and re-apply without traversal")
 
 with tempfile.TemporaryDirectory(prefix="bioflow-workspace-artifact.") as tmp_name:
     project = make_project(Path(tmp_name))
@@ -332,14 +388,44 @@ with tempfile.TemporaryDirectory(prefix="bioflow-workspace-tool.") as tmp_name:
     assert any(row["Relative_Path"] == "results/01_core/NativeToolOutput" and row["Directory_Kind"] == "tool_managed" for row in index_rows)
 passed("tool-managed output is explicitly registered and layout-exempt")
 
+with tempfile.TemporaryDirectory(prefix="bioflow-workspace-task-contract.") as tmp_name:
+    project = make_project(Path(tmp_name))
+    routes = base_routes()
+    routes[0]["Producer_Tasks"] = "T404"
+    install_plan(project, base_modules(), routes)
+    write_tasks(project)
+    task_path = project / "reports" / "Task_Status.tsv"
+    task_rows = list(csv.DictReader(task_path.read_text().splitlines(), delimiter="\t"))
+    task_rows[0]["Acceptance_Path"] = "reports/02_publication/not_owned.md"
+    task_rows.append({
+        "Task_ID": "T999", "Stage": "M999", "Sample_ID": "NA", "Status": "Planned", "Job_ID": "NA",
+        "Dependency": "NA", "Script_Path": "NA", "Log_Path": "NA", "Output_Path": "NA",
+        "Acceptance_Path": "NA", "Retry_Count": "0", "Updated_Time": "2026-08-10T00:00:00+08:00",
+    })
+    write_tsv(task_path, tuple(task_rows[0]), task_rows)
+    assert cli(["apply", "--project", str(project), "--yes"]).returncode == 0
+    audited = cli(["audit", "--project", str(project), "--format", "json"])
+    assert audited.returncode == 2
+    findings = json.loads(audited.stdout)["Findings"]
+    assert any(row["Rule_ID"] == "WS012" and "unknown Task_ID T404" in row["Detail"] for row in findings)
+    assert any(row["Rule_ID"] == "WS012" and "unknown module in Stage" in row["Detail"] for row in findings)
+    assert any(row["Rule_ID"] == "WS012" and "Acceptance_Path" in row["Detail"] for row in findings)
+passed("task references, module stages, and acceptance routes are cross-audited")
+
 # Inject a policy-write failure after Directory_Index replacement; both files and all
 # newly created directories must be restored/removed.
 with tempfile.TemporaryDirectory(prefix="bioflow-workspace-rollback.") as tmp_name:
     project = make_project(Path(tmp_name))
     install_plan(project)
     write_tasks(project)
-    old_index = (project / "config" / "Directory_Index.tsv").read_bytes()
-    old_policy = (project / "config" / "Workspace_Policy.tsv").read_bytes()
+    index_path = project / "config" / "Directory_Index.tsv"
+    policy_path = project / "config" / "Workspace_Policy.tsv"
+    os.chmod(index_path, 0o640)
+    os.chmod(policy_path, 0o600)
+    old_index = index_path.read_bytes()
+    old_policy = policy_path.read_bytes()
+    old_index_mode = workspace.stat.S_IMODE(index_path.stat().st_mode)
+    old_policy_mode = workspace.stat.S_IMODE(policy_path.stat().st_mode)
     args = workspace.build_parser().parse_args(["apply", "--project", str(project), "--yes"])
     with mock.patch.object(workspace, "atomic_write_text", side_effect=OSError("simulated policy failure")):
         try:
@@ -349,10 +435,12 @@ with tempfile.TemporaryDirectory(prefix="bioflow-workspace-rollback.") as tmp_na
             pass
         else:
             raise AssertionError("simulated policy failure did not propagate")
-    assert (project / "config" / "Directory_Index.tsv").read_bytes() == old_index
-    assert (project / "config" / "Workspace_Policy.tsv").read_bytes() == old_policy
+    assert index_path.read_bytes() == old_index
+    assert policy_path.read_bytes() == old_policy
+    assert workspace.stat.S_IMODE(index_path.stat().st_mode) == old_index_mode
+    assert workspace.stat.S_IMODE(policy_path.stat().st_mode) == old_policy_mode
     assert not (project / "results" / "01_core").exists()
-passed("atomic policy/index failure restores bytes and rolls back new empty tree")
+passed("atomic policy/index failure restores bytes, modes, and new empty tree")
 
 with tempfile.TemporaryDirectory(prefix="bioflow-workspace-migration.") as tmp_name:
     project = make_project(Path(tmp_name), plan=False)

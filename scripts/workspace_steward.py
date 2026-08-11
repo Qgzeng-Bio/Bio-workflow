@@ -15,6 +15,7 @@ import io
 import json
 import os
 import re
+import stat
 import sys
 import tempfile
 from collections import Counter, defaultdict
@@ -244,6 +245,33 @@ def workspace_paths(project: Path) -> dict[str, Path]:
     }
 
 
+def safe_inside(project: Path, relative: str | Path, label: str) -> Path:
+    try:
+        return pm.resolve_inside(project, Path(relative), label)
+    except pm.PathManagerError as exc:
+        raise WorkspaceError(str(exc)) from exc
+
+
+def open_project_lock(project: Path):
+    path = safe_inside(project, "config/.Workspace_Steward.lock", "workspace lock")
+    flags = os.O_RDWR | os.O_CREAT
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except OSError as exc:
+        raise WorkspaceError(f"cannot safely open workspace lock {path}: {exc}") from exc
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise WorkspaceError(f"workspace lock must be a regular file: {path}")
+        return os.fdopen(descriptor, "a+")
+    except Exception:
+        os.close(descriptor)
+        raise
+
+
 def read_exact_tsv(path: Path, columns: tuple[str, ...], label: str) -> list[dict[str, str]]:
     if not path.exists() or path.is_symlink() or not path.is_file() or not os.access(path, os.R_OK):
         raise WorkspaceError(f"{label} must be a readable regular file: {path}")
@@ -309,6 +337,8 @@ def validate_short_name(stage: str, short_name: str) -> None:
 
 
 def validate_modules(rows: list[dict[str, str]]) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
+    if not rows:
+        raise WorkspaceError("Workspace_Modules.tsv must contain at least one module")
     modules: dict[str, dict[str, str]] = {}
     for line_number, row in enumerate(rows, 2):
         module_id = row["Module_ID"]
@@ -422,8 +452,18 @@ def validate_modules(rows: list[dict[str, str]]) -> tuple[dict[str, dict[str, st
         module_paths[module_id] = value
         return value
 
+    seen_module_paths: dict[str, str] = {}
     for module_id in modules:
-        module_path(module_id)
+        value = module_path(module_id)
+        folded = value.casefold()
+        if folded in seen_module_paths:
+            raise WorkspaceError(
+                f"module paths collide: {seen_module_paths[folded]} and {module_id} -> {value}"
+            )
+        seen_module_paths[folded] = module_id
+
+    # Validate the combined structural-parent and scientific-dependency graph.
+    topological_modules(modules)
     return modules, module_paths
 
 
@@ -432,9 +472,10 @@ def validate_routes(
     modules: dict[str, dict[str, str]],
     module_paths: dict[str, str],
 ) -> dict[str, dict[str, str]]:
+    if not rows:
+        raise WorkspaceError("Workspace_Routes.tsv must contain at least one route")
     routes: dict[str, dict[str, str]] = {}
     seen_paths: dict[str, str] = {}
-    directory_paths: set[str] = set()
     for line_number, row in enumerate(rows, 2):
         route_id = row["Route_ID"]
         if not ROUTE_ID_RE.fullmatch(route_id):
@@ -477,8 +518,6 @@ def validate_routes(
                 f"duplicate/case-colliding route paths: {seen_paths[folded]} and {route_id}"
             )
         seen_paths[folded] = route_id
-        if row["Path_Type"] == "Directory":
-            directory_paths.add(relative_text)
         row["_Producer"] = split_ids(row["Producer_Tasks"], f"{route_id}.Producer_Tasks")  # type: ignore[assignment]
         row["_Consumer"] = split_ids(row["Consumer_Tasks"], f"{route_id}.Consumer_Tasks")  # type: ignore[assignment]
         row["Purpose"] = clean(row["Purpose"], f"{route_id}.Purpose")
@@ -487,22 +526,54 @@ def validate_routes(
         module = modules[row["Module_ID"]]
         if module["Compatibility"] == "Legacy" and row["Compatibility"] == "Managed":
             raise WorkspaceError(f"{route_id}: a Legacy module cannot own a Managed route")
-        if row["Compatibility"] == "Managed" and row["Path_Type"] == "Directory":
-            after_root = Path(*relative.parts[1:]).as_posix()
+        if row["Compatibility"] == "Managed":
+            after_root_path = Path(*relative.parts[1:])
+            owned_path = after_root_path if row["Path_Type"] == "Directory" else after_root_path.parent
+            owned_text = owned_path.as_posix()
             module_prefix = module_paths[row["Module_ID"]]
-            if after_root != module_prefix and not after_root.startswith(module_prefix + "/"):
+            if owned_text != module_prefix and not owned_text.startswith(module_prefix + "/"):
                 raise WorkspaceError(
-                    f"{route_id}: managed directory must follow module path {root}/{module_prefix}"
+                    f"{route_id}: managed {row['Path_Type'].lower()} must follow module path "
+                    f"{root}/{module_prefix}"
                 )
         routes[route_id] = row
 
     for route_id, row in routes.items():
-        if row["Path_Type"] != "Directory" or row["Compatibility"] != "Managed":
+        if row["Compatibility"] != "Managed":
             continue
         relative = Path(row["Relative_Path"])
-        parent = relative.parent.as_posix()
-        if parent not in pm.CANONICAL_DIRS and parent not in directory_paths:
-            raise WorkspaceError(f"{route_id}: parent directory is neither canonical nor planned: {parent}")
+        if row["Path_Type"] == "Directory":
+            parent = relative.parent.as_posix()
+            if parent not in pm.CANONICAL_DIRS:
+                parent_routes = [
+                    candidate
+                    for candidate in routes.values()
+                    if candidate["Path_Type"] == "Directory"
+                    and candidate["Relative_Path"] == parent
+                ]
+                if not parent_routes:
+                    raise WorkspaceError(f"{route_id}: parent directory is neither canonical nor planned: {parent}")
+                if parent_routes[0]["Compatibility"] != "Managed":
+                    raise WorkspaceError(f"{route_id}: managed directory requires a managed parent route: {parent}")
+            continue
+        covered = False
+        for directory in routes.values():
+            if (
+                directory["Path_Type"] == "Directory"
+                and directory["Compatibility"] == "Managed"
+                and directory["Module_ID"] == row["Module_ID"]
+            ):
+                try:
+                    relative.relative_to(Path(directory["Relative_Path"]))
+                except ValueError:
+                    continue
+                covered = True
+                break
+        if not covered:
+            raise WorkspaceError(
+                f"{route_id}: managed artifact must be below a managed Directory route owned by "
+                f"module {row['Module_ID']}"
+            )
 
     role_sets: dict[str, set[str]] = defaultdict(set)
     directory_count: Counter[str] = Counter()
@@ -545,6 +616,9 @@ def plan_sha256(modules: dict[str, dict[str, str]], routes: dict[str, dict[str, 
 def load_workspace(project: Path) -> tuple[dict[str, str], dict[str, dict[str, str]], dict[str, str], dict[str, dict[str, str]], str]:
     paths = workspace_paths(project)
     try:
+        config = safe_inside(project, "config", "workspace config directory")
+        if not config.is_dir():
+            raise WorkspaceError(f"workspace config directory must exist: {config}")
         policy = read_policy(project)
         module_rows = read_exact_tsv(paths["modules"], MODULE_COLUMNS, "Workspace_Modules.tsv")
         route_rows = read_exact_tsv(paths["routes"], ROUTE_COLUMNS, "Workspace_Routes.tsv")
@@ -566,7 +640,10 @@ def topological_modules(modules: dict[str, dict[str, str]]) -> list[str]:
     children: dict[str, list[str]] = defaultdict(list)
     indegree = {module_id: 0 for module_id in modules}
     for module_id, row in modules.items():
-        for dependency in row["_Depends"]:  # type: ignore[index]
+        prerequisites = set(row["_Depends"])  # type: ignore[arg-type,index]
+        if row["Parent_Module"] != "ROOT":
+            prerequisites.add(row["Parent_Module"])
+        for dependency in sorted(prerequisites):
             children[dependency].append(module_id)
             indegree[module_id] += 1
     ready = sorted(
@@ -583,7 +660,7 @@ def topological_modules(modules: dict[str, dict[str, str]]) -> list[str]:
                 ready.append(child)
                 ready.sort(key=lambda item: (modules[item]["Parent_Module"], modules[item]["Stage"], item))
     if len(ordered) != len(modules):
-        raise WorkspaceError("dependency DAG cannot be topologically sorted")
+        raise WorkspaceError("combined parent/dependency graph cannot be topologically sorted")
     return ordered
 
 
@@ -613,11 +690,13 @@ def run_bootstrap(args: argparse.Namespace) -> int:
         source, target = sources[key], paths[key]
         if not source.is_file():
             raise WorkspaceError(f"workspace template missing: {source}")
+        if target.is_symlink() or (target.exists() and not target.is_file()):
+            raise WorkspaceError(f"workspace contract target must be a regular non-symlink file: {target}")
         actions.append({"Mode": "WRITE" if args.yes else "DRY_RUN", "Action": "EXISTS" if target.exists() else "CREATE_FILE", "Path": str(target)})
     write_tsv(("Mode", "Action", "Path"), actions)
     if not args.yes:
         return 0
-    lock_handle = paths["lock"].open("a+")
+    lock_handle = open_project_lock(project)
     created: list[Path] = []
     try:
         try:
@@ -676,6 +755,7 @@ def observed_role(path: Path, entry_type: str) -> str:
 def inventory(project: Path, max_depth: int) -> list[dict[str, str]]:
     if not 1 <= max_depth <= MAX_AUDIT_DEPTH:
         raise WorkspaceError(f"--max-depth must be between 1 and {MAX_AUDIT_DEPTH}")
+    safe_inside(project, "config/Directory_Index.tsv", "Directory_Index.tsv")
     try:
         _, index_rows = pm.load_index(project)
     except pm.PathManagerError as exc:
@@ -830,7 +910,7 @@ def run_route(args: argparse.Namespace) -> int:
 
 
 def latest_task_rows(project: Path) -> tuple[dict[str, dict[str, str]], list[str]]:
-    path = project / "reports" / "Task_Status.tsv"
+    path = safe_inside(project, "reports/Task_Status.tsv", "Task_Status.tsv")
     if not path.exists():
         return {}, []
     required = (
@@ -842,6 +922,8 @@ def latest_task_rows(project: Path) -> tuple[dict[str, dict[str, str]], list[str
     order: list[str] = []
     for row in rows:
         task_id = clean(row["Task_ID"], "Task_ID")
+        if not TASK_ID_RE.fullmatch(task_id):
+            raise WorkspaceError(f"Task_Status.tsv contains invalid Task_ID: {task_id!r}")
         if task_id not in latest:
             order.append(task_id)
         latest[task_id] = row
@@ -849,7 +931,7 @@ def latest_task_rows(project: Path) -> tuple[dict[str, dict[str, str]], list[str
 
 
 def workflow_stage(project: Path) -> str:
-    path = project / "reports" / "workflow_status.tsv"
+    path = safe_inside(project, "reports/workflow_status.tsv", "workflow_status.tsv")
     if not path.exists():
         return "NA"
     columns = ("Stage", "Status", "Evidence_Path", "Job_ID", "Exit_Code", "Input_Path", "Output_Path", "Next_Action", "Updated_Time")
@@ -915,6 +997,13 @@ def audit_workspace(project: Path, max_depth: int | None = None) -> tuple[list[d
     elif policy["Plan_SHA256"] != fingerprint:
         findings.append(finding("BLOCK", "WS004", "workspace plan fingerprint drifted after review"))
 
+    for root in sorted(pm.CANONICAL_DIRS):
+        root_path = project / root
+        if root_path.is_symlink():
+            findings.append(finding("BLOCK", "WS013", "canonical project root is a symbolic link", relative=root))
+        elif not root_path.is_dir():
+            findings.append(finding("BLOCK", "WS005", "canonical project root is missing or not a directory", relative=root))
+
     try:
         _, index_rows = pm.load_index(project)
     except pm.PathManagerError as exc:
@@ -924,9 +1013,10 @@ def audit_workspace(project: Path, max_depth: int | None = None) -> tuple[list[d
 
     for route in sorted(routes.values(), key=lambda row: row["Route_ID"]):
         relative = route["Relative_Path"]
-        target = project / relative
-        if target.is_symlink():
-            findings.append(finding("BLOCK", "WS013", "planned path is a symbolic link", relative=relative, module_id=route["Module_ID"], route_id=route["Route_ID"]))
+        try:
+            target = safe_inside(project, relative, f"route {route['Route_ID']}")
+        except WorkspaceError as exc:
+            findings.append(finding("BLOCK", "WS013", str(exc), relative=relative, module_id=route["Module_ID"], route_id=route["Route_ID"]))
             continue
         if route["Path_Type"] == "Directory":
             if route["Compatibility"] == "Managed" and route["Required"] == "Yes" and not target.is_dir():
@@ -941,11 +1031,27 @@ def audit_workspace(project: Path, max_depth: int | None = None) -> tuple[list[d
                 findings.append(finding("EXEMPT", "WS008", "tool-managed route is layout-exempt but remains boundary-checked", relative=relative, module_id=route["Module_ID"], route_id=route["Route_ID"]))
 
     latest_tasks, _ = latest_task_rows(project)
+    for route in routes.values():
+        status = "WARN" if route["Compatibility"] == "Legacy" else "BLOCK"
+        for task_id in route["_Producer"]:  # type: ignore[index]
+            task = latest_tasks.get(task_id)
+            if task is None:
+                findings.append(finding(status, "WS012", f"Producer_Tasks references unknown Task_ID {task_id}", relative=route["Relative_Path"], module_id=route["Module_ID"], route_id=route["Route_ID"]))
+            elif task["Stage"] != route["Module_ID"]:
+                findings.append(finding(status, "WS012", f"producer task {task_id} belongs to {task['Stage']}, not route module {route['Module_ID']}", relative=route["Relative_Path"], module_id=route["Module_ID"], route_id=route["Route_ID"]))
+        for task_id in route["_Consumer"]:  # type: ignore[index]
+            if task_id not in latest_tasks:
+                findings.append(finding(status, "WS012", f"Consumer_Tasks references unknown Task_ID {task_id}", relative=route["Relative_Path"], module_id=route["Module_ID"], route_id=route["Route_ID"]))
+
     delivered = workflow_stage(project) in DELIVERED_WORKFLOW_STAGES
     for route in routes.values():
         if route["Path_Type"] != "Artifact" or route["Required"] != "Yes":
             continue
-        target = project / route["Relative_Path"]
+        try:
+            target = safe_inside(project, route["Relative_Path"], f"route {route['Route_ID']}")
+        except WorkspaceError:
+            # The route-level WS013 finding above is the authoritative blocker.
+            continue
         producers = route["_Producer"]  # type: ignore[index]
         producer_done = any(
             task_id in latest_tasks and latest_tasks[task_id]["Status"] in COMPLETED_TASK_STATUSES
@@ -957,19 +1063,20 @@ def audit_workspace(project: Path, max_depth: int | None = None) -> tuple[list[d
     allowed_control = CANONICAL_CONTROL_PATHS
     for entry in entries:
         relative = entry["Relative_Path"]
-        if relative in pm.CANONICAL_DIRS or relative in allowed_control:
-            continue
         path = Path(relative)
-        if path.parent == Path(".") and path.name in ROOT_CONTROL_NAMES:
-            continue
         if entry["Entry_Type"] == "Directory":
             matches = [route for route in routes.values() if route["Relative_Path"].casefold() == relative.casefold()]
         else:
             matches = matching_routes(routes, relative)
         indexed_row = index.get(relative)
         if entry["Entry_Type"] == "Symlink":
-            status = "BLOCK" if matches and matches[0]["Compatibility"] == "Managed" else "WARN"
+            managed_control = relative in pm.CANONICAL_DIRS or relative in allowed_control
+            status = "BLOCK" if managed_control or (matches and matches[0]["Compatibility"] == "Managed") else "WARN"
             findings.append(finding(status, "WS013", "symbolic link not followed", relative=relative, module_id=matches[0]["Module_ID"] if matches else "NA", route_id=matches[0]["Route_ID"] if matches else "NA"))
+            continue
+        if relative in pm.CANONICAL_DIRS or relative in allowed_control:
+            continue
+        if path.parent == Path(".") and path.name in ROOT_CONTROL_NAMES:
             continue
         strong_role = entry["Observed_Role"]
         if strong_role == "Log" and path.parts[0] != "logs":
@@ -1004,10 +1111,12 @@ def audit_workspace(project: Path, max_depth: int | None = None) -> tuple[list[d
         "Script_Path": {"Script"},
         "Log_Path": {"Log"},
         "Output_Path": {"Result", "QC", "Plot_Data", "Source_Table", "Figure", "Report", "Acceptance", "Delivery"},
+        "Acceptance_Path": {"Acceptance", "Delivery", "Report"},
     }
     for task_id, task in latest_tasks.items():
         module_id = task["Stage"]
         if module_id not in modules:
+            findings.append(finding("BLOCK", "WS012", f"Task {task_id} references unknown module in Stage: {module_id}", module_id=module_id))
             continue
         for field, roles in task_roles.items():
             value = task[field].strip()
@@ -1075,6 +1184,10 @@ def render_policy(row: dict[str, str]) -> str:
 
 
 def atomic_write_text(path: Path, text: str) -> None:
+    if path.parent.is_symlink() or not path.parent.is_dir():
+        raise WorkspaceError(f"atomic-write parent must be an existing non-symlink directory: {path.parent}")
+    if path.is_symlink():
+        raise WorkspaceError(f"atomic-write target must not be a symbolic link: {path}")
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary = Path(temporary_name)
     try:
@@ -1084,11 +1197,16 @@ def atomic_write_text(path: Path, text: str) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
+        directory_descriptor = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_descriptor)
+        finally:
+            os.close(directory_descriptor)
     finally:
         temporary.unlink(missing_ok=True)
 
 
-def restored_write(path: Path, data: bytes | None) -> None:
+def restored_write(path: Path, data: bytes | None, mode: int | None = None) -> None:
     if data is None:
         path.unlink(missing_ok=True)
     else:
@@ -1096,6 +1214,8 @@ def restored_write(path: Path, data: bytes | None) -> None:
         temporary = Path(temporary_name)
         try:
             with os.fdopen(descriptor, "wb") as handle:
+                if mode is not None:
+                    os.fchmod(handle.fileno(), mode)
                 handle.write(data)
                 handle.flush()
                 os.fsync(handle.fileno())
@@ -1116,9 +1236,7 @@ def apply_actions(project: Path, modules: dict[str, dict[str, str]], routes: dic
     )
     for route in directory_routes:
         relative = route["Relative_Path"]
-        target = project / relative
-        if target.is_symlink():
-            raise WorkspaceError(f"planned directory is a symlink: {relative}")
+        target = safe_inside(project, relative, f"planned directory {relative}")
         existing_index = indexed.get(relative)
         if target.exists() and not target.is_dir():
             raise WorkspaceError(f"planned directory collides with a non-directory: {relative}")
@@ -1178,7 +1296,7 @@ def run_apply(args: argparse.Namespace) -> int:
         return 0
 
     paths = workspace_paths(project)
-    lock_handle = paths["lock"].open("a+")
+    lock_handle = open_project_lock(project)
     try:
         try:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1189,7 +1307,9 @@ def run_apply(args: argparse.Namespace) -> int:
         index_path, index_rows = pm.load_index(project)
         actions, create_targets, new_rows = apply_actions(project, modules, routes, index_rows)
         old_index = index_path.read_bytes() if index_path.exists() else None
+        old_index_mode = stat.S_IMODE(index_path.stat().st_mode) if index_path.exists() else None
         old_policy = paths["policy"].read_bytes()
+        old_policy_mode = stat.S_IMODE(paths["policy"].stat().st_mode)
         created: list[Path] = []
         try:
             for target in create_targets:
@@ -1205,8 +1325,8 @@ def run_apply(args: argparse.Namespace) -> int:
             reviewed["Updated_Time"] = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
             atomic_write_text(paths["policy"], render_policy(reviewed))
         except Exception:
-            restored_write(index_path, old_index)
-            restored_write(paths["policy"], old_policy)
+            restored_write(index_path, old_index, old_index_mode)
+            restored_write(paths["policy"], old_policy, old_policy_mode)
             for target in reversed(created):
                 try:
                     target.rmdir()
@@ -1227,27 +1347,48 @@ def preflight_check(
     task_id: str,
     paths_by_type: list[tuple[str, str, set[str]]],
 ) -> tuple[list[dict[str, str]], int]:
-    policy, modules, _, routes, fingerprint = load_workspace(project)
+    _, modules, _, routes, _ = load_workspace(project)
     rows: list[dict[str, str]] = []
-    if policy["Plan_Status"] != "Reviewed":
-        rows.append({"Status": "BLOCK", "Rule_ID": "WS004", "Path_Type": "Policy", "Path": "config/Workspace_Policy.tsv", "Route_ID": "NA", "Detail": "workspace plan is Draft"})
-    elif policy["Plan_SHA256"] != fingerprint:
-        rows.append({"Status": "BLOCK", "Rule_ID": "WS004", "Path_Type": "Policy", "Path": "config/Workspace_Policy.tsv", "Route_ID": "NA", "Detail": "workspace fingerprint drift"})
+    audit_findings, _ = audit_workspace(project)
+    for item in audit_findings:
+        if item["Status"] != "BLOCK":
+            continue
+        rows.append({
+            "Status": "BLOCK",
+            "Rule_ID": item["Rule_ID"],
+            "Path_Type": "Workspace_Audit",
+            "Path": item["Relative_Path"],
+            "Route_ID": item["Route_ID"],
+            "Detail": item["Detail"],
+        })
     if module_id not in modules:
         rows.append({"Status": "BLOCK", "Rule_ID": "WS002", "Path_Type": "Module", "Path": module_id, "Route_ID": "NA", "Detail": "unknown Module_ID"})
         return rows, 2
     latest, _ = latest_task_rows(project)
     task = latest.get(task_id)
+    declared_script: str | None = None
     if task is None:
         rows.append({"Status": "BLOCK", "Rule_ID": "WS012", "Path_Type": "Task", "Path": task_id, "Route_ID": "NA", "Detail": "Task_ID is not registered in Task_Status.tsv"})
-    elif task["Stage"] != module_id:
-        rows.append({"Status": "BLOCK", "Rule_ID": "WS012", "Path_Type": "Task", "Path": task_id, "Route_ID": "NA", "Detail": f"Task_Status.Stage={task['Stage']} does not match {module_id}"})
+    else:
+        if task["Stage"] != module_id:
+            rows.append({"Status": "BLOCK", "Rule_ID": "WS012", "Path_Type": "Task", "Path": task_id, "Route_ID": "NA", "Detail": f"Task_Status.Stage={task['Stage']} does not match {module_id}"})
+        script_value = task["Script_Path"].strip()
+        if not script_value or script_value.upper() in {"NA", "N/A", "NONE", "NULL"}:
+            rows.append({"Status": "BLOCK", "Rule_ID": "WS012", "Path_Type": "Task", "Path": task_id, "Route_ID": "NA", "Detail": "registered task must declare Script_Path"})
+        else:
+            try:
+                declared_script = relative_from_explicit(project, script_value, "Task_Status.Script_Path")
+            except WorkspaceError as exc:
+                rows.append({"Status": "BLOCK", "Rule_ID": "WS012", "Path_Type": "Task", "Path": script_value, "Route_ID": "NA", "Detail": str(exc)})
 
     for path_type, value, roles in paths_by_type:
         try:
             relative = relative_from_explicit(project, value, path_type)
         except WorkspaceError as exc:
             rows.append({"Status": "BLOCK", "Rule_ID": "WS003", "Path_Type": path_type, "Path": value, "Route_ID": "NA", "Detail": str(exc)})
+            continue
+        if path_type == "Script" and declared_script is not None and relative != declared_script:
+            rows.append({"Status": "BLOCK", "Rule_ID": "WS012", "Path_Type": path_type, "Path": relative, "Route_ID": "NA", "Detail": f"script path does not match Task_Status.Script_Path={declared_script}"})
             continue
         matches = matching_routes(routes, relative, module_id=module_id, roles=roles)
         if not matches:

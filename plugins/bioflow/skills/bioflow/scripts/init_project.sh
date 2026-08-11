@@ -103,6 +103,19 @@ if [[ "$workspace_steward" -eq 1 ]]; then
     )
 fi
 
+# Validate every controlled path before the first write. Never treat a symlink
+# root/control file as an existing project path because install/mkdir could then
+# follow it outside the project.
+for dir in "${dirs[@]}"; do
+    path="$project_abs/$dir"
+    [[ ! -L "$path" ]] || { echo "FAIL | Canonical project root must not be a symlink: $path" >&2; exit 2; }
+    [[ ! -e "$path" || -d "$path" ]] || { echo "FAIL | Canonical project root collides with a non-directory: $path" >&2; exit 2; }
+done
+for target in "${targets[@]}"; do
+    [[ ! -L "$target" ]] || { echo "FAIL | Controlled template target must not be a symlink: $target" >&2; exit 2; }
+    [[ ! -e "$target" || -f "$target" ]] || { echo "FAIL | Controlled template target collides with a non-file: $target" >&2; exit 2; }
+done
+
 printf 'PROJECT | %s\n' "$project_abs"
 printf 'WORKSPACE_STEWARD | %s\n' "$([[ "$workspace_steward" -eq 1 ]] && printf enabled || printf disabled)"
 if [[ "$write" -eq 0 ]]; then

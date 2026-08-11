@@ -182,7 +182,7 @@ if [[ -n "$project" ]]; then
         printf '%s\n' "$workspace_out" >&2
         exit 1
     elif [[ "$workspace_rc" -eq 1 ]]; then
-        echo "WARN | Workspace Steward preflight reported legacy warnings:" >&2
+        echo "WARN | Workspace Steward preflight reported workspace warnings:" >&2
         printf '%s\n' "$workspace_out" >&2
     fi
 fi

@@ -238,7 +238,7 @@ def normalize_index_relative(value: str) -> str:
 
 
 def load_index(project: Path) -> tuple[Path, list[dict[str, str]]]:
-    path = index_path(project)
+    path = resolve_inside(project, Path("config/Directory_Index.tsv"), "directory index")
     if not path.exists():
         return path, []
     if path.is_symlink() or not path.is_file() or not os.access(path, os.R_OK):
@@ -309,17 +309,23 @@ def validate_new_row(
 def render_index(rows: list[dict[str, str]]) -> str:
     import io
 
+    def directory_number(row: dict[str, str]) -> int:
+        match = DIRECTORY_ID_RE.fullmatch(row.get("Directory_ID", ""))
+        if match is None:
+            raise PathManagerError(f"invalid Directory_ID while rendering index: {row.get('Directory_ID', '')!r}")
+        return int(match.group(1))
+
     stream = io.StringIO(newline="")
     writer = csv.DictWriter(stream, fieldnames=INDEX_COLUMNS, delimiter="\t", lineterminator="\n")
     writer.writeheader()
-    for row in sorted(rows, key=lambda item: int(DIRECTORY_ID_RE.fullmatch(item["Directory_ID"]).group(1))):
+    for row in sorted(rows, key=directory_number):
         writer.writerow(row)
     return stream.getvalue()
 
 
 def atomic_write_index(path: Path, rows: list[dict[str, str]]) -> None:
-    if not path.parent.exists() or not path.parent.is_dir():
-        raise PathManagerError(f"config directory must already exist: {path.parent}")
+    if path.parent.is_symlink() or not path.parent.exists() or not path.parent.is_dir():
+        raise PathManagerError(f"config directory must be an existing non-symlink directory: {path.parent}")
     if path.is_symlink():
         raise PathManagerError(f"directory index must not be a symbolic link: {path}")
     descriptor, temporary_name = tempfile.mkstemp(

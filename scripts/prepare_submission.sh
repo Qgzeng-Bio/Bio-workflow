@@ -440,10 +440,14 @@ if [[ -n "$project" ]]; then
             set -e
             if [[ "$ws_rc" -ge 2 ]]; then
                 workspace_line="BLOCK (workspace preflight exit $ws_rc)"
-                blockers+=("Workspace Steward 路由闸门 BLOCK: $(printf '%s' "$ws_out" | tail -n 1)")
+                ws_reason="$(printf '%s\n' "$ws_out" | awk -F '\t' '$1 == "BLOCK" {print; exit}')"
+                [[ -n "$ws_reason" ]] || ws_reason="$(printf '%s' "$ws_out" | tail -n 1)"
+                blockers+=("Workspace Steward 路由闸门 BLOCK: $ws_reason")
             elif [[ "$ws_rc" -eq 1 ]]; then
-                workspace_line="WARN (legacy route)"
-                warnings+=("Workspace Steward 存在 legacy 路由警告: $(printf '%s' "$ws_out" | tail -n 1)")
+                workspace_line="WARN (workspace policy)"
+                ws_reason="$(printf '%s\n' "$ws_out" | awk -F '\t' '$1 == "WARN" {print; exit}')"
+                [[ -n "$ws_reason" ]] || ws_reason="$(printf '%s' "$ws_out" | tail -n 1)"
+                warnings+=("Workspace Steward 存在工作区警告: $ws_reason")
             else
                 workspace_line="PASS | module=$module task=$task_id"
             fi

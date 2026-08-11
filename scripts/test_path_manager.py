@@ -79,7 +79,8 @@ for arguments, fragment in (
     expect_error(fragment, manager.build_name, *arguments)
 for version in ("version2", "2026-08-10", "v1.1.2", "V"):
     expect_error("--version", manager.build_name, "result", None, ["BUSCO"], version)
-passed("invalid step/token/version and name budgets refused")
+expect_error("invalid Directory_ID", manager.render_index, [{"Directory_ID": "BAD"}])
+passed("invalid step/token/version/name budgets and index IDs refused")
 
 with tempfile.TemporaryDirectory(prefix="bioflow-path-audit.") as tmp_name:
     tmp = Path(tmp_name)
@@ -309,5 +310,24 @@ with tempfile.TemporaryDirectory(prefix="bioflow-path-rollback.") as tmp_name:
     assert not list((project / "config").glob(".*.tmp"))
     assert not list((project / "config").glob(".*.backup"))
     passed("index failure rolls back directory and restores previous index")
+
+with tempfile.TemporaryDirectory(prefix="bioflow-path-config-link.") as tmp_name:
+    tmp = Path(tmp_name)
+    project = tmp / "project"
+    project.mkdir()
+    for name in ("data", "scripts", "logs", "tmp", "results", "reports"):
+        (project / name).mkdir()
+    outside = tmp / "outside-config"
+    outside.mkdir()
+    (project / "config").symlink_to(outside, target_is_directory=True)
+    expect_error("symbolic-link", manager.load_index, project)
+    expect_error(
+        "non-symlink directory",
+        manager.atomic_write_index,
+        project / "config" / "Directory_Index.tsv",
+        [],
+    )
+    assert not (outside / "Directory_Index.tsv").exists()
+    passed("directory index refuses a symlinked config root")
 
 print("PASS | bounded project path manager regression fixtures")

@@ -49,6 +49,28 @@ grep -Fq $'M999\tROOT\t\tlegacy' "$project/config/Workspace_Modules.tsv" \
     || { echo 'FAIL | existing workspace modules were overwritten' >&2; exit 1; }
 printf 'PASS | rerun preserves existing files\n'
 
+symlink_project="$tmp/symlink-project"
+outside_config="$tmp/outside-config"
+mkdir -p "$symlink_project" "$outside_config"
+ln -s "$outside_config" "$symlink_project/config"
+if $init --project "$symlink_project" --workspace-steward --yes >/dev/null 2>&1; then
+    echo 'FAIL | symlinked canonical config root was accepted' >&2
+    exit 1
+fi
+[[ ! -e "$outside_config/Input_Manifest.tsv" ]] \
+    || { echo 'FAIL | initializer wrote through a symlinked config root' >&2; exit 1; }
+
+collision_project="$tmp/collision-project"
+mkdir -p "$collision_project"
+printf 'not a directory\n' > "$collision_project/logs"
+if $init --project "$collision_project" --workspace-steward --yes >/dev/null 2>&1; then
+    echo 'FAIL | canonical-root file collision was accepted' >&2
+    exit 1
+fi
+[[ ! -e "$collision_project/config" ]] \
+    || { echo 'FAIL | initializer wrote before validating all canonical roots' >&2; exit 1; }
+printf 'PASS | canonical symlink and type collisions fail before writes\n'
+
 if $init --project "${HOME%/}/data/bioflow-init-test" >/dev/null 2>&1; then
     echo 'FAIL | protected path was accepted' >&2
     exit 1
