@@ -1008,6 +1008,8 @@ def audit_workspace(project: Path, max_depth: int | None = None) -> tuple[list[d
         "Modules": len(modules),
         "Routes": len(routes),
         "Findings": len(findings),
+        "Missing": sum(1 for row in findings if row["Rule_ID"] in {"WS005", "WS010"}),
+        "Unplanned": sum(1 for row in findings if row["Rule_ID"] in {"WS006", "WS014"}),
         "Counts": {key: counts[key] for key in ("BLOCK", "WARN", "EXEMPT", "INFO")},
         "Plan_SHA256": fingerprint,
         "Plan_Status": policy["Plan_Status"],

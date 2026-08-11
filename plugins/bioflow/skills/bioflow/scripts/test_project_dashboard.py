@@ -13,6 +13,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DASHBOARD = ROOT / "scripts" / "project_dashboard.py"
+STEWARD = ROOT / "scripts" / "workspace_steward.py"
+TEMPLATES = ROOT / "assets" / "project-templates"
 PYTHON = sys.executable
 
 
@@ -72,6 +74,37 @@ def make_project(root: Path, name: str) -> Path:
 def assert_true(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def setup_workspace(project: Path, *, legacy: bool = False) -> None:
+    for name in ("Directory_Index.tsv", "Workspace_Policy.tsv"):
+        target = project / "config" / name
+        if not target.exists():
+            target.write_bytes((TEMPLATES / name).read_bytes())
+    modules = (
+        "Module_ID\tParent_Module\tStage\tShort_Name\tModule_Kind\tDepends_On\tPurpose\tOwner\tCompatibility\tNotes\n"
+        "M001\tROOT\t01\tcore\tanalysis\t\tCore analysis\ttester\tManaged\t\n"
+    )
+    routes = (
+        "Route_ID\tModule_ID\tPath_Type\tPath_Role\tRelative_Path\tProducer_Tasks\tConsumer_Tasks\tRetention\tRequired\tCompatibility\tPurpose\tNotes\n"
+        "R001\tM001\tDirectory\tScript\tscripts/01_core\tT001\t\tWorking\tYes\tManaged\tCore scripts\t\n"
+        "R002\tM001\tDirectory\tLog\tlogs/01_core\tT001\t\tWorking\tYes\tManaged\tCore logs\t\n"
+        "R003\tM001\tDirectory\tTemporary\ttmp/01_core\tT001\t\tDisposable\tYes\tManaged\tCore temporary\t\n"
+        "R004\tM001\tDirectory\tResult\tresults/01_core\tT001\t\tRetained\tYes\tManaged\tCore results\t\n"
+    )
+    if legacy:
+        modules += "M002\tROOT\t\tOld-Folder\tlegacy\t\tHistorical output\ttester\tLegacy\t\n"
+        routes += "R005\tM002\tDirectory\tResult\tresults/Old-Folder\t\t\tRetained\tYes\tLegacy\tHistorical output\t\n"
+        (project / "results" / "Old-Folder").mkdir(exist_ok=True)
+    write(project / "config" / "Workspace_Modules.tsv", modules)
+    write(project / "config" / "Workspace_Routes.tsv", routes)
+    write(
+        project / "reports" / "Task_Status.tsv",
+        "Task_ID\tStage\tSample_ID\tStatus\tJob_ID\tDependency\tScript_Path\tLog_Path\tOutput_Path\tAcceptance_Path\tRetry_Count\tUpdated_Time\n"
+        "T001\tM001\tNA\tReady\tNA\tNA\tscripts/01_core/job.slurm\tlogs/01_core/job.out\tresults/01_core\tNA\t0\t2026-08-10T00:00:00+08:00\n",
+    )
+    applied = subprocess.run([PYTHON, str(STEWARD), "apply", "--project", str(project), "--yes"], check=False, capture_output=True, text=True)
+    assert_true(applied.returncode == 0, applied.stdout + applied.stderr)
 
 
 def main() -> int:
@@ -185,6 +218,27 @@ def main() -> int:
         assert_true(payload["Tasks"][0]["effective_status"] == "Failed", payload["Tasks"])
         assert_true(any("Output_Path is Missing" in item for item in payload["Warnings"]), payload["Warnings"])
         print("PASS | missing registered output blocks completion")
+
+        project = make_project(tmp, "workspace")
+        setup_workspace(project)
+        result = run(project, "--format", "json")
+        assert_true(result.returncode == 0, result.stderr)
+        payload = json.loads(result.stdout)
+        assert_true(payload["Workspace"]["Enabled"] is True, payload["Workspace"])
+        assert_true(payload["Workspace"]["Status"] == "PASS", payload["Workspace"])
+        text_result = run(project)
+        assert_true("[INFO] Workspace: PASS" in text_result.stdout, text_result.stdout)
+        setup_workspace(project, legacy=True)
+        legacy_result = run(project, "--format", "json")
+        legacy_payload = json.loads(legacy_result.stdout)
+        assert_true(legacy_payload["Workspace"]["Status"] == "WARN", legacy_payload["Workspace"])
+        assert_true(any(item["Rule_ID"] == "WS007" for item in legacy_payload["Workspace"]["Findings_detail"]), legacy_payload["Workspace"])
+        write(project / "config" / "Workspace_Modules.tsv", "Bad\tHeader\n")
+        malformed_workspace = run(project, "--format", "json")
+        malformed_payload = json.loads(malformed_workspace.stdout)
+        assert_true(malformed_payload["Workspace"]["Status"] == "BLOCK", malformed_payload["Workspace"])
+        assert_true(any("Workspace Steward contract" in warning for warning in malformed_payload["Warnings"]), malformed_payload["Warnings"])
+        print("PASS | dashboard reports workspace PASS/WARN/BLOCK without writing")
 
         project = make_project(tmp, "malformed")
         write(project / "reports" / "Task_Status.tsv", "Task_ID\tStatus\nT1\tRunning\n")

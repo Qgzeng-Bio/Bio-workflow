@@ -4,23 +4,30 @@ set -euo pipefail
 usage() {
     cat <<'USAGE'
 Usage:
-  scripts/init_project.sh --project <dir> [--yes]
+  scripts/init_project.sh --project <dir> [--workspace-steward] [--yes]
 
 Preview or create the minimal bioflow project layout and templates.
 Dry-run is the default. --yes creates missing directories/files only; existing
-files are never overwritten. Broad roots and protected ~/data or ~/tools paths
+files are never overwritten. --workspace-steward explicitly installs the Draft
+Workspace Steward policy/module/route contracts; omitting it preserves the
+legacy initializer behavior. Broad roots and protected ~/data or ~/tools paths
 (including /data9/home/<user>/data|tools) are refused.
 USAGE
 }
 
 project=""
 write=0
+workspace_steward=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --project)
             [[ $# -ge 2 ]] || { echo "FAIL | --project requires a value" >&2; exit 2; }
             project="$2"
             shift 2
+            ;;
+        --workspace-steward)
+            workspace_steward=1
+            shift
             ;;
         --yes)
             write=1
@@ -83,8 +90,21 @@ targets=(
     "$project_abs/config/result_manifest.yaml"
     "$project_abs/config/Directory_Index.tsv"
 )
+if [[ "$workspace_steward" -eq 1 ]]; then
+    sources+=(
+        "$templates/Workspace_Policy.tsv"
+        "$templates/Workspace_Modules.tsv"
+        "$templates/Workspace_Routes.tsv"
+    )
+    targets+=(
+        "$project_abs/config/Workspace_Policy.tsv"
+        "$project_abs/config/Workspace_Modules.tsv"
+        "$project_abs/config/Workspace_Routes.tsv"
+    )
+fi
 
 printf 'PROJECT | %s\n' "$project_abs"
+printf 'WORKSPACE_STEWARD | %s\n' "$([[ "$workspace_steward" -eq 1 ]] && printf enabled || printf disabled)"
 if [[ "$write" -eq 0 ]]; then
     printf 'MODE    | dry-run; add --yes to create missing paths\n'
 else

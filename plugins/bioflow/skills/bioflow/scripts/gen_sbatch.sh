@@ -37,6 +37,11 @@ Options:
   --force              allow overwriting --out
   --conda-env ENV      activate this conda env with a PATH guard + python landing check
   --conda-check M1,M2  comma-separated modules to import-check after activate (needs --conda-env)
+  --project DIR        Workspace Steward project root (auto-detected from cwd when enabled)
+  --module M001        Workspace module (required for a Steward project)
+  --task-id T001       registered Task_Status.tsv ID (required for a Steward project)
+  --output-dir DIR     explicit scientific output route for workspace validation
+  --tmp-dir DIR        explicit temporary route when the generated task uses one
   -h, --help           show this help
 
 Exit codes: 0=generated (preflight passed)  1=generation/preflight blocked  2=usage error
@@ -47,6 +52,7 @@ job_name=""; cpus=""; mem=""; log_dir=""; partition="normal"
 array=""; manifest=""; cmd=""; chdir=""; walltime=""; allow_time=0
 out=""; force=0
 conda_env=""; conda_check=""
+project=""; module=""; task_id=""; output_dir=""; workspace_tmp_dir=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -65,6 +71,11 @@ while [[ $# -gt 0 ]]; do
         --force)    force=1; shift ;;
         --conda-env)   [[ $# -ge 2 ]] || { echo "ERROR | --conda-env requires a value" >&2; exit 2; }; conda_env="$2"; shift 2 ;;
         --conda-check) [[ $# -ge 2 ]] || { echo "ERROR | --conda-check requires a value" >&2; exit 2; }; conda_check="$2"; shift 2 ;;
+        --project)   [[ $# -ge 2 ]] || { echo "ERROR | --project requires a value" >&2; exit 2; }; project="$2"; shift 2 ;;
+        --module)    [[ $# -ge 2 ]] || { echo "ERROR | --module requires a value" >&2; exit 2; }; module="$2"; shift 2 ;;
+        --task-id)   [[ $# -ge 2 ]] || { echo "ERROR | --task-id requires a value" >&2; exit 2; }; task_id="$2"; shift 2 ;;
+        --output-dir)[[ $# -ge 2 ]] || { echo "ERROR | --output-dir requires a value" >&2; exit 2; }; output_dir="$2"; shift 2 ;;
+        --tmp-dir)   [[ $# -ge 2 ]] || { echo "ERROR | --tmp-dir requires a value" >&2; exit 2; }; workspace_tmp_dir="$2"; shift 2 ;;
         -h|--help)  usage; exit 0 ;;
         *)          echo "ERROR | Unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -142,6 +153,39 @@ self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 pf=""
 [[ -x "$self_dir/slurm_preflight.sh" ]] && pf="$self_dir/slurm_preflight.sh"
 [[ -n "$pf" ]] || { echo "ERROR | slurm_preflight.sh not found; cannot guarantee preflight-clean output" >&2; exit 1; }
+
+# --- optional Workspace Steward path gate -------------------------------------
+if [[ -z "$project" && -f "$PWD/config/Workspace_Policy.tsv" ]]; then
+    project="$PWD"
+fi
+if [[ -n "$project" ]]; then
+    steward="$self_dir/workspace_steward.py"
+    [[ -f "$steward" ]] || { echo "ERROR | workspace_steward.py not found: $steward" >&2; exit 1; }
+    [[ -n "$module" && -n "$task_id" && -n "$output_dir" && -n "$out" ]] || {
+        echo "ERROR | Steward generation requires --module, --task-id, --output-dir, and --out" >&2
+        exit 2
+    }
+    [[ "$out" == /* ]] || { echo "ERROR | Steward --out must be an absolute script path" >&2; exit 2; }
+    workspace_args=(
+        preflight --project "$project" --module "$module" --task-id "$task_id"
+        --script-path "$out"
+        --log-path "$log_dir/%j_%x.out" --log-path "$log_dir/%j_%x.err"
+        --output-path "$output_dir"
+    )
+    [[ -n "$workspace_tmp_dir" ]] && workspace_args+=(--tmp-path "$workspace_tmp_dir")
+    set +e
+    workspace_out="$(python3 "$steward" "${workspace_args[@]}" 2>&1)"
+    workspace_rc=$?
+    set -e
+    if [[ "$workspace_rc" -ge 2 ]]; then
+        echo "ERROR | Workspace Steward preflight blocked script generation:" >&2
+        printf '%s\n' "$workspace_out" >&2
+        exit 1
+    elif [[ "$workspace_rc" -eq 1 ]]; then
+        echo "WARN | Workspace Steward preflight reported legacy warnings:" >&2
+        printf '%s\n' "$workspace_out" >&2
+    fi
+fi
 
 # --- build the script into a temp file ----------------------------------------
 tmp="$(mktemp "${TMPDIR:-/tmp}/gen_sbatch.XXXXXX")"

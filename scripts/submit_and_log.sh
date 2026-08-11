@@ -32,6 +32,10 @@ Options:
   --output DIR      forwarded to the gate (protected-path + overwrite check)
   --mode P          forwarded to the gate (partition for preflight)
   --conc N          forwarded to the gate (array %N cap for quota dry-run)
+  --project DIR     forwarded to Workspace Steward gate
+  --module M001     forwarded Workspace Module_ID
+  --task-id T001    forwarded registered task ID
+  --tmp PATH        forwarded explicit temporary route; repeat when needed
   --record FILE     run-record TSV to append (default: reports/run_record.tsv)
   --yes             actually submit (without it, dry-run only)
   -h, --help        show this help
@@ -41,6 +45,7 @@ USAGE
 }
 
 script=""; manifest=""; claim_manifest=""; input_list=""; output_dir=""; mode=""; conc=""
+project=""; module=""; task_id=""; tmp_paths=()
 record="reports/run_record.tsv"; do_submit=0
 
 while [[ $# -gt 0 ]]; do
@@ -52,6 +57,10 @@ while [[ $# -gt 0 ]]; do
         --output)     [[ $# -ge 2 ]] || { echo "ERROR | --output requires a value" >&2; exit 2; }; output_dir="$2"; shift 2 ;;
         --mode)       [[ $# -ge 2 ]] || { echo "ERROR | --mode requires a value" >&2; exit 2; }; mode="$2"; shift 2 ;;
         --conc)       [[ $# -ge 2 ]] || { echo "ERROR | --conc requires a value" >&2; exit 2; }; conc="$2"; shift 2 ;;
+        --project)    [[ $# -ge 2 ]] || { echo "ERROR | --project requires a value" >&2; exit 2; }; project="$2"; shift 2 ;;
+        --module)     [[ $# -ge 2 ]] || { echo "ERROR | --module requires a value" >&2; exit 2; }; module="$2"; shift 2 ;;
+        --task-id)    [[ $# -ge 2 ]] || { echo "ERROR | --task-id requires a value" >&2; exit 2; }; task_id="$2"; shift 2 ;;
+        --tmp)        [[ $# -ge 2 ]] || { echo "ERROR | --tmp requires a value" >&2; exit 2; }; tmp_paths+=("$2"); shift 2 ;;
         --record)     [[ $# -ge 2 ]] || { echo "ERROR | --record requires a value" >&2; exit 2; }; record="$2"; shift 2 ;;
         --yes)        do_submit=1; shift ;;
         -h|--help)    usage; exit 0 ;;
@@ -131,6 +140,10 @@ gate_args=(--script "$script")
 [[ -n "$output_dir" ]] && gate_args+=(--output "$output_dir")
 [[ -n "$mode" ]]       && gate_args+=(--mode "$mode")
 [[ -n "$conc" ]]       && gate_args+=(--conc "$conc")
+[[ -n "$project" ]]    && gate_args+=(--project "$project")
+[[ -n "$module" ]]     && gate_args+=(--module "$module")
+[[ -n "$task_id" ]]    && gate_args+=(--task-id "$task_id")
+for ws_tmp in "${tmp_paths[@]}"; do gate_args+=(--tmp "$ws_tmp"); done
 
 echo "[INFO] 最终闸门: $gate"
 set +e

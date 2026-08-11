@@ -633,6 +633,27 @@ def task_sort_key(task: Task) -> tuple[int, str]:
     return rank, task.task_id
 
 
+def load_workspace_status(project: Path, sources: list[str], warnings: list[str]) -> dict[str, object]:
+    policy = project / "config" / "Workspace_Policy.tsv"
+    if not policy.exists():
+        return {"Enabled": False, "Status": "NA", "Modules": 0, "Routes": 0, "Findings": 0}
+    sources.extend([
+        "config/Workspace_Policy.tsv",
+        "config/Workspace_Modules.tsv",
+        "config/Workspace_Routes.tsv",
+        "config/Directory_Index.tsv",
+    ])
+    try:
+        import workspace_steward
+
+        summary = workspace_steward.workspace_summary(project)
+        return {"Enabled": True, **summary}
+    except Exception as exc:  # malformed optional contract is dashboard evidence, not a crash
+        message = f"Workspace Steward contract could not be audited: {exc}"
+        warnings.append(message)
+        return {"Enabled": True, "Status": "BLOCK", "Modules": 0, "Routes": 0, "Findings": 1, "Error": str(exc)}
+
+
 def render_text(
     project: Path,
     project_status: dict[str, str],
@@ -641,6 +662,7 @@ def render_text(
     counts: dict[str, int],
     warnings: list[str],
     checked_queue: bool,
+    workspace: dict[str, object],
 ) -> None:
     print(f"[INFO] Project: {project}")
     print(f"[INFO] Check_queue: {str(checked_queue).lower()}")
@@ -649,6 +671,13 @@ def render_text(
         "[INFO] Project_stage: "
         f"{project_status['Stage']} | Status={project_status['Status']} | "
         f"Evidence={project_status['Evidence_Path']} | Updated={project_status['Updated_Time']}"
+    )
+    print(
+        "[INFO] Workspace: "
+        f"{workspace.get('Status', 'NA')} | Enabled={str(workspace.get('Enabled', False)).lower()} | "
+        f"Modules={workspace.get('Modules', 0)} | Routes={workspace.get('Routes', 0)} | "
+        f"Missing={workspace.get('Missing', 0)} | Unplanned={workspace.get('Unplanned', 0)} | "
+        f"Findings={workspace.get('Findings', 0)}"
     )
     if counts:
         print("[SUMMARY] " + " ".join(f"{status}={count}" for status, count in counts.items()))
@@ -734,6 +763,7 @@ def render_json(
     counts: dict[str, int],
     warnings: list[str],
     checked_queue: bool,
+    workspace: dict[str, object],
 ) -> None:
     payload = {
         "Project": str(project),
@@ -741,6 +771,7 @@ def render_json(
         "Sources": sources,
         "Project_status": project_status,
         "Summary": counts,
+        "Workspace": workspace,
         "Tasks": [asdict(task) for task in sorted(tasks, key=task_sort_key)],
         "Warnings": warnings,
     }
@@ -769,13 +800,14 @@ def main() -> int:
     scheduler = query_scheduler(job_ids, warnings) if args.check_queue else {}
     reconcile_tasks(project, tasks, scheduler, warnings)
     counts = summary_counts(tasks)
+    workspace = load_workspace_status(project, sources, warnings)
 
     if args.format == "json":
-        render_json(project, project_status, sources, tasks, counts, warnings, args.check_queue)
+        render_json(project, project_status, sources, tasks, counts, warnings, args.check_queue, workspace)
     elif args.format == "tsv":
         render_tsv(tasks)
     else:
-        render_text(project, project_status, sources, tasks, counts, warnings, args.check_queue)
+        render_text(project, project_status, sources, tasks, counts, warnings, args.check_queue, workspace)
     return 0
 
 

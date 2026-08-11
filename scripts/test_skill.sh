@@ -61,6 +61,7 @@ scripts/test_slurm_preflight.sh
 "$python_bin" scripts/test_prepare_paperplot_handoff.py
 "$python_bin" scripts/test_path_manager.py
 "$python_bin" scripts/test_workspace_steward.py
+bash scripts/test_workspace_integration.sh
 
 quick_validate="${HOME%/}/.codex/skills/.system/skill-creator/scripts/quick_validate.py"
 if [[ -f "$quick_validate" ]]; then

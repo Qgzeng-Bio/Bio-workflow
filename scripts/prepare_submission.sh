@@ -18,7 +18,8 @@ usage() {
 Usage:
   scripts/prepare_submission.sh --script <slurm_script> \
       [--manifest <manifest.tsv>] [--input-list <filelist.txt>] \
-      [--output <output_dir>] [--mode normal|debug|fat|fat2|high] [--conc <N>]
+      [--output <output_dir>] [--mode normal|debug|fat|fat2|high] [--conc <N>] \
+      [--project <dir> --module M001 --task-id T001 [--tmp <path> ...]]
 
 Read-only pre-submission gate for qgzeng bioflow. It runs the existing
 read-only helpers, prints a single GO/NO-GO "green-light package", and prints the
@@ -32,6 +33,10 @@ Options:
   --mode         partition mode forwarded to slurm_preflight.sh (optional)
   --conc         array concurrency cap %N used in the suggested command + quota dry-run
                  (optional; default taken from parallelization_audit, else 4)
+  --project      Workspace Steward project root; auto-detected from cwd when enabled
+  --module       Workspace Module_ID; required for a Steward project
+  --task-id      registered Task_Status.tsv ID; required for a Steward project
+  --tmp          explicit temporary path; repeat when needed
 
 Exit codes: 0=GO (maybe with warnings to acknowledge)  1=NO-GO (hard blocker)  2=usage error
 USAGE
@@ -43,6 +48,7 @@ input_list=""
 output_dir=""
 mode=""
 conc=""
+project=""; module=""; task_id=""; tmp_paths=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -52,6 +58,10 @@ while [[ $# -gt 0 ]]; do
         --output)      [[ $# -ge 2 ]] || { echo "ERROR | --output requires a value" >&2; exit 2; }; output_dir="$2"; shift 2 ;;
         --mode)        [[ $# -ge 2 ]] || { echo "ERROR | --mode requires a value" >&2; exit 2; }; mode="$2"; shift 2 ;;
         --conc)        [[ $# -ge 2 ]] || { echo "ERROR | --conc requires a value" >&2; exit 2; }; conc="$2"; shift 2 ;;
+        --project)     [[ $# -ge 2 ]] || { echo "ERROR | --project requires a value" >&2; exit 2; }; project="$2"; shift 2 ;;
+        --module)      [[ $# -ge 2 ]] || { echo "ERROR | --module requires a value" >&2; exit 2; }; module="$2"; shift 2 ;;
+        --task-id)     [[ $# -ge 2 ]] || { echo "ERROR | --task-id requires a value" >&2; exit 2; }; task_id="$2"; shift 2 ;;
+        --tmp)         [[ $# -ge 2 ]] || { echo "ERROR | --tmp requires a value" >&2; exit 2; }; tmp_paths+=("$2"); shift 2 ;;
         -h|--help)     usage; exit 0 ;;
         *)             echo "ERROR | Unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -178,6 +188,7 @@ resource_line="(未运行; slurm_preflight.sh 未产生资源判断)"
 task_line="(无 manifest / array)"
 quota_line="(未运行)"
 output_line="(未指定 --output)"
+workspace_line="(未启用 / legacy project)"
 
 # === 1. 输入层 / input layer ===================================================
 if [[ -n "$input_list" ]]; then
@@ -397,6 +408,49 @@ if [[ -n "$output_dir" ]]; then
     fi
 fi
 
+# === 6. Workspace Steward route gate ===========================================
+if [[ -z "$project" && -f "$PWD/config/Workspace_Policy.tsv" ]]; then
+    project="$PWD"
+fi
+if [[ -n "$project" ]]; then
+    steward="$self_dir/workspace_steward.py"
+    if [[ ! -f "$steward" ]]; then
+        workspace_line="workspace_steward.py 缺失"
+        blockers+=("Workspace Steward 已启用但核心脚本缺失: $steward")
+    elif [[ -z "$module" || -z "$task_id" || -z "$output_dir" ]]; then
+        workspace_line="缺少 --module/--task-id/--output"
+        blockers+=("Steward 项目提交必须显式提供 --module、--task-id 和 --output")
+    else
+        script_abs="$(realpath -m -- "$script" 2>/dev/null || printf '%s' "$script")"
+        ws_log_out="$(get_sbatch_value '--output' '-o' || true)"
+        ws_log_err="$(get_sbatch_value '--error' '-e' || true)"
+        if [[ -z "$ws_log_out" || -z "$ws_log_err" ]]; then
+            workspace_line="SBATCH 日志路径缺失"
+            blockers+=("Workspace Steward 无法校验日志路由: 脚本必须同时声明 #SBATCH --output 和 --error")
+        else
+            ws_args=(
+                preflight --project "$project" --module "$module" --task-id "$task_id"
+                --script-path "$script_abs" --log-path "$ws_log_out" --log-path "$ws_log_err"
+                --output-path "$output_dir"
+            )
+            for ws_tmp in "${tmp_paths[@]}"; do ws_args+=(--tmp-path "$ws_tmp"); done
+            set +e
+            ws_out="$(python3 "$steward" "${ws_args[@]}" 2>&1)"
+            ws_rc=$?
+            set -e
+            if [[ "$ws_rc" -ge 2 ]]; then
+                workspace_line="BLOCK (workspace preflight exit $ws_rc)"
+                blockers+=("Workspace Steward 路由闸门 BLOCK: $(printf '%s' "$ws_out" | tail -n 1)")
+            elif [[ "$ws_rc" -eq 1 ]]; then
+                workspace_line="WARN (legacy route)"
+                warnings+=("Workspace Steward 存在 legacy 路由警告: $(printf '%s' "$ws_out" | tail -n 1)")
+            else
+                workspace_line="PASS | module=$module task=$task_id"
+            fi
+        fi
+    fi
+fi
+
 # === assemble the suggested (UNEXECUTED) sbatch command ========================
 sbatch_cmd="sbatch"
 [[ -n "$mode" && -z "$req_part" ]] && sbatch_cmd+=" --partition=$mode"
@@ -413,6 +467,7 @@ printf '[资源]   partition=%s  cpus-per-task=%s  mem=%s\n' \
 printf '[资源判断] %s\n' "$resource_line"
 printf '[配额]   %s\n' "$quota_line"
 printf '[输出]   %s\n' "$output_line"
+printf '[工作区] %s\n' "$workspace_line"
 printf '[时间]   %s\n' "$(get_sbatch_value '--time' '-t' >/dev/null 2>&1 && echo '⚠️ 含 #SBATCH --time, 确认是否需要' || echo '无 #SBATCH --time')"
 printf -- '----------------------------------------------------------------------\n'
 
