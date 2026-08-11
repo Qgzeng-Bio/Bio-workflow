@@ -16,6 +16,29 @@ if [[ -z "$python_bin" ]]; then
 fi
 [[ -n "$python_bin" ]] || { echo 'FAIL | no Python with PyYAML found' >&2; exit 1; }
 
+claude_bin=""
+choose_claude() {
+    local candidate
+    if [[ -n "${CLAUDE_BIN:-}" ]]; then
+        if [[ ! -x "$CLAUDE_BIN" ]]; then
+            printf 'FAIL | CLAUDE_BIN is not executable: %s\n' "$CLAUDE_BIN" >&2
+            return 2
+        fi
+        claude_bin="$CLAUDE_BIN"
+        return 0
+    fi
+    if candidate="$(command -v claude 2>/dev/null)"; then
+        claude_bin="$candidate"
+        return 0
+    fi
+    candidate="${HOME%/}/anaconda3/envs/claude/bin/claude"
+    if [[ -x "$candidate" ]]; then
+        claude_bin="$candidate"
+        return 0
+    fi
+    return 1
+}
+
 cache="$(mktemp -d /tmp/bioflow-test-cache.XXXXXX)"
 trap 'rm -rf "$cache"' EXIT
 export PYTHONPYCACHEPREFIX="$cache/pycache"
@@ -112,11 +135,15 @@ if [[ -f "$plugin_validate" && -d plugins/bioflow ]]; then
 else
     printf '[WARN] Codex plugin validator or wrapper unavailable; skipped\n'
 fi
-if command -v claude >/dev/null 2>&1 && [[ -d plugins/bioflow ]]; then
-    printf '[TEST] Claude plugin\n'
-    claude plugin validate plugins/bioflow
+if [[ ! -d plugins/bioflow ]]; then
+    printf '[WARN] Claude plugin wrapper unavailable; skipped\n'
+elif choose_claude; then
+    printf '[TEST] Claude plugin | %s\n' "$claude_bin"
+    "$claude_bin" plugin validate plugins/bioflow
 else
-    printf '[WARN] Claude CLI or wrapper unavailable; skipped\n'
+    status=$?
+    [[ "$status" -ne 2 ]] || exit 1
+    printf '[WARN] Claude CLI not found in CLAUDE_BIN, PATH, or ~/anaconda3/envs/claude/bin; skipped\n'
 fi
 
 printf '[TEST] Plugin drift dry-run\n'

@@ -110,6 +110,29 @@ choose_python() {
     exit 2
 }
 
+claude_bin=""
+choose_claude() {
+    local candidate
+    if [[ -n "${CLAUDE_BIN:-}" ]]; then
+        if [[ ! -x "$CLAUDE_BIN" ]]; then
+            echo "ERROR | CLAUDE_BIN is not executable: $CLAUDE_BIN" >&2
+            return 2
+        fi
+        claude_bin="$CLAUDE_BIN"
+        return 0
+    fi
+    if candidate="$(command -v claude 2>/dev/null)"; then
+        claude_bin="$candidate"
+        return 0
+    fi
+    candidate="${HOME%/}/anaconda3/envs/claude/bin/claude"
+    if [[ -x "$candidate" ]]; then
+        claude_bin="$candidate"
+        return 0
+    fi
+    return 1
+}
+
 run_source_validate() {
     [[ "$skip_validate" -eq 0 ]] || return 0
     # Multi-user: the skill-creator validator lives under each user's own ~/.codex.
@@ -130,10 +153,13 @@ run_plugin_validate() {
     if [[ -f "$plugin_dir/.claude-plugin/plugin.json" ]]; then
         if [[ "$skip_claude_validate" -eq 1 ]]; then
             echo "WARN   | skipping Claude plugin validation by request"
-        elif command -v claude >/dev/null 2>&1; then
-            claude plugin validate "$plugin_dir"
+        elif choose_claude; then
+            echo "CLAUDE | $claude_bin"
+            "$claude_bin" plugin validate "$plugin_dir"
         else
-            echo "WARN   | claude command not found; skipping Claude plugin validation"
+            local status=$?
+            [[ "$status" -ne 2 ]] || exit 2
+            echo "WARN   | Claude CLI not found in CLAUDE_BIN, PATH, or ~/anaconda3/envs/claude/bin; skipping validation"
         fi
     fi
 }
