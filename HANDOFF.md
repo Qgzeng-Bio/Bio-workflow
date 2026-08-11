@@ -1886,7 +1886,7 @@ The deferred folder-naming request is now implemented as a bounded Bioflow
 capability:
 
 - `scripts/path_manager.py suggest` emits one validated short name from 1–3
-  explicit semantic tokens (`30_RNA_DE`), with a 24-character budget and optional
+  explicit semantic tokens (`03_RNA_DE`), with a 24-character budget and optional
   sibling collision check.
 - `audit` is read-only, deterministic, max-depth bounded (hard cap 5), skips
   data/log/tmp interiors, never follows symlinks, and reports true TSV rule rows.
@@ -1905,6 +1905,16 @@ Detailed rules live in `references/path-management.md`; `SKILL.md` only routes
 matching requests. The implementation uses the Python standard library and was
 informed by local Agent Skills/skill-creator/audit patterns because the session
 was offline; no external organizer was installed or copied.
+
+A later read-only tuning exercise against the protected quinoa TEMR results
+clarified directory-stage semantics. New sibling directories are now planned by
+bounded evidence and real dependency/scientific reading order, then numbered
+consecutively (`01`, `02`, `03`, ...), without default ten-step gaps. Alphabetic,
+mtime, listing, and accidental legacy order are forbidden as sequencing evidence.
+The documented TEMR example places preparation/QC/core tables before inversion
+group review and its consumers, then plot data before figures and final docs.
+This changes guidance only: no TEMR path was modified, stable legacy directories
+are not renumbered, and script files retain their separate 10-step prefix policy.
 
 ## Remaining Design Options
 

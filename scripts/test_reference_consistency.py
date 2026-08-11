@@ -99,9 +99,14 @@ agent_metadata = (ROOT / "agents" / "openai.yaml").read_text()
 assert "references/path-management.md" in skill
 assert "scripts/path_manager.py suggest" in skill
 assert "folder naming" in skill.split("---", 2)[1]
-assert "30_RNA_DE" in path_contract and "Directory_Index.tsv" in path_contract
+assert "03_RNA_DE" in path_contract and "Directory_Index.tsv" in path_contract
+assert "01_intermediate" in path_contract and "11_docs" in path_contract
+assert "Never derive stage order from alphabetic sorting" in path_contract
+assert "assign consecutive stages `01`, `02`, `03`, ..." in path_contract
 assert "no rename, move, delete" in path_contract
 assert "Executable path management" in layout and "24-character" in layout
+assert "separate from the stable script-prefix rule" in layout
+assert "Leave increments of 10 for" in layout
 assert "简洁目录管理" in agent_metadata and "name/audit project directories" in agent_metadata
 print("PASS | concise path management contract, trigger, route, and metadata are linked")
 

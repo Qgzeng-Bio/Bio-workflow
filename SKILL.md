@@ -95,10 +95,14 @@ seven-directory skeleton and writes only missing templates after explicit `--yes
 When naming or creating an analysis directory, read
 `references/path-management.md`. Reduce the purpose to at most three short tokens,
 then run `scripts/path_manager.py suggest`; do not turn a long user sentence into
-a basename. `audit` is bounded/read-only. `create` and `register` are dry-run by
-default and may use `--yes` only after the normal write disclosure and
-confirmation. Never rename an established path for style; the manager intentionally
-has no rename/move/delete operation.
+a basename. For multiple new siblings, inspect bounded project evidence first,
+order prerequisites before consumers, and assign consecutive stages `01`, `02`,
+`03`, ...; never number alphabetically/by mtime or default to `10`, `20`, `30`
+directory gaps. Split true parallel branches rather than inventing dependencies.
+`audit` is bounded/read-only. `create` and `register` are dry-run by default and
+may use `--yes` only after the normal write disclosure and confirmation. Never
+rename an established path for style; the manager intentionally has no
+rename/move/delete operation.
 
 ## Reference routing map
 
@@ -107,7 +111,7 @@ Keep `SKILL.md` as the routing hub. Load detailed references only when their tas
 - `references/project-lifecycle.md`: use when starting, planning, managing, resuming, validating, interpreting, or delivering a project. It is the single contract for the nine project stages, startup plan, management artifacts, and `workflow_status.tsv`.
 - `references/task-monitoring.md`: use for running-task, progress, queue, mixed-status, array, blocker, and next-action requests. It defines `Task_Status.tsv` and the read-only `scripts/project_dashboard.py` route.
 - `references/project-layout.md`: use for directory boundaries, script numbering, artifact/table naming, identifiers, versions, compatibility, and new-project templates.
-- `references/path-management.md`: use for overlong folder names, short-name suggestions, bounded directory audits, safe directory creation/registration, `Directory_Index.tsv`, and path-manager rule IDs.
+- `references/path-management.md`: use for overlong folder names, dependency-ordered consecutive stage numbering, short-name suggestions, bounded directory audits, safe directory creation/registration, `Directory_Index.tsv`, and path-manager rule IDs.
 - `references/resume-protocol.md`: use with the lifecycle contract when taking over, checking, or recovering an existing project. It defines bounded evidence collection and mixed-evidence precedence.
 - `references/software-resource-cards.md`: use when estimating resources or writing commands for known tools. It gives per-tool modes, memory drivers, parallelism, red flags, and acceptance notes.
 - `references/resource-feedback.md`: use for CPU/memory sizing, pilot or benchmark interpretation, partition choice, array concurrency, resource down-tuning, and serial-to-array audits. It supports `scripts/resource_usage_audit.sh` and `scripts/parallelization_audit.sh`.

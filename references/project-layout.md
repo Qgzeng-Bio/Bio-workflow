@@ -58,8 +58,12 @@ task-specific subdirectory only when a real tool or workflow stage needs it.
 
 For newly created stage/result subdirectories, use the executable contract in
 `references/path-management.md`: one to three short semantic tokens, a
-24-character basename budget, and an optional two-digit stage prefix. Examples:
-`20_align`, `30_RNA_DE`, `40_BUSCO`, `50_SV_LM134`.
+24-character basename budget, and an optional two-digit stage prefix. Within a
+new sibling set, determine data dependencies/scientific reading order first and
+then number directories consecutively: `01_prep`, `02_QC`, `03_RNA_DE`,
+`04_figures`. Do not alphabetically number or default to `10`, `20`, `30` gaps.
+This consecutive-directory rule is separate from the stable script-prefix rule
+below.
 
 Do not turn a long Chinese or English purpose sentence into a basename. Keep the
 short operational identity in the directory and record the full purpose in
@@ -115,13 +119,14 @@ dry-run by default and still require write disclosure/confirmation before
 Use:
 
 ```bash
-python3 scripts/path_manager.py suggest --kind stage --step 30 --token RNA --token DE
+python3 scripts/path_manager.py suggest --kind stage --step 3 --token RNA --token DE
 python3 scripts/path_manager.py audit --project /abs/project --max-depth 3
 ```
 
-For the complete CLI, index schema, rule IDs, dry-run writes, protected-path
-checks, and rollback behavior, read `references/path-management.md`. The manager
-has no rename/move/delete operation and does not follow symlinks during audit.
+For the complete dependency-order procedure, CLI, index schema, rule IDs,
+dry-run writes, protected-path checks, and rollback behavior, read
+`references/path-management.md`. The manager has no rename/move/delete operation
+and does not follow symlinks during audit.
 
 ## Identifiers and versions
 

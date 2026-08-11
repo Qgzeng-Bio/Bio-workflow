@@ -8,6 +8,7 @@ needs a compact explanation of result directories.
 
 - [Design boundary](#design-boundary)
 - [Managed naming rules](#managed-naming-rules)
+- [Continuous dependency-driven order](#continuous-dependency-driven-order)
 - [Suggest one name](#suggest-one-name)
 - [Audit an explicit project](#audit-an-explicit-project)
 - [Create one directory](#create-one-directory)
@@ -51,13 +52,15 @@ NN_<one-to-three-semantic-tokens>[_<version>]
 Examples:
 
 ```text
-20_align
-30_RNA_DE
-40_BUSCO
-50_SV_LM134
+01_prep
+02_QC
+03_RNA_DE
+04_figures
 ```
 
-`NN` is a two-digit stage number (`00`–`99`). Semantic tokens contain ASCII
+`NN` is a zero-padded two-digit stage number (`00`–`99`). Within one newly
+planned sibling set, assign stages consecutively (`01`, `02`, `03`, ...); do not
+default to directory gaps such as `10`, `20`, `30`. Semantic tokens contain ASCII
 letters/digits only. Ordinary action/topic words are short lowercase words;
 established scientific abbreviations retain standard casing; atomic sample,
 chromosome, figure, and accession IDs remain exact.
@@ -106,18 +109,78 @@ Register tool-mandated output directories as `tool_managed`; audit reports them
 as exempt. Register an incompatible established path as `legacy`; audit emits an
 advisory warning and never proposes an automatic rename.
 
+## Continuous dependency-driven order
+
+A stage number is a compact dependency/read-order label, not decoration. Before
+choosing `--step` for multiple sibling directories, the agent must:
+
+1. define the sibling scope that will share one sequence;
+2. inspect bounded, explicit project evidence such as plans, scripts, manifests,
+   handoffs, accepted summaries, and shallow directory contents;
+3. identify inputs/preparation, QC gates, accepted core results, downstream
+   branches, plot-ready data, figures, and reports;
+4. order actual prerequisites before their consumers and place final reporting
+   after accepted evidence;
+5. assign consecutive stages `01`, `02`, `03`, ... in that evidence-based order.
+
+Never derive stage order from alphabetic sorting, locale/`ls` order, modification
+time, inode order, or the accidental order of an existing untidy directory. Do
+not assign numbers first and invent a rationale afterwards.
+
+Some analyses are parallel rather than dependent. Use the intended execution or
+scientific reading order when that order is supported. If a flat sequence would
+falsely imply dependency, create a short branch parent and use a consecutive
+sequence within each branch instead of forcing unrelated tasks into one chain.
+Record the branch and purpose in `Directory_Index.tsv`.
+
+The decision boundary is explicit: the agent establishes the dependency order;
+`path_manager.py suggest/create` only validate and format the selected step. The
+tool does not infer biology or chronology from names.
+
+### Real read-only tuning example: TEMR results
+
+A bounded inspection of an existing quinoa TEMR result directory showed that a
+purely cosmetic/alphabetic order would be misleading. The evidence supported
+this hypothetical from-scratch layout:
+
+```text
+results/
+├── 01_intermediate/
+├── 02_QC/
+├── 03_tables/
+├── 04_Cq3B_INV_review/
+├── 05_phenotype_INV_WT/
+├── 06_LD_Fst/
+├── 07_gene_impact/
+├── 08_INV_downstream/
+├── 09_plot_data/
+├── 10_figures/
+└── 11_docs/
+```
+
+The logic was preparation -> QC -> accepted core tables -> inversion grouping
+review -> phenotype/population/function branches -> integrated downstream
+analysis -> plot data -> figures -> documentation. In particular, grouping
+review precedes analyses that consume INV/WT membership, and plot data precedes
+figures. This is a reasoning example, not a universal directory template and not
+a request to rename that protected legacy project.
+
+For existing active directories, do not renumber merely to make the sequence
+continuous. Apply consecutive numbering when planning a new sibling set; later
+insertions use a reviewed next stage or a branch rather than automatic renaming.
+
 ## Suggest one name
 
 ```bash
 python3 scripts/path_manager.py suggest \
-  --kind stage --step 30 --token RNA --token DE
+  --kind stage --step 3 --token RNA --token DE
 ```
 
 Output is true TSV:
 
 ```text
 Recommended_Name	Name_Length	Token_Count	Status	Rule_ID	Detail
-30_RNA_DE	9	2	PASS	OK	name satisfies managed-directory rules
+03_RNA_DE	9	2	PASS	OK	name satisfies managed-directory rules
 ```
 
 The command emits one recommendation, not a list of increasingly long options.
@@ -176,7 +239,7 @@ Preview:
 ```bash
 python3 scripts/path_manager.py create \
   --project /abs/project --parent results \
-  --kind stage --step 30 --token RNA --token DE \
+  --kind stage --step 3 --token RNA --token DE \
   --purpose "RNA-seq differential expression" --owner qgzeng
 ```
 

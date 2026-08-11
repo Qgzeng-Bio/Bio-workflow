@@ -74,13 +74,17 @@ Use the deterministic manager instead of turning a long task description into a
 folder name:
 
 ```bash
-python3 scripts/path_manager.py suggest --kind stage --step 30 --token RNA --token DE
+python3 scripts/path_manager.py suggest --kind stage --step 3 --token RNA --token DE
 python3 scripts/path_manager.py audit --project /abs/project --max-depth 3
 ```
 
-`create` and `register` are dry-run by default and write only with `--yes` after
-the normal Bioflow confirmation gate. They update `config/Directory_Index.tsv`;
-there is no rename/move/delete command. Full rules and examples are in
+For multiple new sibling directories, Bioflow first derives the dependency and
+scientific reading order from bounded project evidence, then assigns consecutive
+stages `01`, `02`, `03`, ...—not alphabetic order or default `10`, `20`, `30`
+gaps. `create` and `register` are dry-run by default and write only with `--yes`
+after the normal Bioflow confirmation gate. They update
+`config/Directory_Index.tsv`; there is no rename/move/delete command. Full rules
+and the TEMR tuning example are in
 [`references/path-management.md`](references/path-management.md).
 
 ## Monitor running work
