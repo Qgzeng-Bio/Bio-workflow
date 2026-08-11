@@ -226,6 +226,8 @@ def main() -> int:
         payload = json.loads(result.stdout)
         assert_true(payload["Workspace"]["Enabled"] is True, payload["Workspace"])
         assert_true(payload["Workspace"]["Status"] == "PASS", payload["Workspace"])
+        assert_true(payload["Tasks"][0]["effective_status"] == "Ready", payload["Tasks"])
+        assert_true(not any("unresolved dependencies: NA" in item for item in payload["Warnings"]), payload["Warnings"])
         text_result = run(project)
         assert_true("[INFO] Workspace: PASS" in text_result.stdout, text_result.stdout)
         setup_workspace(project, legacy=True)
@@ -238,7 +240,7 @@ def main() -> int:
         malformed_payload = json.loads(malformed_workspace.stdout)
         assert_true(malformed_payload["Workspace"]["Status"] == "BLOCK", malformed_payload["Workspace"])
         assert_true(any("Workspace Steward contract" in warning for warning in malformed_payload["Warnings"]), malformed_payload["Warnings"])
-        print("PASS | dashboard reports workspace PASS/WARN/BLOCK without writing")
+        print("PASS | dashboard reports workspace PASS/WARN/BLOCK and ignores empty dependency sentinels")
 
         project = make_project(tmp, "malformed")
         write(project / "reports" / "Task_Status.tsv", "Task_ID\tStatus\nT1\tRunning\n")

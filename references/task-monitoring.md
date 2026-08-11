@@ -71,7 +71,9 @@ In a managed workspace, `Stage` is the stable `Module_ID` (`M001`), and
 resolve under that module's reviewed routes. The Workspace route may list the
 same stable Task ID in `Producer_Tasks`/`Consumer_Tasks`.
 Repeated rows for one `Task_ID` are allowed as an append-only history; the last
-row is the current record. Separate multiple dependencies with commas. A task
+row is the current record. Separate multiple dependencies with commas; an empty,
+`NA`, `N/A`, `None`, or `Null` dependency value means that no dependency is
+declared and must never be interpreted as a Task ID. A task
 with unresolved dependencies is reported as `Blocked` unless scheduler evidence
 shows that it is already queued or running.
 

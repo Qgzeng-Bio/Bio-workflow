@@ -165,6 +165,15 @@ def clean(value: object, default: str = "NA") -> str:
     return text if text and text != "-" else default
 
 
+def dependency_ids(value: object) -> list[str]:
+    missing = {"", "-", ".", "NA", "N/A", "NONE", "NULL"}
+    return [
+        item
+        for token in str(value or "").split(",")
+        if (item := token.strip()) and item.upper() not in missing
+    ]
+
+
 def read_tsv(path: Path, required: Iterable[str] = ()) -> tuple[list[dict[str, str]], list[str]]:
     warnings: list[str] = []
     if not path.exists():
@@ -572,7 +581,7 @@ def reconcile_tasks(
 
     # Resolve dependencies only after every registered task has scheduler evidence.
     for task in tasks:
-        dependencies = [item.strip() for item in clean(task.dependency, "").split(",") if item.strip()]
+        dependencies = dependency_ids(task.dependency)
         if dependencies and task.effective_status in {"Planned", "Ready", "Unknown", "Submitted_recorded"}:
             unresolved = [
                 dependency
