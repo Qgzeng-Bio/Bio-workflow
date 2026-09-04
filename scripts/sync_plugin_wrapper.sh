@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
     cat <<'USAGE'
 Usage:
-  scripts/sync_plugin_wrapper.sh [--yes] [--source DIR] [--plugin DIR] [--python PYTHON] [--skip-validate] [--skip-claude-validate]
+  scripts/sync_plugin_wrapper.sh [--yes|--check] [--source DIR] [--plugin DIR] [--python PYTHON] [--skip-validate] [--skip-claude-validate]
 
 Synchronize the raw bioflow skill source into the repo-local plugin wrapper
 at plugins/bioflow/skills/bioflow. The same wrapper contains Codex and
@@ -16,8 +16,9 @@ Defaults:
   --plugin  <source>/plugins/bioflow
 
 Behavior:
-  - without --yes: dry-run only; prints rsync itemized changes and writes nothing.
-  - with    --yes: validates source, syncs the skill copy, then validates plugin manifests.
+  - without --yes/--check: dry-run only; prints rsync itemized changes and writes nothing.
+  - with --check: dry-run and exits non-zero when plugin-copy drift exists.
+  - with --yes: validates source, syncs the skill copy, then validates plugin manifests.
 
 Synced into the plugin skill copy:
   SKILL.md, references/, scripts/, assets/, agents/
@@ -27,6 +28,7 @@ Excluded:
 
 Options:
   --yes            actually write to the plugin wrapper skill copy
+  --check          fail when dry-run detects plugin-copy drift; never writes
   --source DIR     source skill directory
   --plugin DIR     plugin root directory containing .codex-plugin/plugin.json
   --python PYTHON  Python interpreter to use for validators
@@ -38,6 +40,7 @@ USAGE
 }
 
 do_sync=0
+check_drift=0
 source_dir=""
 plugin_dir=""
 python_bin="${PYTHON_BIN:-}"
@@ -47,6 +50,7 @@ skip_claude_validate=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --yes) do_sync=1; shift ;;
+        --check) check_drift=1; shift ;;
         --source) [[ $# -ge 2 ]] || { echo "ERROR | --source requires a value" >&2; exit 2; }; source_dir="$2"; shift 2 ;;
         --plugin) [[ $# -ge 2 ]] || { echo "ERROR | --plugin requires a value" >&2; exit 2; }; plugin_dir="$2"; shift 2 ;;
         --python) [[ $# -ge 2 ]] || { echo "ERROR | --python requires a value" >&2; exit 2; }; python_bin="$2"; shift 2 ;;
@@ -56,6 +60,8 @@ while [[ $# -gt 0 ]]; do
         *) echo "ERROR | Unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
 done
+
+[[ "$do_sync" -eq 0 || "$check_drift" -eq 0 ]] || { echo "ERROR | --yes and --check are mutually exclusive" >&2; exit 2; }
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -z "$source_dir" ]]; then
@@ -199,7 +205,9 @@ fi
 echo "SOURCE | $source_dir"
 echo "PLUGIN | $plugin_dir"
 echo "TARGET | $target_skill_dir"
-if [[ "$do_sync" -eq 0 ]]; then
+if [[ "$check_drift" -eq 1 ]]; then
+    echo "MODE   | check drift; fail if source and plugin copy differ"
+elif [[ "$do_sync" -eq 0 ]]; then
     echo "MODE   | dry-run; add --yes to write"
 else
     echo "MODE   | write"
@@ -214,7 +222,24 @@ elif [[ ! -d "$target_skill_dir" ]]; then
     echo "DRYRUN | would create $target_skill_dir"
 fi
 
-rsync "${rsync_args[@]}" "$source_dir/" "$target_skill_dir/"
+set +e
+rsync_output="$(rsync "${rsync_args[@]}" "$source_dir/" "$target_skill_dir/" 2>&1)"
+rsync_rc=$?
+set -e
+[[ -n "$rsync_output" ]] && printf '%s\n' "$rsync_output"
+[[ "$rsync_rc" -eq 0 ]] || exit "$rsync_rc"
+if [[ "$check_drift" -eq 1 ]]; then
+    # Excluded local artifacts (for example __pycache__/*.pyc generated while
+    # testing either tree) are cleanup noise, not source drift. A real content
+    # difference still fails --check.
+    drift_output="$(printf '%s\n' "$rsync_output" | awk '$1 == "*deleting" && ($0 ~ /__pycache__/ || $0 ~ /\.pyc$/) { next } { print }')"
+else
+    drift_output="$rsync_output"
+fi
+if [[ "$check_drift" -eq 1 && -n "$drift_output" ]]; then
+    echo "FAIL | plugin wrapper drift detected; run scripts/sync_plugin_wrapper.sh --yes after review" >&2
+    exit 1
+fi
 
 if [[ "$do_sync" -eq 1 || -f "$target_skill_dir/SKILL.md" ]]; then
     run_plugin_validate

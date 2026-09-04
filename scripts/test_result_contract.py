@@ -252,6 +252,19 @@ with tempfile.TemporaryDirectory(prefix="bioflow-contract-test.") as tmp_name:
     assert_status("BLOCK", missing_evidence, tmp, "CLAIM_EVIDENCE_001")
     passed("supported claim missing relative evidence path BLOCK")
 
+    v2_project = tmp / "layout_v2"
+    (v2_project / "config").mkdir(parents=True)
+    (v2_project / "tmp").mkdir()
+    (v2_project / "tmp" / "evidence.tsv").write_text("Metric\tValue\nN50\t500\n")
+    (v2_project / "config" / "Project_Layout.tsv").write_text(
+        "Schema_Version\tRawdata_Root\tDocumentation_Root\tManuscript_Root\tModule_Separator\n"
+        "bioflow.layout.v2\trawdata\tdocs\tmanuscripts\t-\n"
+    )
+    tmp_evidence = copy.deepcopy(n50_compare)
+    tmp_evidence["claims"][0]["evidence_paths"] = ["../tmp/evidence.tsv"]
+    assert_status("BLOCK", tmp_evidence, v2_project / "config", "CLAIM_EVIDENCE_002")
+    passed("layout-v2 supported claim evidence under tmp BLOCK")
+
     # Legacy manifests remain readable but cannot produce false PASS.
     legacy = {"schema_version": "result_manifest.v1", "analysis_types": ["assembly_evaluation"], "assemblies": [assembly("asm1")]}
     assert_status("WARN", legacy, tmp, "CLAIM_SCHEMA_001")
@@ -450,5 +463,16 @@ with tempfile.TemporaryDirectory(prefix="bioflow-contract-test.") as tmp_name:
         if section:
             assert section in completed.stdout, completed.stdout
     passed("CLI PASS/WARN/BLOCK/UNCERTAIN sections and exit codes")
+
+    linked_manifest = v2_project / "config" / "result_manifest.yaml"
+    external_manifest = v2_project / "tmp" / "manifest.yaml"
+    external_manifest.write_text(yaml.safe_dump(single, sort_keys=False))
+    linked_manifest.symlink_to(external_manifest)
+    symlinked = subprocess.run(
+        [sys.executable, str(CHECKER), "--manifest", str(linked_manifest)],
+        check=False, capture_output=True, text=True,
+    )
+    assert symlinked.returncode == 2 and "must not be a symbolic link" in symlinked.stderr
+    passed("canonical result manifest symlink is refused")
 
 print("PASS | claim-specific result contract regression fixtures")

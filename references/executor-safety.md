@@ -154,11 +154,14 @@ module routes is NO-GO. Explicit Legacy routes remain WARN.
 
 Hard blockers include:
 
-- preflight `FAIL`
-- missing or empty inputs
-- header row in bundled-template manifests
-- `--output` under `~/data` or `~/tools` (or any `/data9/home/*/data|tools`)
-- quota submit-cap overrun
+- preflight `FAIL`;
+- missing or empty inputs;
+- header row in bundled-template manifests;
+- `--output` under `~/data` or `~/tools` (or any `/data9/home/*/data|tools`);
+- layout-v2 `--output` under project `rawdata/` or `tmp/`;
+- layout-v2 structure audit BLOCK (duplicate/version-suffixed result module,
+  bad version/index, formal tmp reference, or completed figure-package failure);
+- quota submit-cap overrun.
 
 Warnings to acknowledge include preflight `WARN`, resource-sanity WARN, non-empty
 output directories, and unknown quota/header status. The gate never submits.
@@ -171,8 +174,8 @@ scripts/parallelization_audit.sh --script <slurm_script> --manifest <manifest.ts
 scripts/resource_usage_audit.sh --script <slurm_script> --time-log <stage.time.log> --stage <stage_name>
 ```
 
-Both audit scripts are read-only and print recommendations only. Do not write
-`reports/resource_usage.tsv`, generate replacement scripts, or submit arrays
+Both audit scripts are read-only and print recommendations only. Do not write a
+persistent resource-usage table, generate replacement scripts, or submit arrays
 without user confirmation.
 
 `slurm_preflight.sh` only performs a lightweight sanity pass. A clean preflight
@@ -211,7 +214,8 @@ scripts/submit_and_log.sh --script <slurm_script> [gate options] [--record FILE]
 ```
 
 It re-runs `prepare_submission.sh` as the final gate and is dry-run by default.
-Only `--yes` calls `sbatch` and appends `reports/run_record.tsv`. A NO-GO gate,
+Only `--yes` calls `sbatch` and appends the active layout's run record
+(`docs/status/run_record.tsv` in v2, `reports/run_record.tsv` in legacy). A NO-GO gate,
 missing `--yes`, unwritable record path, or script change since the gate blocks
 submission. Arrays must live in the script itself; there is no `--array`
 override on the submitter.
@@ -224,8 +228,9 @@ scripts/submit_chunked.sh -s <slurm_script> -N <tasks> -k <chunk_size> -j <cap> 
 ```
 
 It is dry-run by default. With `--yes`, it writes persistent chunk scripts under
-the current project `reports/submitted_scripts/chunked/` by default, or under an
-explicit `--chunk-dir <dir>` when needed. The directory must not be under
+`docs/status/submitted-scripts/chunked/` in v2 or the legacy
+`reports/submitted_scripts/chunked/`, unless an explicit `--chunk-dir` is given.
+The directory must not be under
 `~/data/` or `~/tools/` (or any `/data9/home/*/data|tools`). Each chunk embeds the
 actual `#SBATCH --array=start-end%cap` and delegates to `submit_and_log.sh`. It
 must not pass arbitrary sbatch flags or call `sbatch` directly.

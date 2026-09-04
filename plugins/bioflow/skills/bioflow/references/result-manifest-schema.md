@@ -198,8 +198,9 @@ codes `2/3/1/0` respectively.
   or caveat is incomplete, QV is non-independent, or a supported status conflicts
   with a warning. It is not a formal claim PASS.
 - **BLOCK** — invalid comparison, missing evidence for a supported claim,
-  read+assembly SV orthogonality failure, explicit `status: blocked`, or
-  `status: supported` conflicts with a block.
+  layout-v2 supported evidence under disposable `tmp/`, read+assembly SV
+  orthogonality failure, explicit `status: blocked`, or `status: supported`
+  conflicts with a block.
 - **UNCERTAIN** — rule coverage is absent, evidence scope cannot be determined, or
   a claim explicitly has `status: uncertain`.
 

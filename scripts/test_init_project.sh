@@ -7,12 +7,12 @@ tmp="$(mktemp -d /tmp/bioflow-init-test.XXXXXX)"
 trap 'rm -rf "$tmp"' EXIT
 project="$tmp/project"
 
-output="$($init --project "$project")"
+output="$($init --project "$project" --legacy-layout)"
 grep -Fq 'MODE    | dry-run' <<< "$output"
 [[ ! -e "$project" ]] || { echo 'FAIL | dry-run wrote project paths' >&2; exit 1; }
 printf 'PASS | dry-run is read-only\n'
 
-$init --project "$project" --yes >/dev/null
+$init --project "$project" --legacy-layout --yes >/dev/null
 for path in config data scripts logs tmp results reports; do
     [[ -d "$project/$path" ]] || { echo "FAIL | missing directory: $path" >&2; exit 1; }
 done
@@ -23,12 +23,12 @@ done
     || { echo 'FAIL | legacy init unexpectedly enabled Workspace Steward' >&2; exit 1; }
 printf 'PASS | project skeleton created without implicit steward enablement\n'
 
-workspace_dry="$($init --project "$project" --workspace-steward)"
+workspace_dry="$($init --project "$project" --legacy-layout --workspace-steward)"
 grep -Fq 'WORKSPACE_STEWARD | enabled' <<< "$workspace_dry"
 grep -Fq 'WOULD_CREATE_FILE' <<< "$workspace_dry"
 [[ ! -e "$project/config/Workspace_Policy.tsv" ]] \
     || { echo 'FAIL | workspace dry-run wrote contracts' >&2; exit 1; }
-$init --project "$project" --workspace-steward --yes >/dev/null
+$init --project "$project" --legacy-layout --workspace-steward --yes >/dev/null
 for path in config/Workspace_Policy.tsv config/Workspace_Modules.tsv config/Workspace_Routes.tsv; do
     [[ -s "$project/$path" ]] || { echo "FAIL | missing workspace template: $path" >&2; exit 1; }
 done
@@ -38,7 +38,7 @@ printf '\nSENTINEL\n' >> "$project/reports/Analysis_Plan.md"
 printf '\n# MANIFEST_SENTINEL\n' >> "$project/config/result_manifest.yaml"
 printf 'D999\tresults/SENTINEL\tlegacy\t\tSENTINEL\tSentinel row\ttest\tExternal\tDo not overwrite\n' >> "$project/config/Directory_Index.tsv"
 printf 'M999\tROOT\t\tlegacy\tlegacy\t\tSentinel module\ttest\tLegacy\tDo not overwrite\n' >> "$project/config/Workspace_Modules.tsv"
-$init --project "$project" --workspace-steward --yes >/dev/null
+$init --project "$project" --legacy-layout --workspace-steward --yes >/dev/null
 [[ "$(tail -n 1 "$project/reports/Analysis_Plan.md")" == 'SENTINEL' ]] \
     || { echo 'FAIL | existing plan was overwritten' >&2; exit 1; }
 [[ "$(tail -n 1 "$project/config/result_manifest.yaml")" == '# MANIFEST_SENTINEL' ]] \

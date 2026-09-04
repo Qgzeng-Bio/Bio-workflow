@@ -56,9 +56,10 @@ snippets. Do not treat a zero exit code as enough.
   biology or plotting.
 - For `Delivered`, verify the delivery index resolves to final outputs,
   acceptance evidence, methods, versions, limitations, and a reproducible entry.
-- Do not write `reports/workflow_status.tsv` automatically; write it only after
-  user confirmation, using the standard columns from
-  `references/project-lifecycle.md`.
+- Do not write the active layout's `workflow_status.tsv` automatically; write it
+  only after user confirmation, using the standard lifecycle columns.
+- For layout v2, run `scripts/project_structure_audit.py --project <dir>` and
+  resolve every BLOCK before submission, acceptance, figures, or delivery.
 
 ## Input checklist
 
@@ -363,6 +364,13 @@ snippets. Do not treat a zero exit code as enough.
 
 ## Figure acceptance checklist
 
+- In layout v2, retain each figure as one
+  `results/<module>/figures/FNNN_Name/` package. Its root holds PDF/PNG and
+  README; `source-data/` holds the exact plotting TSV; `checks/` holds generated
+  Markdown/JSON checks and review sidecars. Draft alternatives remain under tmp.
+- A formal Figure Index, Claim, Acceptance, Delivery, or publication handoff must
+  not cite `tmp/`. Validated/manuscript-ready/frozen packages must pass
+  `project_structure_audit.py`.
 - Load the installed `paperplot-skills` for figure selection/redesign, export,
   and rendered-image QA (`$paperplot-skills` on Codex; discovered skill or user
   `/skill:paperplot-skills` on Pi); if unavailable, report that limitation rather

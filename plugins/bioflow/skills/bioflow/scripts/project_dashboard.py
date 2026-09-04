@@ -21,6 +21,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
+import project_layout as layout_contract
+
 TASK_FIELDS = [
     "Task_ID",
     "Stage",
@@ -253,12 +255,19 @@ def load_tasks(project: Path) -> tuple[list[Task], dict[str, str], list[str], li
     tasks_by_id: dict[str, Task] = {}
     job_to_task: dict[str, str] = {}
     project_status = {"Stage": "UNKNOWN", "Status": "Unknown", "Evidence_Path": "NA", "Updated_Time": "NA"}
+    try:
+        layout = layout_contract.detect_layout(project)
+    except layout_contract.LayoutError as exc:
+        raise DashboardError(str(exc)) from exc
+    task_relative = layout_contract.control_relative(layout, "task_status")
+    run_relative = layout_contract.control_relative(layout, "run_record")
+    workflow_relative = layout_contract.control_relative(layout, "workflow_status")
 
-    task_path = project / "reports" / "Task_Status.tsv"
+    task_path = project / task_relative
     task_rows, row_warnings = read_tsv(task_path, TASK_FIELDS)
     warnings.extend(row_warnings)
     if task_path.exists():
-        sources.append("reports/Task_Status.tsv")
+        sources.append(task_relative)
     for index, row in enumerate(task_rows, start=1):
         task_id = clean(row.get("Task_ID"), "")
         if not task_id:
@@ -288,11 +297,11 @@ def load_tasks(project: Path) -> tuple[list[Task], dict[str, str], list[str], li
         if job_id != "NA":
             job_to_task[job_id] = task.task_id
 
-    run_path = project / "reports" / "run_record.tsv"
+    run_path = project / run_relative
     run_rows, row_warnings = read_tsv(run_path)
     warnings.extend(row_warnings)
     if run_path.exists():
-        sources.append("reports/run_record.tsv")
+        sources.append(run_relative)
     for row in run_rows:
         job_raw = clean(row.get("Job_ID"))
         job_id = extract_job_id(job_raw)
@@ -318,11 +327,11 @@ def load_tasks(project: Path) -> tuple[list[Task], dict[str, str], list[str], li
         )
         job_to_task[job_id] = task_id
 
-    workflow_path = project / "reports" / "workflow_status.tsv"
+    workflow_path = project / workflow_relative
     workflow_rows, row_warnings = read_tsv(workflow_path)
     warnings.extend(row_warnings)
     if workflow_path.exists():
-        sources.append("reports/workflow_status.tsv")
+        sources.append(workflow_relative)
     if workflow_rows:
         latest = workflow_rows[-1]
         project_status = {
@@ -695,7 +704,13 @@ def render_text(
 
     print("[TASKS]")
     if not tasks:
-        print("  - NA | Register tasks in reports/Task_Status.tsv or submit through submit_and_log.sh.")
+        try:
+            task_relative = layout_contract.control_relative(
+                layout_contract.detect_layout(project), "task_status"
+            )
+        except layout_contract.LayoutError:
+            task_relative = "the project Task_Status.tsv"
+        print(f"  - NA | Register tasks in {task_relative} or submit through submit_and_log.sh.")
     for task in sorted(tasks, key=task_sort_key):
         print(
             f"  - {task.task_id} | Status={task.effective_status} | Recorded={task.recorded_status} | "

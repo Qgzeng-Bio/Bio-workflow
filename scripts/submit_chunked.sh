@@ -29,11 +29,14 @@ Options:
   --manifest FILE        forwarded to submit_and_log.sh / prepare_submission.sh.
   --input-list FILE      forwarded to submit_and_log.sh / prepare_submission.sh.
   --output DIR           forwarded to submit_and_log.sh / prepare_submission.sh.
-  --chunk-dir DIR        directory for materialized chunk scripts (default:
-                         ./reports/submitted_scripts/chunked/<run>_<script>).
+  --project DIR          Bioflow project root; inferred from the source script/
+                         output when omitted.
+  --chunk-dir DIR        directory for materialized chunk scripts (default follows
+                         project layout under docs/status/submitted-scripts/chunked
+                         or legacy reports/submitted_scripts/chunked).
   --mode P               forwarded to submit_and_log.sh / prepare_submission.sh.
-  --record FILE          forwarded to submit_and_log.sh (default there:
-                         reports/run_record.tsv).
+  --record FILE          forwarded to submit_and_log.sh; its default follows the
+                         active project layout.
   --claim-manifest FILE  forwarded to submit_and_log.sh.
   --yes                  actually submit. Without --yes this is a dry-run and
                          writes no chunk scripts.
@@ -54,6 +57,7 @@ start_index=1
 manifest=""
 input_list=""
 output_dir=""
+project=""
 chunk_dir_arg=""
 mode=""
 record=""
@@ -72,6 +76,7 @@ while [[ $# -gt 0 ]]; do
         --manifest) [[ $# -ge 2 ]] || { echo "ERROR | --manifest requires a value" >&2; exit 2; }; manifest="$2"; shift 2 ;;
         --input-list) [[ $# -ge 2 ]] || { echo "ERROR | --input-list requires a value" >&2; exit 2; }; input_list="$2"; shift 2 ;;
         --output) [[ $# -ge 2 ]] || { echo "ERROR | --output requires a value" >&2; exit 2; }; output_dir="$2"; shift 2 ;;
+        --project) [[ $# -ge 2 ]] || { echo "ERROR | --project requires a value" >&2; exit 2; }; project="$2"; shift 2 ;;
         --chunk-dir) [[ $# -ge 2 ]] || { echo "ERROR | --chunk-dir requires a value" >&2; exit 2; }; chunk_dir_arg="$2"; shift 2 ;;
         --mode) [[ $# -ge 2 ]] || { echo "ERROR | --mode requires a value" >&2; exit 2; }; mode="$2"; shift 2 ;;
         --record) [[ $# -ge 2 ]] || { echo "ERROR | --record requires a value" >&2; exit 2; }; record="$2"; shift 2 ;;
@@ -98,9 +103,35 @@ grep -Eq '^[[:space:]]*#SBATCH[[:space:]]+' "$script" || {
 }
 
 self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=project_layout.sh
+source "$self_dir/project_layout.sh"
 submitter="$self_dir/submit_and_log.sh"
 [[ -x "$submitter" ]] || { echo "ERROR | submit_and_log.sh missing or not executable: $submitter" >&2; exit 1; }
-work_root="$(pwd -P)"
+
+script_project="$(bioflow_find_project_root "$script" 2>/dev/null || true)"
+output_project=""
+[[ -n "$output_dir" ]] && output_project="$(bioflow_find_project_root "$output_dir" 2>/dev/null || true)"
+if [[ -n "$script_project" && -n "$output_project" && "$script_project" != "$output_project" ]]; then
+    echo "ERROR | source script and output belong to different Bioflow projects: $script_project vs $output_project" >&2
+    exit 2
+fi
+if [[ -n "$project" ]]; then
+    project="$(realpath -m -- "$project" 2>/dev/null || printf '%s' "$project")"
+    for inferred in "$script_project" "$output_project"; do
+        [[ -z "$inferred" || "$inferred" == "$project" ]] || { echo "ERROR | --project disagrees with script/output project: $project vs $inferred" >&2; exit 2; }
+    done
+elif [[ -n "$script_project" ]]; then
+    project="$script_project"
+elif [[ -n "$output_project" ]]; then
+    project="$output_project"
+fi
+work_root="${project:-$(pwd -P)}"
+
+if [[ -n "$project" && -f "$project/config/Workspace_Policy.tsv" ]]; then
+    echo "ERROR | dynamic chunked submission is not allowed for a Workspace Steward project" >&2
+    echo "ERROR | each submitted chunk script must be pre-registered in Task_Status.tsv; review Workspace routes first" >&2
+    exit 2
+fi
 
 resolve_safe() {
     local p="$1" n
@@ -129,7 +160,11 @@ run_id="$(date '+%Y%m%dT%H%M%S')"
 if [[ -n "$chunk_dir_arg" ]]; then
     chunk_dir="$(resolve_safe "$chunk_dir_arg")" || { echo "ERROR | cannot safely resolve --chunk-dir: $chunk_dir_arg" >&2; exit 2; }
 else
-    chunk_dir="$(resolve_safe "$work_root/reports/submitted_scripts/chunked/${run_id}_${safe_base}")" || {
+    submitted_root="$(bioflow_control_path "$work_root" submitted_scripts)" || {
+        echo "ERROR | cannot resolve submitted-script path from project layout: $work_root" >&2
+        exit 2
+    }
+    chunk_dir="$(resolve_safe "$work_root/$submitted_root/chunked/${run_id}_${safe_base}")" || {
         echo "ERROR | cannot safely resolve default chunk dir under: $work_root" >&2
         exit 2
     }
@@ -190,6 +225,7 @@ write_chunk_script() {
 }
 
 submit_args_base=()
+[[ -n "$project" ]] && submit_args_base+=(--project "$project")
 [[ -n "$record" ]] && submit_args_base+=(--record "$record")
 [[ -n "$manifest" ]] && submit_args_base+=(--manifest "$manifest")
 [[ -n "$input_list" ]] && submit_args_base+=(--input-list "$input_list")

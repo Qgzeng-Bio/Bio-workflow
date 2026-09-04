@@ -225,4 +225,41 @@ with tempfile.TemporaryDirectory(prefix="bioflow-paperplot-test.") as tmp_name:
     )
     passed("output conflict, input equality, symlink, and protected path refused")
 
+    # Publication evidence in a layout-v2 tmp/ directory is never stable evidence.
+    project = tmp / "layout_v2"
+    (project / "config").mkdir(parents=True)
+    (project / "results" / "01-genome-qc").mkdir(parents=True)
+    (project / "tmp").mkdir()
+    (project / "config" / "Project_Layout.tsv").write_text(
+        "Schema_Version\tRawdata_Root\tDocumentation_Root\tManuscript_Root\tModule_Separator\n"
+        "bioflow.layout.v2\trawdata\tdocs\tmanuscripts\t-\n"
+    )
+    temporary_evidence = project / "tmp" / "evidence.tsv"
+    temporary_evidence.write_text("Metric\tValue\nN50\t1\n")
+    expect_error(
+        "must not come from disposable tmp/",
+        handoff.resolve_evidence_readiness,
+        [{"Claim_Status": "supported", "Evidence_Path": str(temporary_evidence)}],
+        project / "results" / "01-genome-qc",
+        "publication",
+    )
+    passed("layout-v2 publication handoff refuses tmp evidence")
+
+    # An external input cannot bypass v2 tmp evidence when outputs target a v2 figure package.
+    package = project / "results" / "01-genome-qc" / "figures" / "F001_Genome_QC"
+    (package / "source-data").mkdir(parents=True)
+    (package / "checks").mkdir()
+    external_input = tmp / "external_metrics.tsv"
+    external_rows = [row[:] for row in rows]
+    external_rows[0][8] = str(temporary_evidence)
+    write_tsv(external_input, header, external_rows)
+    external_call = subprocess.run([
+        sys.executable, str(SCRIPT), "--input", str(external_input),
+        "--output-tsv", str(package / "source-data" / "F001_Genome_QC.tsv"),
+        "--output-json", str(package / "checks" / "F001_Handoff.json"),
+        "--figure-role", "publication",
+    ], check=False, capture_output=True, text=True)
+    assert external_call.returncode == 2 and "must not come from disposable tmp/" in external_call.stderr
+    passed("external input plus v2 output still refuses tmp evidence")
+
 print("PASS | PaperPlot handoff regression fixtures")

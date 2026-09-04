@@ -18,6 +18,7 @@ Plan_Status: Draft
 ## Inputs
 
 - Manifest: `config/Input_Manifest.tsv`
+- Raw-input root: `rawdata/` for layout v2; legacy projects may use `data/`
 - Reference/version and coordinate convention: UNKNOWN
 - Input integrity status: UNKNOWN
 

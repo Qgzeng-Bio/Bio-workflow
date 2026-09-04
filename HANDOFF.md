@@ -1,6 +1,148 @@
 # Bioflow Skill Handoff
 
-Last updated: 2026-08-10 - reusable Pi interaction package added locally
+Last updated: 2026-08-11 - Git project safety gate accepted locally
+
+## Latest Local Update — 2026-08-11: Git/GitHub Project Safety Gate
+
+Purpose: add the first executable Git/GitHub collaboration layer after directory
+layout v2: a local, read-only pre-staging safety audit. It creates no repository,
+performs no Git write/history/network action, and does not replace data-governance
+or ethics review.
+
+What changed:
+
+- Added `scripts/git_project_audit.py` with text/TSV/JSON output and stable
+  PASS/WARN/BLOCK rule IDs. It reads only Git metadata and bounded file metadata.
+- `BLOCK`: rawdata/data input, logs/tmp/runtime/cache, raw/alignment files,
+  credentials/private-key heuristics, unsafe symlinks, and candidates >=100 MiB.
+- `WARN`: bioinformatics/binary delivery files and files >=50 MiB require human
+  review. `PASS` covers reviewable code/config/Markdown/TSV candidates.
+- Added `--staged-only` so the audit checks exactly the staged set instead of
+  all tracked/untracked candidates.
+- Added `/tmp` Git fixtures for v2 and legacy projects: staged/tracked/untracked
+  classification, forced raw/log/tmp/BAM/secret/external-link/101 MiB candidates,
+  figure WARN, CLI TSV/exit behavior, and closed-pipe CLI preview handling.
+- Expanded the project Gitignore template and this repository's root `.gitignore`.
+  The user’s untracked Chinese handbook remains visible to Git and is not ignored.
+- Updated `SKILL.md`, README, `references/git-collaboration.md`,
+  `references/project-layout.md`, reference consistency checks, and
+  `scripts/test_skill.sh`.
+
+Validation:
+
+- `scripts/test_git_project_audit.py`: PASS.
+- Root `git_project_audit.py --staged-only`: PASS after `.gitignore` update.
+- Final `scripts/test_skill.sh`: PASS, including the new Git fixture, Plugin
+  equality, Codex/Claude plugin validation, Pi integration, syntax, compile, and
+  Git whitespace checks.
+- Plugin wrapper was synchronized and `sync_plugin_wrapper.sh --check` PASSed.
+- Pre-commit review round 1 (independent agent): no P0; its untracked-file P1 is
+  addressed by explicit staging below, and its P2 findings were fixed (excluded
+  cache noise in plugin `--check`, manifest-root claim-audit inference, asset
+  ignore exceptions, compatibility notes).
+- Pre-commit review round 2 (manual after agent rate limits, plus executable
+  checks): fixed the audit fixture's self-triggering credential literal, then
+  full-repository `git_project_audit.py` PASSed over 273 candidates with no
+  BLOCK/WARN; ignored untracked content is only local caches/settings; Plugin
+  equality and the full maintenance suite PASS.
+
+State at this handoff:
+
+- This Git safety layer and layout v2 are accepted locally; no commit or push.
+- Intentional compatibility changes: `path_manager.py` now rejects a version
+  token on analysis-module names (use `<module>/versions/VNN`), and
+  `log_claim_audit.sh` derives the default audit path from the manifest's
+  project root, falling back to the current directory only for an unrecognized
+  manifest location.
+- Codex runtime is synchronized from this source with `sync_install.sh --yes`;
+  start a new Codex session after discovery/routing changes.
+- Pi and Claude use source symlinks and already see the current source after
+  `/reload` or a new session.
+- The audit is deliberately heuristic: it does not claim privacy/ethics/licence
+  compliance and must not be treated as a professional secret scanner.
+
+## Latest Local Update — 2026-08-11: Layout v2 Directory Governance
+
+Purpose: absorb the user's unified project-directory design and Git/GitHub
+handbook into Bioflow. The implementation is accepted locally and synchronized
+to the Plugin wrapper and Codex runtime; nothing has been committed or pushed.
+
+New project layout v2 (default for new/empty projects):
+
+```text
+config/ rawdata/ scripts/ logs/ tmp/ results/ docs/ manuscripts/
+```
+
+`config/Project_Layout.tsv` is the authoritative marker. Unmarked existing
+`data/` + `reports/` projects remain legacy and are never rearranged.
+
+Hard layout rules implemented:
+
+- `rawdata/` is read-only input or links only; analysis outputs are forbidden.
+- `tmp/` is strictly disposable: formal outputs, claim evidence, figures,
+  acceptance, delivery, and manuscript records must not cite it.
+- One stable `Analysis_Key` owns exactly one `results/NN-analysis-key` entry.
+- Retained iterations live only under `<module>/versions/VNN` with
+  `Version_Index.tsv`; sibling `v2/final/new` modules are blocked.
+- Formal figures use one `figures/FNNN_Name` package: PDF/PNG + README at
+  package root, plotting TSV under `source-data/`, generated MD/JSON under
+  `checks/`; draft alternatives stay under the owning tmp route.
+- `manuscripts/PNN-short-name` is stable and independent of analysis stage
+  numbering.
+- `--output` under v2 `rawdata/` or `tmp/`, duplicate/version-suffixed result
+  modules, invalid retained-version placement, and formal tmp references are
+  preflight blockers.
+
+Files added or updated:
+
+- `scripts/project_layout.py` / `project_layout.sh`: layout profile resolution,
+  control-path lookup, and bounded project-root discovery.
+- `scripts/project_structure_audit.py`: bounded read-only v2 root/result/
+  version/figure/manuscript/tmp contract audit.
+- `scripts/init_project.sh`: v2 default; `--layout-v2` / `--legacy-layout`;
+  workspace v2/v1 contracts; Git/GitHub templates.
+- `scripts/path_manager.py`, `workspace_steward.py`, `project_dashboard.py`,
+  `project_state_audit.sh`, submit/record/claim/paperplot/program-onboarding
+  scripts: active-layout-aware paths.
+- `references/project-layout.md` (rewritten), `references/git-collaboration.md`
+  (new), `references/workspace-steward.md` (v1/v2), plus lifecycle, resume,
+  task-monitoring, executor-safety, validation, result-manifest, paperplot,
+  operations, and program-card docs.
+- New project templates: layout marker, root README/status/changelog/gitignore,
+  GitHub PR/Issue templates, rawdata README, sample/reference/tool metadata,
+  version/figure indexes, workspace v2 contracts.
+
+Behavior validation and independent review closure:
+
+- Final `scripts/test_skill.sh`: PASS, including shell syntax, Python compile,
+  lifecycle/dashboard/claim/plot/path/workspace v1+v2 fixtures, layout-v2
+  submission tests, Pi integration, program cards, Codex/Claude plugin
+  validation, strict Plugin equality, and Git whitespace.
+- `scripts/sync_plugin_wrapper.sh --check`: PASS with no source/wrapper drift.
+- `scripts/sync_install.sh` dry-run: PASS with no source/Codex runtime drift;
+  the Chinese handbook is deliberately excluded from Codex runtime sync.
+- Legacy lifecycle/dashboard/workspace/submission fixtures remain PASS.
+- Independent review P1/P2 findings are fixed and regression-tested:
+  project-root inference now prevents outside-project submit bypass; canonical
+  result manifests and formal figure components reject symlinks; figure statuses
+  are enumerated; direct v2 opt-in refuses legacy `data/reports`; plugin drift is
+  a hard test failure; PaperPlot checks v2 roots inferred from input/output;
+  top-level module stages are consecutive; documentation uses `P01-genome`.
+
+Resident-trigger update (separate file):
+
+- Added section 1.1 "Bioflow 自动接管规则" to
+  `/data9/home/qgzeng/projects/AGENTS.md`, requiring proactive Bioflow loading
+  and bounded read-only project takeover inside `/data9/home/qgzeng/projects/`.
+
+Post-acceptance release items:
+
+- Review the final Git diff and decide whether the untracked Chinese handbook is
+  part of the source repository or remains a local design document.
+- Create a local commit and/or push only after separate explicit user approval.
+- Pi and Claude use source symlinks and are current; Codex runtime is synced.
+  Start a new Codex session after discovery/routing changes; use Pi `/reload` or
+  a new Pi session to refresh loaded context/skills.
 
 ## Latest Local Update — 2026-08-10: Reusable `pi-ask` Dialogs
 

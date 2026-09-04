@@ -1,6 +1,6 @@
 ---
 name: bioflow
-description: "规划、接管、实现、提交前检查、监控和验收 qgzeng 个人分析服务器上的生物信息学工作流。Use under /data9/home/qgzeng/projects for quinoa genomics, assembly, annotation, repeats, pan-genome, RNA-seq, GWAS, SNP/INDEL/SV, synteny, centromeres, genome structure, project workspace stewardship, module DAGs, script/log/tmp/result/report routing, program execution, plotting, SLURM, Singularity/Conda, downloads, resource sizing, job arrays, failure diagnosis, project takeover, result validation, reproducible reports, concise folder naming, safe directory creation/indexing, or bounded path audits. Enforces no broad scans, no login-node compute, no protected data/tools writes, no wasteful resources/external raw-data proxy, and no default non-debug SLURM time limit."
+description: "Proactively use when entering, starting, resuming, auditing, organizing, running, validating, plotting, or writing from a bioinformatics project under /data9/home/qgzeng/projects. Covers project takeover; layout-v2 config/rawdata/scripts/logs/tmp/results/docs/manuscripts governance; one-analysis-one-result entry; internal versions; figure packages; Git/GitHub and manuscript traceability; SLURM, containers, resources, monitoring, result acceptance, quinoa genomics, assembly, annotation, repeats, pan-genome, RNA-seq, GWAS, SNP/INDEL/SV, synteny, and centromeres. Enforces bounded scans, no login-node compute, no protected data/tools writes, no formal evidence in tmp, no unsafe automatic migration, and no default non-debug SLURM time limit."
 ---
 
 # Bioflow
@@ -88,11 +88,28 @@ make short user requests sufficient:
 
 Read `references/project-layout.md` when starting a project, choosing paths, naming
 artifacts, or reviewing project organization. Preserve compatible established
-layouts and tool-mandated names. Use tab-separated project tables with English
-initial-capital underscore columns. `scripts/init_project.sh` previews the minimal
-seven-directory skeleton and writes only missing templates after explicit `--yes`.
-For a new Bioflow-managed project, explicitly add `--workspace-steward`; never
+layouts and tool-mandated names. New/empty projects default to layout v2:
+`config/rawdata/scripts/logs/tmp/results/docs/manuscripts`; existing unmarked
+`data/reports` projects remain legacy and are never rearranged automatically.
+Use tab-separated project tables with English initial-capital underscore columns.
+`scripts/init_project.sh` previews the skeleton and writes only missing templates
+after explicit `--yes`. Use `--layout-v2` only to opt a reviewed existing Git root
+into v2. For a new managed project, explicitly add `--workspace-steward`; never
 silently enable strict workspace policy when rerunning init on an old project.
+
+In layout v2, one stable `Analysis_Key` owns exactly one top-level results module
+such as `results/01-assembly`; retained iterations go only under
+`<module>/versions/VNN`, never into sibling `v2/final/new` modules. `tmp/` is
+strictly disposable: formal outputs, evidence, figures, acceptance, delivery, and
+manuscript records must not cite it. Run `scripts/project_structure_audit.py`
+before submission and acceptance. Formal figures use one package per stable F-ID
+with PDF/PNG at package root, plotting TSV under `source-data/`, checks/JSON/MD
+under `checks/`, and draft alternatives under the owning `tmp/` route. Before
+any Git staging, commit review, PR, tag, or GitHub release discussion, read
+`references/git-collaboration.md` and run the read-only
+`scripts/git_project_audit.py --project <project>`; never automatically run
+`git init/add/commit/push/merge/tag`, LFS setup, history rewrite, or network
+publication.
 
 When starting/taking over a project, planning modules, choosing output paths,
 writing scripts, preparing submission, or auditing project organization, read
@@ -123,7 +140,8 @@ Keep `SKILL.md` as the routing hub. Load detailed references only when their tas
 
 - `references/project-lifecycle.md`: use when starting, planning, managing, resuming, validating, interpreting, or delivering a project. It is the single contract for the nine project stages, startup plan, management artifacts, and `workflow_status.tsv`.
 - `references/task-monitoring.md`: use for running-task, progress, queue, mixed-status, array, blocker, and next-action requests. It defines `Task_Status.tsv` and the read-only `scripts/project_dashboard.py` route.
-- `references/project-layout.md`: use for directory boundaries, script numbering, artifact/table naming, identifiers, versions, compatibility, and new-project templates.
+- `references/project-layout.md`: use for layout-v2/legacy roots, rawdata/tmp boundaries, one-analysis-one-result entry, internal versions, figure packages, naming, compatibility, and new-project templates.
+- `references/git-collaboration.md`: use for Git/GitHub content boundaries, the read-only `scripts/git_project_audit.py` gate, branch/commit/PR review, research logs, claim-to-manuscript traceability, and tagged result/manuscript freezes.
 - `references/path-management.md`: use for one-directory short-name suggestions, bounded naming audits, safe single-directory creation/registration, `Directory_Index.tsv`, and path-manager rule IDs; it is not the project architecture manager.
 - `references/workspace-steward.md`: use for project module trees/DAGs, canonical role routes, workspace planning/application, key artifacts, legacy migration plans, execution preflight, and workspace drift.
 - `references/resume-protocol.md`: use with the lifecycle contract when taking over, checking, or recovering an existing project. It defines bounded evidence collection and mixed-evidence precedence.
@@ -182,7 +200,7 @@ For resume work, make sure the answer covers this content (in whatever wording, 
 
 Keep the execution gates intact: preflight and resource-assess `Script_ready`; monitor rather than edit `Queued_or_running`; triage `Failed` before rerun; validate `Complete_unvalidated` before interpretation; and preserve a `Delivered` snapshot unless a new scope/version is explicit.
 
-Do not write `reports/workflow_status.tsv` automatically. The audit script only prints a suggested TSV row; write it only after user confirmation.
+Do not write the project `workflow_status.tsv` automatically (`docs/status/` in v2, `reports/` in legacy). The audit script only prints a suggested row; write it only after user confirmation.
 
 ## Program-level requests
 
@@ -447,7 +465,7 @@ Read `references/executor-safety.md` for the full gate. Run:
 scripts/prepare_submission.sh --script <slurm_script> [--manifest <manifest.tsv>] [--input-list <filelist.txt>] [--output <output_dir>] [--mode <partition>] [--conc <N>]
 ```
 
-Hard blockers include preflight `FAIL`, missing/empty inputs, bundled-template manifest headers, protected `--output`, and quota submit-cap overrun. Warnings include preflight `WARN`, non-empty output directories, and unknown quota/header status.
+Hard blockers include preflight `FAIL`, missing/empty inputs, bundled-template manifest headers, protected `--output`, quota submit-cap overrun, and layout-v2 structure failures. In v2, `--output` under `rawdata/` or `tmp/`, duplicate/version-suffixed result modules, invalid retained-version placement, or formal records citing `tmp/` are blockers. Warnings include preflight `WARN`, non-empty output directories, incomplete draft figure packages, and unknown quota/header status.
 
 Every SLURM script review must include a simple resource assessment, even when the user only asks for "review". Do not stop at "CPU/memory directives exist". The answer must cover (in any wording/layout):
 
@@ -510,7 +528,10 @@ Read `references/operations-reporting.md` for the qp pattern under `/data9/home/
 After classifying the figure as QC, exploratory, or publication-grade and
 verifying its biological inputs, prepare any multi-metric genome-quality input
 through `scripts/prepare_paperplot_handoff.py` under
-`references/paperplot-handoff-contract.md`. Then load `paperplot-skills` using
+`references/paperplot-handoff-contract.md`. A v2 publication handoff must not use
+`tmp/` evidence. Store a retained figure as one `results/<module>/figures/FNNN_Name/`
+package under `references/project-layout.md`; do not leave generated MD/JSON
+sidecars loose in `figures/`. Then load `paperplot-skills` using
 the surface-specific delegation above. Follow its design, export,
 rendered-image QA, and old-vs-new workflow; do not duplicate or replace it inside
 bioflow. Also apply the bioinformatics figure checks in
@@ -539,7 +560,9 @@ When slimming or reorganizing this skill, preserve behavior before reducing line
 - SLURM safety layer through `gen_sbatch.sh`, `slurm_preflight.sh`, `prepare_submission.sh`, `submit_and_log.sh`, and `submit_chunked.sh`
 - validation gate through `references/validation-checklists.md`
 - concise path management through `references/path-management.md` and `scripts/path_manager.py`, with bounded audit, dry-run writes, protected-path guards, and no rename/delete surface
-- project workspace stewardship through `references/workspace-steward.md` and `scripts/workspace_steward.py`, with explicit Agent-authored module DAG/routes, reviewed fingerprints, transactional apply, execution-gate routing, hybrid legacy compatibility, and no path mutation surface
+- layout-v2 boundaries through `references/project-layout.md`, `scripts/project_layout.py`, and `scripts/project_structure_audit.py`, preserving legacy projects while enforcing rawdata/tmp/result-version/figure-package contracts on v2
+- Git/manuscript traceability through `references/git-collaboration.md` and `scripts/git_project_audit.py`, without automatic init/add/commit/push/tag, upload, LFS, or history rewrite
+- project workspace stewardship through `references/workspace-steward.md` and `scripts/workspace_steward.py`, with explicit Agent-authored module DAG/routes, stable Analysis_Key in v2, reviewed fingerprints, transactional apply, execution-gate routing, hybrid legacy compatibility, and no path mutation surface
 
 If content is moved out of `SKILL.md`, ensure the destination reference is linked from `Reference routing map`, from a task route, or from the relevant workflow step. Do not create orphan references.
 

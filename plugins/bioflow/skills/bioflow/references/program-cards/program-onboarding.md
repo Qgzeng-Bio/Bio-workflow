@@ -17,8 +17,9 @@ python3 scripts/program_onboard.py draft-card <evidence_dir>
 
 Use the helper for local discovery, install proposals, post-install evidence, and
 draft card generation. By default, run it from the analysis project root: choice
-JSON is written under `config/program-onboarding/`, and evidence bundles are
-written under `reports/program-onboarding/<program_key>/<timestamp>/`. Use
+JSON is written under `config/program-onboarding/`. Evidence bundles use
+`docs/program-onboarding/<program_key>/<timestamp>/` in layout v2 and the existing
+`reports/program-onboarding/...` path in legacy projects. Use
 `--project-root <dir>` when invoking the helper from another directory. Program
 card drafts remain skill-owned and are written to `references/program-cards/drafts/`
 unless `--output-card` is supplied. See `evidence-bundle-schema.md` for bundle
@@ -31,7 +32,8 @@ mutation, writes under `~/tools/`, downloads, and SLURM
 submission still require explicit user confirmation. Evidence and choice paths
 are project-local by default; `--allow-external-paths` is only for non-install
 smoke tests, and automatic `install` still accepts only a generated proposal
-inside a `reports/program-onboarding/<program_key>/<timestamp>/` evidence bundle.
+inside the active layout's `program-onboarding/<program_key>/<timestamp>/`
+evidence bundle.
 
 Use level names when reporting progress, so "tested" is not confused with "only
 looked for the executable":

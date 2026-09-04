@@ -21,8 +21,11 @@ task-specific playbooks add domain checks but must not redefine these stages.
 - Do not advance a stage because a directory exists or a command exited zero.
 - Do not infer missing biological design, reference versions, sample identities,
   or acceptance thresholds.
-- Keep the default audit read-only and bounded to `config/`, `data/`, `scripts/`,
-  `logs/`, `results/`, `reports/`, and `tmp/`.
+- Keep the default audit read-only and bounded to the active layout. Layout v2 uses
+  `config/`, `rawdata/`, `scripts/`, `logs/`, `tmp/`, `results/`, `docs/`, and
+  `manuscripts/`; unmarked legacy projects keep `data/` and `reports/`.
+- In layout v2, do not accept a formal output, evidence path, figure, claim,
+  acceptance, delivery, or manuscript record that depends on `tmp/`.
 - When `config/Workspace_Policy.tsv` exists, read
   `references/workspace-steward.md`: a Draft/drifted workspace is planning
   evidence, not permission to generate or submit managed work.
@@ -229,7 +232,8 @@ and reason for change are recorded.
 ## Startup planning contract
 
 Use existing project conventions; otherwise prefer `config/Analysis_Plan.yaml` or
-`reports/Analysis_Plan.md`. Keep `Plan_Status: Draft` until the user or project
+`docs/Analysis_Plan.md` in layout v2 (`reports/Analysis_Plan.md` in legacy).
+Keep `Plan_Status: Draft` until the user or project
 owner accepts it, then set `Plan_Status: Reviewed`. A plan is `Plan_ready` only
 when reviewed and when it records:
 
@@ -262,14 +266,22 @@ earliest stage blocked by each unknown. Do not pad unknown fields with guesses.
 Read `references/project-layout.md` for the authoritative directory boundaries,
 naming rules, identifier/version policy, examples, and compatibility guidance.
 
-- `config/`: manifests, parameters, environment references, machine-readable plan.
-- `data/`: project-local links/manifests only; do not duplicate protected raw data.
-- `scripts/`: numbered stages and retained submitted-script snapshots.
-- `logs/`: program and scheduler logs with job IDs.
-- `tmp/`: disposable intermediates, never the only accepted evidence copy.
-- `results/`: analysis outputs with final artifacts clearly identifiable.
-- `reports/`: plan, project status, task status, run record, acceptance, methods,
-  interpretation, and delivery index.
+Layout v2 uses:
+
+- `config/`: manifests, sample/reference metadata, parameters, environment references,
+  result manifest, and machine-readable workspace contracts;
+- `rawdata/`: immutable original inputs or read-only links only; no analysis writes;
+- `scripts/`: numbered scientific modules and executable workflow sources;
+- `logs/`: complete program and scheduler logs with Job IDs;
+- `tmp/`: reproducible disposable intermediates only, never formal evidence;
+- `results/`: retained scientific outputs, with one stable entry per Analysis_Key,
+  internal `versions/VNN`, summary tables, and figure packages;
+- `docs/`: plan, status, research/decision logs, acceptance, methods, interpretation,
+  handoff, and delivery index;
+- `manuscripts/`: one stable directory per paper, claim mapping, supplement, and
+  frozen submission releases.
+
+Legacy projects retain `data/` and `reports/`; they are not automatically moved.
 
 When explicitly enabled, `Workspace_Policy.tsv`, `Workspace_Modules.tsv`, and
 `Workspace_Routes.tsv` add static module/dependency/path contracts. They do not
@@ -284,9 +296,10 @@ Question -> Input manifest -> Plan -> Script/config snapshot -> Task/run record
          -> Output index -> Acceptance evidence -> Claim/report -> Delivery index
 ```
 
-Use `reports/workflow_status.tsv` for one project-wide lifecycle state and
-`reports/Task_Status.tsv` for concurrent stages, samples, pilots, jobs, and
-validation tasks. Read `references/task-monitoring.md` for the task schema and
+Use `docs/status/workflow_status.tsv` for one project-wide lifecycle state and
+`docs/status/Task_Status.tsv` for concurrent stages, samples, pilots, jobs, and
+validation tasks in v2; use the existing `reports/` paths in legacy projects.
+Read `references/task-monitoring.md` for the task schema and
 read-only dashboard; do not force a mixed project into one task state.
 
 Prefer Markdown, YAML, and tab-separated TSV. Do not add a database or workflow
@@ -294,8 +307,8 @@ framework solely to track these artifacts.
 
 ## Project status table
 
-Write `reports/workflow_status.tsv` only after user confirmation. The audit helper
-prints a suggested row but never writes it.
+Write the active layout's `workflow_status.tsv` only after user confirmation. The
+audit helper prints a suggested row but never writes it.
 
 Required tab-separated columns:
 

@@ -9,7 +9,8 @@ Usage:
                      [--checker <py>]
 
 Defaults:
-  --audit   reports/claim_audit.tsv
+  --audit   follows the manifest project layout: docs/validation/Claim_Audit.tsv
+            for v2, reports/claim_audit.tsv for legacy
   --rules   references/interpretation-rules.tsv
   --anchors references/project-anchors.yaml
   --checker scripts/check_result_contract.py
@@ -18,8 +19,10 @@ Defaults:
 
 Path safety: --audit must resolve inside this project and must not target
 a protected data/tools directory (~/data, ~/tools, or any /data9/home/*/data|tools).
-The default audit file lives under reports/. --rules / --anchors / --checker may
-be absolute read-only paths.
+The default audit file follows the manifest's Bioflow project root: a manifest in
+config/ uses its parent project, another manifest inside a recognized project
+root uses that root, and only an unrecognized location falls back to the current
+directory. --rules / --anchors / --checker may be absolute read-only paths.
 
 Audit TSV schema:
   Timestamp
@@ -42,12 +45,15 @@ Exit codes (machine-readable):
 USAGE
 }
 
-proj_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+skill_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+self_dir="$skill_root/scripts"
+# shellcheck source=project_layout.sh
+source "$self_dir/project_layout.sh"
 
 manifest=""
 job_id="NA"
 note=""
-audit_tsv="reports/claim_audit.tsv"
+audit_tsv=""
 rules="references/interpretation-rules.tsv"
 anchors="references/project-anchors.yaml"
 checker="scripts/check_result_contract.py"
@@ -84,12 +90,23 @@ if [[ -z "$python_bin" ]]; then
     exit 4
 fi
 
-resolve_path() {
+resolve_skill_path() {
     local path="$1"
     if [[ "$path" == /* ]]; then
         printf '%s\n' "$path"
     else
-        printf '%s/%s\n' "$proj_root" "$path"
+        printf '%s/%s\n' "$skill_root" "$path"
+    fi
+}
+
+resolve_manifest_path() {
+    local path="$1"
+    if [[ "$path" == /* ]]; then
+        printf '%s\n' "$path"
+    elif [[ -e "$path" ]]; then
+        realpath -m -- "$path"
+    else
+        printf '%s/%s\n' "$skill_root" "$path"
     fi
 }
 
@@ -112,17 +129,35 @@ is_protected_path() {
 }
 
 is_project_path() {
-    local p="${1%/}" root="${proj_root%/}"
+    local p="${1%/}" root="${project_root%/}"
     [[ "$p" == "$root" || "$p" == "$root"/* ]]
 }
 
 [[ -n "$manifest" ]] || { echo "ERROR | --manifest is required" >&2; exit 4; }
 
-manifest="$(resolve_path "$manifest")"
-audit_tsv="$(resolve_path "$audit_tsv")"
-rules="$(resolve_path "$rules")"
-anchors="$(resolve_path "$anchors")"
-checker="$(resolve_path "$checker")"
+manifest="$(resolve_manifest_path "$manifest")"
+if [[ "$(basename "$(dirname "$manifest")")" == "config" ]]; then
+    project_root="$(dirname "$(dirname "$manifest")")"
+else
+    inferred_root="$(bioflow_find_project_root "$manifest" 2>/dev/null || true)"
+    if [[ -n "$inferred_root" ]]; then
+        project_root="$inferred_root"
+    else
+        project_root="$(pwd -P)"
+    fi
+fi
+if [[ -z "$audit_tsv" ]]; then
+    audit_relative="$(bioflow_control_path "$project_root" claim_audit)" || {
+        echo "ERROR | cannot resolve claim-audit path from project layout: $project_root" >&2
+        exit 4
+    }
+    audit_tsv="$project_root/$audit_relative"
+elif [[ "$audit_tsv" != /* ]]; then
+    audit_tsv="$project_root/$audit_tsv"
+fi
+rules="$(resolve_skill_path "$rules")"
+anchors="$(resolve_skill_path "$anchors")"
+checker="$(resolve_skill_path "$checker")"
 audit_tsv="$(normalize_target_path "$audit_tsv")" || {
     echo "ERROR | --audit cannot be safely normalized: $audit_tsv" >&2
     exit 4

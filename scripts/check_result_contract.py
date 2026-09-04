@@ -48,6 +48,33 @@ CLAIM_STATUSES = {"supported", "uncertain", "blocked"}
 Finding = tuple[str, str, str]
 
 
+def layout_v2_project_root(manifest_dir: Path) -> Path | None:
+    """Return a v2 project root only for the canonical config/ manifest location."""
+    if manifest_dir.name != "config":
+        return None
+    project = manifest_dir.parent.resolve(strict=False)
+    marker = project / "config" / "Project_Layout.tsv"
+    if not marker.is_file() or marker.is_symlink():
+        return None
+    try:
+        first_two = marker.read_text(encoding="utf-8").splitlines()[:2]
+    except (OSError, UnicodeError):
+        return None
+    if len(first_two) != 2 or not first_two[1].startswith("bioflow.layout.v2\t"):
+        return None
+    return project
+
+
+def path_is_in_tmp(path: Path, project: Path | None) -> bool:
+    if project is None:
+        return False
+    try:
+        path.relative_to(project / "tmp")
+    except ValueError:
+        return False
+    return True
+
+
 def load_yaml(path: Path) -> dict[str, Any]:
     with path.open(encoding="utf-8") as handle:
         value = yaml.safe_load(handle) or {}
@@ -183,6 +210,13 @@ def evidence_findings(claim: dict[str, Any], index: int, manifest_dir: Path) -> 
         raw = Path(value).expanduser()
         path = raw if raw.is_absolute() else manifest_dir / raw
         path = path.resolve(strict=False)
+        project = layout_v2_project_root(manifest_dir)
+        if claim.get("status") == "supported" and path_is_in_tmp(path, project):
+            findings.append((
+                "BLOCK",
+                "CLAIM_EVIDENCE_002",
+                f"{claim_id}: supported claim evidence must not come from disposable tmp/: {path}",
+            ))
         if claim.get("status") == "supported" and (
             not path.exists() or not path.is_file() or not os.access(path, os.R_OK)
         ):
@@ -468,6 +502,9 @@ def explicit_path_findings(
         raw = Path(value).expanduser()
         path = raw if raw.is_absolute() else manifest_dir / raw
         path = path.resolve(strict=False)
+        project = layout_v2_project_root(manifest_dir)
+        if path_is_in_tmp(path, project):
+            findings.append(("BLOCK", "CLAIM_EVIDENCE_002", f"{claim_id}: {label} must not come from disposable tmp/: {path}"))
         if not path.exists() or not path.is_file() or not os.access(path, os.R_OK):
             findings.append(("BLOCK", rule_id, f"{claim_id}: {label} missing or unreadable: {path}"))
     return findings
@@ -779,6 +816,9 @@ def main(argv: list[str] | None = None) -> int:
         "anchors": Path(args.anchors),
     }
     for label, path in paths.items():
+        if path.is_symlink():
+            sys.stderr.write(f"{label} must not be a symbolic link: {path}\n")
+            return 2
         if not path.exists() or not path.is_file() or not os.access(path, os.R_OK):
             sys.stderr.write(f"{label} not found or unreadable: {path}\n")
             return 2
@@ -786,7 +826,10 @@ def main(argv: list[str] | None = None) -> int:
         manifest = load_yaml(paths["manifest"])
         rules = load_rules(paths["rules"])
         anchors = load_yaml(paths["anchors"])
-        status, findings = run(manifest, rules, anchors, paths["manifest"].resolve().parent)
+        # Keep the lexical canonical config/ location for project-layout
+        # detection; individual evidence paths are resolved separately.
+        manifest_path = paths["manifest"].absolute()
+        status, findings = run(manifest, rules, anchors, manifest_path.parent)
     except (OSError, ValueError, yaml.YAMLError) as exc:
         sys.stderr.write(f"cannot check manifest: {exc}\n")
         return 2

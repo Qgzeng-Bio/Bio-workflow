@@ -102,31 +102,34 @@ executor = (REFS / "executor-safety.md").read_text()
 agent_metadata = (ROOT / "agents" / "openai.yaml").read_text()
 assert "references/path-management.md" in skill
 assert "references/workspace-steward.md" in skill
+assert "references/git-collaboration.md" in skill and "git_project_audit.py" in skill
 assert "scripts/path_manager.py suggest" in skill
 assert "scripts/workspace_steward.py inspect" in skill
-assert "project workspace stewardship" in skill.split("---", 2)[1]
-assert "03_RNA_DE" in path_contract and "Directory_Index.tsv" in path_contract
-assert "01_TEMR_core" in path_contract and "tmp/<module>" in path_contract
+frontmatter = skill.split("---", 2)[1]
+assert "Proactively use" in frontmatter and "project takeover" in frontmatter and "layout-v2" in frontmatter
+assert "03-rna-de" in path_contract and "Directory_Index.tsv" in path_contract
+assert "01-temr-core" in path_contract and "tmp/<module>" in path_contract
 assert "Never derive stage order from alphabetic sorting" in path_contract
 assert "assign consecutive stages `01`, `02`, `03`, ..." in path_contract
 assert "no rename, move, delete" in path_contract
-assert "Workspace stewardship" in layout and "24-character" in layout
-assert "separate from both unnumbered role subdirectories" in layout
-assert "Leave increments of 10 for" in layout
+assert "project_structure_audit.py" in layout and "one stable top-level module entry" in layout
+assert "versions/VNN" in layout and "F001_Assembly_Overview" in layout
+assert "rawdata" in layout and "manuscripts" in layout and "git_project_audit.py" in layout
 assert "Workspace_Policy.tsv" in lifecycle and "Workspace" in monitoring
 assert "--project DIR --module M001 --task-id T001" in executor
 assert "exact `Task_Status.Script_Path`" in executor and "every BLOCK" in executor
-assert "workspace_steward.py" in workspace_contract and "WS014" in workspace_contract
-assert "must contain at least one row" in workspace_contract
+assert "workspace_steward.py" in workspace_contract and "WS015" in workspace_contract
+assert "workspace.v1" in workspace_contract and "workspace.v2" in workspace_contract
 assert "combined parent/dependency" in workspace_contract
-assert "root/control/lock symlinks are never followed" in workspace_contract
-assert "supplied\nscript path must exactly match" in workspace_contract
+assert "Analysis_Key" in workspace_contract and "versions/VNN" in workspace_contract
+assert "exact registered script" in workspace_contract
 assert "Producer_Tasks`/`Consumer_Tasks` must exist" in monitoring
 assert "项目工作区管理" in agent_metadata and "module DAGs" in agent_metadata
 expected_headers = {
     "Workspace_Policy.tsv": "Schema_Version\tEnforcement_Mode\tPlan_Status\tPlan_SHA256\tMax_Audit_Depth\tUpdated_Time",
     "Workspace_Modules.tsv": "Module_ID\tParent_Module\tStage\tShort_Name\tModule_Kind\tDepends_On\tPurpose\tOwner\tCompatibility\tNotes",
     "Workspace_Routes.tsv": "Route_ID\tModule_ID\tPath_Type\tPath_Role\tRelative_Path\tProducer_Tasks\tConsumer_Tasks\tRetention\tRequired\tCompatibility\tPurpose\tNotes",
+    "Workspace_Modules_v2.tsv": "Module_ID\tAnalysis_Key\tParent_Module\tStage\tShort_Name\tModule_Kind\tDepends_On\tPurpose\tOwner\tCompatibility\tNotes",
 }
 for filename, header in expected_headers.items():
     assert (ROOT / "assets" / "project-templates" / filename).read_text().splitlines()[0] == header

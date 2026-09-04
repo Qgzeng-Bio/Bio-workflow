@@ -52,8 +52,9 @@ Preflight checks:
 - FASTA headers are short, stable, unique, and free of whitespace.
 - Chromosome/scaffold names match RNA BAMs, GFF/GTF, BED, and downstream references.
 - Existing outputs are either empty, explicitly resumable, or protected from overwrite.
-- Work is staged under `results/`, `logs/`, `config/`, `reports/`, and project-local
-  `tmp/`.
+- Work follows the active project layout: retained outputs in `results/`, logs in
+  `logs/`, configuration in `config/`, project records in `docs/` (legacy:
+  `reports/`), and disposable intermediates only in project-local `tmp/`.
 
 ## Module B - repeat annotation and masking
 

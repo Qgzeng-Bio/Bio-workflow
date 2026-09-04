@@ -21,7 +21,7 @@ Delivery_Status: Draft
 ## Reproducibility
 
 - Input manifest: `config/Input_Manifest.tsv`
-- Reviewed plan: `reports/Analysis_Plan.md`
+- Reviewed plan: `docs/Analysis_Plan.md` (layout v2) or `reports/Analysis_Plan.md` (legacy)
 - Submitted scripts/configs and run record: UNKNOWN
 - Software/container versions: UNKNOWN
 - Exact rerun entry point: UNKNOWN

@@ -54,27 +54,36 @@ script (by construction) (never submits)
 
 ## Start a project
 
-Preview the minimal seven-directory layout and management templates, then create
-only missing paths after review:
+New or empty projects default to the Bioflow layout-v2 skeleton:
+
+```text
+config rawdata scripts logs tmp results docs manuscripts
+```
+
+Preview first, then create only missing paths after review:
 
 ```bash
 scripts/init_project.sh --project /absolute/path/to/project --workspace-steward
 scripts/init_project.sh --project /absolute/path/to/project --workspace-steward --yes
 ```
 
-The initializer never overwrites existing files. It includes an empty
-`reports/Task_Status.tsv` for concurrent work units, a non-claiming
-`config/result_manifest.yaml` v2 template, and an empty
-`config/Directory_Index.tsv`. `--workspace-steward` explicitly adds Draft policy,
-module, and route contracts; omitting it preserves legacy initialization behavior.
-Naming, identifier/version, and compatibility rules are in
-[`references/project-layout.md`](references/project-layout.md).
+For an existing reviewed Git root, add `--layout-v2` explicitly. Existing
+unmarked `data/reports` projects remain legacy and are never rearranged; the old
+skeleton is available only through `--legacy-layout`. The initializer never
+overwrites existing files and never runs Git, contacts GitHub, or moves data.
+
+Layout v2 includes `docs/status/Task_Status.tsv`, project/sample/reference/tool
+metadata, Git collaboration templates, a non-claiming result manifest, and an
+empty Directory Index. `--workspace-steward` explicitly adds matching
+`workspace.v2` Draft contracts. See
+[`references/project-layout.md`](references/project-layout.md) and
+[`references/git-collaboration.md`](references/git-collaboration.md).
 
 ## Manage the whole project workspace
 
 Workspace Steward organizes scientific modules and routes scripts, logs,
-temporary files, results, plot data, figures, reports, and key artifacts across
-the seven canonical roots:
+temporary files, retained results, figure packages, project documentation,
+manuscripts, and key artifacts across the active v2 or legacy roots:
 
 ```bash
 python3 scripts/workspace_steward.py inspect --project /abs/project
@@ -86,6 +95,9 @@ python3 scripts/workspace_steward.py audit --project /abs/project
 
 The Agent derives module semantics/DAG from bounded project evidence; the CLI
 validates explicit TSV contracts and never guesses biology from names or mtime.
+In layout v2, each stable `Analysis_Key` owns one `results/NN-analysis-key`
+entry; retained iterations use only `versions/VNN`, and formal records cannot
+cite disposable `tmp/`.
 `apply --yes` transactionally creates/registers the approved non-empty tree.
 Managed Artifacts remain under their owning modules. Script/submission gates
 require the task's exact registered script and propagate every Workspace audit
@@ -122,9 +134,9 @@ python3 scripts/project_dashboard.py --project /absolute/path/to/project --check
 
 It never writes status or changes the queue. Enabled workspaces add a read-only
 PASS/WARN/BLOCK summary to text/JSON while task TSV remains stable.
-`reports/workflow_status.tsv` remains the project-wide lifecycle record;
-`reports/Task_Status.tsv` records concurrent
-stages, samples, pilots, jobs, blockers, and validation tasks. See
+Layout v2 reads lifecycle/task/submission records from `docs/status/`; legacy
+projects keep the equivalent files under `reports/`. The dashboard never merges
+two status sources. See
 [`references/task-monitoring.md`](references/task-monitoring.md).
 
 **1. Generate** — emits a script that already passes preflight (absolute `%j_%x` logs,
@@ -148,7 +160,8 @@ scripts/prepare_submission.sh --script align.sbatch --manifest config/samples.ts
 ```
 
 **3. Submit** — re-runs the gate as a final check; **dry-run by default**, submits only with
-`--yes`, then appends a row to `reports/run_record.tsv`. A NO-GO gate, a missing `--yes`, an
+`--yes`, then appends to `docs/status/run_record.tsv` in v2 or the legacy
+`reports/run_record.tsv`. A NO-GO gate, a missing `--yes`, an
 unwritable record, or a script changed since the gate (TOCTOU) all block it.
 
 ```bash
@@ -162,9 +175,26 @@ scripts/submit_and_log.sh --script align.sbatch --manifest config/samples.tsv --
 | `slurm_preflight.sh` | static safety check of an sbatch script (logs, `%N` cap, strict mode, destructive `rm`, protected-path writes/deletes, proxy, `admin2`, CPU/mem declarations) — `FAIL` blocks, `WARN` explains |
 | `parallelization_audit.sh` | detect serial independent-task bottlenecks and un-forwarded CPUs; recommend an array structure, `%N` cap, and template |
 | `resource_usage_audit.sh` | after a pilot, parse `/usr/bin/time -v` + `sacct` to right-size `--cpus-per-task` / `--mem` / array concurrency |
+| `project_structure_audit.py` | bounded/read-only v2 check for fixed roots, one-analysis-one-result entry, internal versions, tmp evidence, figure packages, and manuscript names |
+| `git_project_audit.py` | read-only Git staging safety gate: blocks rawdata/runtime/cache/raw-alignment/credential/symlink/≥100 MiB candidates; warns for ≥50 MiB and binary/bioinformatics delivery files |
 | `check_quota.sh` | show QOS occupancy (200/100/600) and dry-run whether a batch would exceed the submit cap |
 | `submit_chunked.sh` | dry-run or submit a large array through per-chunk scripts stored in the current project and re-entering `submit_and_log.sh` |
 | `check_inputs.sh` | input inventory + integrity (exists / readable / non-empty / gzip magic / format sniff / optional pairing) |
+
+## Git/GitHub safety gate
+
+Before asking for a commit, Pull Request, tag, or GitHub publication review, run:
+
+```bash
+python3 scripts/git_project_audit.py --project /absolute/path/to/project
+python3 scripts/git_project_audit.py --project /absolute/path/to/project --staged-only
+```
+
+The audit is local and read-only: it never runs `git add`, commit, push, fetch,
+clone, tag, reset, checkout, clean, or a network command. It reports `PASS`,
+`WARN`, or `BLOCK`; rawdata, logs/tmp/cache, raw/alignment files, credentials,
+unsafe symlinks, and ≥100 MiB candidates are blocked. Review any WARN before
+explicitly staging exact paths. Do not use habitual `git add .`.
 
 ## Resume & failure triage
 
@@ -224,8 +254,12 @@ python3 scripts/prepare_paperplot_handoff.py \
   --figure-role publication
 ```
 
-The handoff never averages heterogeneous raw metrics; PaperPlot uses its explicit
-`Key_Sample` and then performs visual design/export/QA. See
+The handoff never averages heterogeneous raw metrics and refuses layout-v2
+publication evidence under `tmp/`. A retained figure uses one
+`results/<module>/figures/FNNN_Name/` package: PDF/PNG and README at root,
+plotting TSV under `source-data/`, generated MD/JSON under `checks/`, and the
+editable plotting script under `scripts/<module>/plotting/`. PaperPlot uses the
+explicit `Key_Sample` and then performs visual design/export/checks. See
 [`references/paperplot-handoff-contract.md`](references/paperplot-handoff-contract.md).
 
 Run `/reload` in Pi or start a new Pi/Codex session after changing skill discovery.

@@ -50,7 +50,8 @@ Rules:
 - `Claim_Status`, when present, is `supported`, `uncertain`, or `blocked`.
   Publication handoffs reject uncertain/blocked rows.
 - A supplied `Evidence_Path` resolves relative to the input TSV directory.
-  Publication handoffs reject missing or unreadable evidence.
+  Publication handoffs reject missing/unreadable evidence and, in layout v2,
+  any evidence under disposable `tmp/`.
 
 TSV tables use English initial-capital underscore column names and retain atomic
 sample/metric IDs exactly.
@@ -130,4 +131,7 @@ projects, generated plotting code must read the handoff as TSV (`read.delim` or 
 equivalent explicit tab reader) and preserve `Key_Sample`/sample order. Do not
 copy a stock CSV path into the local script or silently convert the sidecar to
 CSV. PaperPlot then performs its normal figure-selection, design, PDF/PNG export,
-strict rendered-image QA, and old-vs-new review.
+strict rendered-image QA, and old-vs-new review. A retained layout-v2 figure is
+organized as `results/<module>/figures/FNNN_Name/`: formal PDF/PNG and README at
+package root, exact plotting TSV under `source-data/`, generated MD/JSON checks
+under `checks/`, and draft alternatives under the matching tmp route.

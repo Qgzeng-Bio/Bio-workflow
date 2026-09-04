@@ -6,7 +6,7 @@ tmp="$(mktemp -d /tmp/bioflow-claim-audit-test.XXXXXX)"
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp"/{scripts,references,config,reports}
 
-cp "$root/scripts/log_claim_audit.sh" "$root/scripts/check_result_contract.py" "$tmp/scripts/"
+cp "$root/scripts/log_claim_audit.sh" "$root/scripts/check_result_contract.py" "$root/scripts/project_layout.sh" "$root/scripts/project_layout.py" "$tmp/scripts/"
 cp "$root/references/interpretation-rules.tsv" "$root/references/project-anchors.yaml" "$tmp/references/"
 printf 'analysis_types:\n  - rnaseq\nrnaseq:\n  samples: 6\n' > "$tmp/config/result_manifest.yaml"
 

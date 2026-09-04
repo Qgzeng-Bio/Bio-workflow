@@ -428,4 +428,4 @@ fi
 if [[ -n "$sacct_output" ]]; then
     printf '[NOTE] sacct_State=%s ExitCode=%s Elapsed=%s AllocCPUS=%s\n' "${sacct_state:-NA}" "${sacct_exit_code:-NA}" "${sacct_elapsed:-NA}" "${sacct_alloc_cpus:-NA}" >&2
 fi
-printf '[NOTE] Read-only audit only; reports/resource_usage.tsv was not written.\n' >&2
+printf '[NOTE] Read-only audit only; no persistent project resource-usage TSV was written.\n' >&2

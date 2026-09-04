@@ -1,0 +1,87 @@
+# Raw inputs: keep only the explanatory README in Git
+rawdata/*
+!rawdata/README.md
+
+# Runtime-only content
+logs/
+tmp/
+*.out
+*.err
+*.log
+.snakemake/
+.nextflow/
+work/
+.cache/
+
+# Environments and caches
+.venv/
+venv/
+env/
+.conda/
+__pycache__/
+*.py[cod]
+.Rhistory
+.RData
+.Rproj.user/
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+secrets/
+credentials/
+
+# Common raw, alignment, genome, and variant files
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.bam
+*.bai
+*.cram
+*.crai
+*.sam
+*.sra
+*.fa
+*.fasta
+*.fna
+*.fas
+*.vcf
+*.vcf.gz
+*.gvcf
+*.bcf
+*.gff
+*.gff3
+*.gtf
+*.bed
+*.bw
+*.bigwig
+*.bigbed
+*.sif
+
+# Genome/search indexes
+*.mmi
+*.bt2
+*.bt2l
+*.amb
+*.ann
+*.bwt
+*.pac
+*.sa
+*.kdb
+*.meryl
+
+# Editor/OS and document build files
+.DS_Store
+*.swp
+*.swo
+*~
+~$*.docx
+~$*.xlsx
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.synctex.gz

@@ -11,7 +11,7 @@ tmp="$(mktemp -d /tmp/bioflow-workspace-integration.XXXXXX)"
 trap 'rm -rf "$tmp"' EXIT
 project="$tmp/project"
 
-"$init" --project "$project" --workspace-steward --yes >/dev/null
+"$init" --project "$project" --legacy-layout --workspace-steward --yes >/dev/null
 for contract in Workspace_Policy.tsv Workspace_Modules.tsv Workspace_Routes.tsv; do
     [[ -s "$project/config/$contract" ]] || { echo "FAIL | missing $contract" >&2; exit 1; }
 done

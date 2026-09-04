@@ -41,22 +41,27 @@ to one to three short semantic tokens; the script validates and combines them.
 
 New managed names have a 24-character maximum.
 
-### Stage directories
+### Analysis-module directories
 
-Format:
+Layout-v2 format:
 
 ```text
-NN_<one-to-three-semantic-tokens>[_<version>]
+NN-analysis-key
 ```
 
 Examples:
 
 ```text
-01_prep
-02_QC
-03_RNA_DE
-04_figures
+01-assembly
+02-genome-qc
+03-rna-de
+04-publication-data
 ```
+
+The stable lowercase `Analysis_Key` occurs only once and equals Workspace v2
+`Short_Name`. A module name never contains a version/status token; repeated work
+uses `<module>/versions/VNN`. Legacy projects continue to recognize established
+`NN_token` names without renaming them.
 
 `NN` is a zero-padded two-digit stage number (`00`–`99`). Within one newly
 planned sibling set, assign stages consecutively (`01`, `02`, `03`, ...); do not
@@ -67,16 +72,11 @@ chromosome, figure, and accession IDs remain exact.
 
 ### Result directories
 
-Result directories omit the stage prefix when ordering is unnecessary:
-
-```text
-BUSCO
-RNA_DE
-BUSCO_LM134_V2
-```
-
-Use one to three semantic tokens. Do not repeat context already implied by
-`results/` or `reports/`.
+Non-module helper/result subdirectories may omit a stage only when they do not
+create a second analysis entry, for example `tables`, `figures`, `source-data`,
+or a registered tool-owned directory. They live below the one stable
+`results/NN-analysis-key/` module, not beside it. Retained analysis versions use
+only `versions/VNN`.
 
 ### Forbidden redundancy
 
@@ -86,20 +86,20 @@ These tokens are refused case-insensitively:
 Final  New  Latest  Result  Results  Report  Reports  Output  Outputs  Run
 ```
 
-A true version/snapshot token is separate and optional:
-
-```text
-YYYYMMDD
-V2
-v1.1
-```
-
-Use one only for a real version series, dated snapshot, or reviewed collision—not
-as a replacement for provenance.
+A version token is not allowed in an analysis-module name. Retained scientific
+iterations use `versions/VNN` plus `Version_Index.tsv`. Dates/semantic versions
+remain available for non-module artifact snapshots only when a real collision or
+release requires them; they never replace provenance.
 
 ### Exempt and legacy names
 
-The seven fixed Bioflow roots are exempt:
+Layout-v2 fixed roots are exempt:
+
+```text
+config  rawdata  scripts  logs  tmp  results  docs  manuscripts
+```
+
+Legacy fixed roots remain exempt:
 
 ```text
 config  data  scripts  logs  tmp  results  reports
@@ -145,29 +145,30 @@ that alphabetic ordering was wrong. It also showed that putting
 flat `results/` list is still not project management: it mixes artifact roles
 with scientific modules.
 
-The corrected hypothetical structure starts with modules:
+The corrected hypothetical v2 structure starts with modules:
 
 ```text
-01_TEMR_core
-02_Cq3B_INV/
-├── 01_grouping
-├── 02_phenotype
-├── 03_LD_Fst
-├── 04_gene_impact
-└── 05_evolution
-03_publication
+01-temr-core
+02-cq3b-inv/
+├── 01-grouping
+├── 02-phenotype
+├── 03-ld-fst
+├── 04-gene-impact
+└── 05-evolution
+03-publication-data
 ```
 
-Then Workspace Steward routes each module to canonical roots:
+Then Workspace Steward routes modules by role:
 
 ```text
 scripts/<module>/     logs/<module>/       tmp/<module>/
-results/<module>/     reports/<module>/
+results/<module>/     docs/...             manuscripts/P01-.../
 ```
 
-Intermediate BEDs belong in `tmp`, `.out/.err` in `logs`, accepted QC/tables in
-`results`, and figures/plans/methods/summaries/handoff in `reports`. Grouping
-precedes analyses that consume INV/WT membership; plot data precedes figures.
+Intermediate BEDs belong in `tmp`, `.out/.err` in `logs`, retained QC/tables and
+figure packages in `results`, project records in `docs`, and paper sources in
+`manuscripts`. Grouping precedes consumers of INV/WT membership. The actual
+legacy TEMR project remains unchanged and is not a migration target.
 Read `references/workspace-steward.md` for that architecture. This file remains
 the lower-level one-directory naming contract.
 
@@ -181,15 +182,18 @@ target.
 
 ```bash
 python3 scripts/path_manager.py suggest \
-  --kind stage --step 3 --token RNA --token DE
+  --kind stage --step 3 --token rna --token de
 ```
 
-Output is true TSV:
+Output is true TSV for the v2 default:
 
 ```text
 Recommended_Name	Name_Length	Token_Count	Status	Rule_ID	Detail
-03_RNA_DE	9	2	PASS	OK	name satisfies managed-directory rules
+03-rna-de	9	2	PASS	OK	name satisfies managed-directory rules
 ```
+
+When `--project` is supplied, the manager uses that project's v2 or legacy
+separator/profile.
 
 The command emits one recommendation, not a list of increasingly long options.
 Casing is preserved from each explicit token.
@@ -219,8 +223,8 @@ Behavior:
 - default depth 3, hard maximum 5;
 - no symlink traversal;
 - hidden/cache paths skipped;
-- root `data/`, `logs/`, and `tmp/` are listed as canonical but their contents are
-  not traversed;
+- the active raw-input root (`rawdata/` in v2 or `data/` in legacy), `logs/`, and
+  `tmp/` are listed but their contents are not traversed;
 - project index is read when present;
 - deterministic path/rule sorting;
 - no files or directories are written.
@@ -329,9 +333,11 @@ Field contract:
 
 The index explains paths only. It does not replace:
 
-- `reports/Task_Status.tsv` for concurrent task state;
-- `reports/workflow_status.tsv` for project lifecycle;
-- `reports/Delivery_Index.md` for delivered artifacts;
+- the active layout's `Task_Status.tsv` for concurrent task state;
+- the active layout's `workflow_status.tsv` for project lifecycle;
+- the Delivery Index for delivered artifacts;
+- `Version_Index.tsv` for retained versions;
+- `Figure_Index.tsv` for retained figures;
 - `config/result_manifest.yaml` for evidence and claims.
 
 `init_project.sh` creates the empty header only when absent and never overwrites an

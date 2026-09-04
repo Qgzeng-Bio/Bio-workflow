@@ -165,7 +165,7 @@ Gene_ID	Base_Mean	Log2FC	LFC_SE	Statistic	P_Value	Adjusted_P_Value	Contrast	Stat
 # results/Sample_QC.tsv
 Sample_ID	Condition	Biological_Replicate	Batch	Read_Pairs	Unique_Mapping_pct	Assigned_Reads_pct	Library_Size	QC_Status
 
-# reports/DE_Contrast_Summary.tsv
+# docs/validation/DE_Contrast_Summary.tsv  (layout v2; legacy may retain reports/)
 Contrast	Genes_Tested	Genes_FDR_Pass	Genes_Effect_Pass	FDR_Method	Alpha	Effect_Threshold	Design_Formula
 ```
 

@@ -24,15 +24,13 @@ Default to `--project .` in the intended project. Do not walk upward or audit `/
 job IDs or SLURM clues exist. Queue checks may read `squeue`/`sacct`; they must not
 submit, cancel, resubmit, repair, or write status.
 
-Inspect only bounded project-local evidence:
-
-- `config/`: plans, manifests, parameters, sample sheets.
-- `data/`: explicit links or staged inputs, not broad raw-data scans.
-- `scripts/`: shell, SLURM, configs, workflow drivers, submitted snapshots.
-- `logs/`: `.out`, `.err`, `.log`, job IDs, terminal markers.
-- `results/`: expected outputs and summaries.
-- `reports/`: plans, status, acceptance, methods, delivery index.
-- `tmp/`: clues only; never final evidence.
+Inspect only bounded project-local evidence. Layout v2 uses `config/`,
+`rawdata/`, `scripts/`, `logs/`, `tmp/`, `results/`, `docs/`, and
+`manuscripts/`; legacy projects retain `data/` and `reports/`. Raw inputs are
+explicit entries/links only, not a broad data scan. `tmp/` provides clues only
+and is never formal result, figure, claim, acceptance, delivery, or manuscript
+evidence. Run `project_structure_audit.py` for a v2 project before accepting its
+layout.
 
 If the biological input location is unknown, ask for an exact path, manifest,
 pattern, or approved bounded root. Do not recursively search parent directories,
@@ -70,5 +68,5 @@ route. Record the obsolete route, active route, evidence paths, and next action.
 - `Delivered`: preserve the snapshot; reopen only with an explicit scope/version.
 
 The audit script is a bounded heuristic. A directory, status row, or exit code is
-never sufficient proof by itself. Do not write `reports/workflow_status.tsv`
-without user confirmation.
+never sufficient proof by itself. Do not write the active layout's
+`workflow_status.tsv` without user confirmation.

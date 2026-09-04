@@ -4,10 +4,10 @@ Use this contract when the user asks what is running, whether jobs finished, wha
 failed, what is blocked, or what should happen next. Project lifecycle and task
 status are related but different:
 
-- `reports/workflow_status.tsv` records the primary project-wide lifecycle stage.
-- `reports/Task_Status.tsv` records concurrent work units such as stages, samples,
-  array groups, pilots, validation tasks, and plotting tasks.
-- `reports/run_record.tsv` records submissions made through `submit_and_log.sh`.
+- Layout v2 uses `docs/status/workflow_status.tsv` for the primary project stage,
+  `docs/status/Task_Status.tsv` for concurrent work units, and
+  `docs/status/run_record.tsv` for submissions.
+- Legacy projects retain the equivalent three files under `reports/`.
 - An enabled Workspace Steward supplies static module/route expectations; it does
   not own task runtime status.
 
@@ -24,7 +24,9 @@ python3 scripts/project_dashboard.py --project <project_dir> --check-queue
 python3 scripts/project_dashboard.py --project <project_dir> --check-queue --format json
 ```
 
-The dashboard reads only the three registered project files above. It does not
+The dashboard detects `config/Project_Layout.tsv` and reads only the active
+profile's three registered status files above; it never merges v2 and legacy
+copies. It does not
 search for unknown biological inputs, crawl parent directories, write status,
 submit, cancel, resubmit, or change concurrency. `--check-queue` queries only
 registered numeric Job IDs and caps the query with `--max-jobs` (default 200).

@@ -65,7 +65,7 @@ completed = run_cli(["suggest", "--kind", "stage", "--step", "30", "--token", "R
 assert completed.returncode == 0, completed.stderr
 suggest_lines = completed.stdout.splitlines()
 assert suggest_lines[0].split("\t") == list(manager.SUGGEST_COLUMNS)
-assert suggest_lines[1].split("\t")[:4] == ["30_RNA_DE", "9", "2", "PASS"]
+assert suggest_lines[1].split("\t")[:4] == ["30-RNA-DE", "9", "2", "PASS"]
 passed("deterministic concise names and TSV suggest output")
 
 for arguments, fragment in (

@@ -18,7 +18,8 @@ Behavior:
   - with    --yes: validates source, rsyncs with --delete, then validates target.
 
 Excluded from sync:
-  .git, .claude, .codex, .agents, tmp, __pycache__, *.pyc
+  .git, .claude, .codex, .agents, tmp, the local Chinese handbook,
+  __pycache__, *.pyc
 
 Options:
   --yes            actually write to the Codex runtime copy
@@ -118,6 +119,7 @@ rsync_args=(
     --exclude '/.codex/'
     --exclude '/.agents/'
     --exclude '/tmp/'
+    --exclude '/生物信息学分析与论文写作_GitHub协同指导手册.md'
     --exclude '__pycache__/'
     --exclude '*.pyc'
 )

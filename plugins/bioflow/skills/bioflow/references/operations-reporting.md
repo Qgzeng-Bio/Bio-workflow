@@ -63,8 +63,8 @@ Use qp mode for the user's multi-task queue pattern:
 Each task command must include environment activation and explicit output paths.
 Empty `tasks.txt` does not prove no work is running; inspect `task_log.txt` and
 SLURM state. Do not change `MAX_PARALLEL` for large-memory jobs without
-confirmation. For a unified bioflow dashboard, register the qp manager or child
-Job IDs in `reports/Task_Status.tsv`; do not parse arbitrary task commands or
+confirmation. For a unified bioflow dashboard, register the qp manager or child Job IDs in the
+active layout's `Task_Status.tsv`; do not parse arbitrary task commands or
 recursively discover qp outputs.
 
 ## Plot and report
@@ -89,8 +89,11 @@ read the sidecar with `read.delim` (or an equivalent explicit TSV reader), not a
 stock CSV path. Unit conversion is allowed only when the handoff converts both
 number and label and records the factor.
 
-Always save plotting data, code, parameters, metadata, QA, and an English legend
-with the exported PDF/PNG. Read `references/validation-checklists.md` for
+In layout v2, save each retained figure as the package defined by
+`references/project-layout.md`: PDF/PNG and README at package root, exact plotting
+TSV under `source-data/`, generated metadata/check/review MD/JSON under `checks/`,
+and the one editable plot script under `scripts/<module>/plotting/`. Draft
+alternatives stay in tmp. Read `references/validation-checklists.md` for
 bioinformatics figure acceptance. Visual design, export, and rendered-image QA
 remain entirely in PaperPlot; Bioflow does not modify its templates or runtime.
 

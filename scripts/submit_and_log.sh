@@ -36,7 +36,8 @@ Options:
   --module M001     forwarded Workspace Module_ID
   --task-id T001    forwarded registered task ID
   --tmp PATH        forwarded explicit temporary route; repeat when needed
-  --record FILE     run-record TSV to append (default: reports/run_record.tsv)
+  --record FILE     run-record TSV to append (default follows project layout:
+                    docs/status/run_record.tsv for v2, reports/run_record.tsv for legacy)
   --yes             actually submit (without it, dry-run only)
   -h, --help        show this help
 
@@ -46,7 +47,7 @@ USAGE
 
 script=""; manifest=""; claim_manifest=""; input_list=""; output_dir=""; mode=""; conc=""
 project=""; module=""; task_id=""; tmp_paths=()
-record="reports/run_record.tsv"; do_submit=0
+record=""; do_submit=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -71,6 +72,38 @@ done
 [[ -n "$script" ]] || { echo "ERROR | Missing --script" >&2; exit 2; }
 [[ -e "$script" && -r "$script" ]] || { echo "ERROR | Script missing or unreadable: $script" >&2; exit 2; }
 
+self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=project_layout.sh
+source "$self_dir/project_layout.sh"
+script_project="$(bioflow_find_project_root "$script" 2>/dev/null || true)"
+output_project=""
+[[ -n "$output_dir" ]] && output_project="$(bioflow_find_project_root "$output_dir" 2>/dev/null || true)"
+if [[ -n "$script_project" && -n "$output_project" && "$script_project" != "$output_project" ]]; then
+    echo "ERROR | script and output belong to different Bioflow projects: $script_project vs $output_project" >&2
+    exit 2
+fi
+if [[ -n "$project" ]]; then
+    project="$(realpath -m -- "$project" 2>/dev/null || printf '%s' "$project")"
+    for inferred in "$script_project" "$output_project"; do
+        if [[ -n "$inferred" && "$inferred" != "$project" ]]; then
+            echo "ERROR | --project disagrees with script/output project: $project vs $inferred" >&2
+            exit 2
+        fi
+    done
+elif [[ -n "$script_project" ]]; then
+    project="$script_project"
+elif [[ -n "$output_project" ]]; then
+    project="$output_project"
+fi
+record_project="${project:-$(pwd -P)}"
+if [[ -z "$record" ]]; then
+    record_relative="$(bioflow_control_path "$record_project" run_record)" || {
+        echo "ERROR | cannot resolve run-record path from project layout: $record_project" >&2
+        exit 2
+    }
+    record="$record_project/$record_relative"
+fi
+
 resolve_safe() {  # echo a clean absolute path; FAIL (return 1, no output) if it cannot
     # be safely resolved (realpath missing/failing, non-absolute, or residual "..").
     local p="$1" n
@@ -93,7 +126,6 @@ is_protected "$_rec_norm" && { echo "ERROR | --record is under a protected path:
 record="$_rec_norm"  # use the normalized absolute path everywhere downstream
 
 # --- locate prepare_submission.sh (the gate) ----------------------------------
-self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 proj_root="$(cd "$self_dir/.." && pwd)"
 gate=""
 [[ -x "$self_dir/prepare_submission.sh" ]] && gate="$self_dir/prepare_submission.sh"
@@ -229,7 +261,8 @@ migrate_or_create_record
 # specified --claim-manifest, the file must exist now or we refuse.
 if [[ -n "$claim_manifest" ]]; then
     audit_manifest_pre="$claim_manifest"
-    [[ "$audit_manifest_pre" == /* ]] || audit_manifest_pre="$proj_root/$audit_manifest_pre"
+    claim_base="${project:-$(pwd -P)}"
+    [[ "$audit_manifest_pre" == /* ]] || audit_manifest_pre="$claim_base/$audit_manifest_pre"
     if [[ ! -f "$audit_manifest_pre" ]]; then
         echo "ERROR | --claim-manifest given but file does not exist: $claim_manifest" >&2
         echo "ERROR | refusing to submit; either fix the path or omit --claim-manifest" >&2
@@ -269,7 +302,8 @@ if [[ -n "$claim_manifest" ]]; then
     # We pre-validated existence above, but re-resolve here in case a TOCTOU
     # rename happened between gate and submit; treat any race as MANIFEST_MISSING.
     audit_manifest="$claim_manifest"
-    [[ "$audit_manifest" == /* ]] || audit_manifest="$proj_root/$audit_manifest"
+    claim_base="${project:-$(pwd -P)}"
+    [[ "$audit_manifest" == /* ]] || audit_manifest="$claim_base/$audit_manifest"
     if [[ -f "$audit_manifest" ]]; then
         set +e
         audit_out="$(bash "$proj_root/scripts/log_claim_audit.sh" --manifest "$audit_manifest" --job-id "$jid" 2>&1)"

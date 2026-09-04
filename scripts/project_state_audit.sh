@@ -8,8 +8,9 @@ Usage:
 
 Read-only project state audit for qgzeng bioflow resume protocol.
 Default project is the current directory. It never walks upward to parent roots.
-It performs a bounded scan of project-local directories only:
-config/ data/ scripts/ logs/ results/ reports/ tmp/
+It performs a bounded scan of the active project layout only. Layout v2 uses:
+config/ rawdata/ scripts/ logs/ tmp/ results/ docs/ manuscripts/
+Legacy projects continue to use config/ data/ scripts/ logs/ tmp/ results/ reports/.
 
 The script prints state candidates and a suggested workflow_status.tsv row.
 It does not write files, submit jobs, cancel jobs, resubmit jobs, or repair outputs.
@@ -93,9 +94,30 @@ if [[ "$project_abs" =~ ^/data9/home/[^/]+(/projects)?$ ]]; then
     exit 1
 fi
 
-cd "$project_abs"
+self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=project_layout.sh
+source "$self_dir/project_layout.sh"
+layout_schema="$(bioflow_layout_schema "$project_abs")" || {
+    echo "FAIL | Invalid project layout marker: $project_abs/config/Project_Layout.tsv" >&2
+    exit 1
+}
+if [[ "$layout_schema" == "bioflow.layout.v2" ]]; then
+    rawdata_root="rawdata"
+    docs_root="docs"
+    scan_dirs=(config rawdata scripts logs results docs manuscripts tmp)
+    result_scan_dirs=(results)
+else
+    rawdata_root="data"
+    docs_root="reports"
+    scan_dirs=(config data scripts logs results reports tmp)
+    result_scan_dirs=(results reports)
+fi
+status_file="$(bioflow_control_path "$project_abs" workflow_status)" || {
+    echo "FAIL | Cannot resolve workflow status path for project layout" >&2
+    exit 1
+}
 
-scan_dirs=(config data scripts logs results reports tmp)
+cd "$project_abs"
 
 bounded_find_files() {
     local dir="$1"
@@ -237,10 +259,10 @@ first_marked_file() {
     done <<< "$files"
 }
 
-plan_files="$(list_files config reports | grep -Ei '(^|/)(analysis|project|workflow)[_-]?plan\.(md|yaml|yml|tsv|json)$' | head -n 20 || true)"
-delivery_files="$(list_files reports | grep -Ei '(^|/)(delivery[_-]?(index|manifest)|output[_-]?index)\.(md|yaml|yml|tsv|json)$' | head -n 20 || true)"
-acceptance_files="$(list_files reports | grep -Ei '(^|/)(acceptance|validation)[_-]?(report|summary|evidence)?\.(md|yaml|yml|tsv|json)$' | head -n 20 || true)"
-input_candidates="$(list_files config data | grep -Eiv '(^|/)(analysis|project|workflow)[_-]?plan\.' | grep -Ei '(^|/)(manifest|sample|samples|input|inputs)[^/]*|\.(fa|fasta|fna|fq|fastq|gz|bam|cram|vcf|bcf|gff|gtf|bed)$' | head -n 80 || true)"
+plan_files="$(list_files config "$docs_root" | grep -Ei '(^|/)(analysis|project|workflow)[_-]?plan\.(md|yaml|yml|tsv|json)$' | head -n 20 || true)"
+delivery_files="$(list_files "$docs_root" | grep -Ei '(^|/)(delivery[_-]?(index|manifest)|output[_-]?index)\.(md|yaml|yml|tsv|json)$' | head -n 20 || true)"
+acceptance_files="$(list_files "$docs_root" | grep -Ei '(^|/)(acceptance|validation)[_-]?(report|summary|evidence)?\.(md|yaml|yml|tsv|json)$' | head -n 20 || true)"
+input_candidates="$(list_files config "$rawdata_root" | grep -Eiv '(^|/)(analysis|project|workflow)[_-]?plan\.' | grep -Ei '(^|/)(manifest|sample|samples|input|inputs)[^/]*|\.(fa|fasta|fna|fq|fastq|gz|bam|cram|vcf|bcf|gff|gtf|bed)$' | head -n 80 || true)"
 input_files="$({
     while IFS= read -r file; do
         [[ -n "$file" && -e "$file" ]] || continue
@@ -251,10 +273,10 @@ input_files="$({
     done <<< "$input_candidates"
 } | head -n 80 || true)"
 script_files="$(list_files scripts | grep -Ei '\.(sh|bash|slurm|sbatch)$|(^|/)(run|submit|workflow|pipeline)[^/]*$' | head -n 80 || true)"
-log_files="$(list_files logs reports | grep -Ei '\.(out|err|log)$' | head -n 120 || true)"
+log_files="$(list_files logs "$docs_root" | grep -Ei '\.(out|err|log)$' | head -n 120 || true)"
 err_files="$(printf '%s\n' "$log_files" | grep -Ei '\.err$' || true)"
 out_log_files="$(printf '%s\n' "$log_files" | grep -Ei '\.(out|log)$' || true)"
-result_files="$(list_files results reports | grep -Eiv '^reports/workflow_status\.tsv$|(^|/)(analysis|project|workflow)[_-]?plan\.|(^|/)(delivery[_-]?(index|manifest)|output[_-]?index)\.|(^|/)(acceptance|validation)[_-]?(report|summary|evidence)?\.|(^|/)methods[_-]?summary\.' | head -n 120 || true)"
+result_files="$(list_files "${result_scan_dirs[@]}" | grep -Eiv '(^|/)workflow_status\.tsv$|(^|/)(analysis|project|workflow)[_-]?plan\.|(^|/)(delivery[_-]?(index|manifest)|output[_-]?index)\.|(^|/)(acceptance|validation)[_-]?(report|summary|evidence)?\.|(^|/)methods[_-]?summary\.' | head -n 120 || true)"
 
 input_count="$(printf '%s\n' "$input_files" | count_lines)"
 plan_count="$(printf '%s\n' "$plan_files" | count_lines)"
@@ -278,7 +300,6 @@ failure_pattern='(OUT_OF_MEMORY|Out Of Memory|oom-kill|oom_kill|Cannot allocate 
 install_failure_pattern='(Could not solve for environment specs|UnsatisfiableError|ResolvePackageNotFound|critical libmamba|Conda.*(failed|error)|conda.*(failed|error)|micromamba.*(failed|error)|singularity.*(FATAL|ERROR)|FATAL:|No space left on device|Disk quota exceeded|Status[[:space:]]+(FAILED|FAIL)|exit[ _-]?code([=:]|[[:space:]])+[1-9][0-9]*|Traceback|command not found)'
 completion_pattern='(Job completed|Job finished|Finished successfully|normal completion|All done|Done\.?$|PILOT DONE|WORKFLOW DONE|Pipeline completed|Analysis completed)'
 start_pattern='(Job started|Submitted batch job|SLURM_JOB_ID|Job ID:|host=.*job=[0-9]+|(^|[[:space:]])job=[0-9]+)'
-status_file="reports/workflow_status.tsv"
 status_file_mtime=0
 status_job_ids=""
 
@@ -376,7 +397,7 @@ incomplete_run_evidence="$(
         printf '%s\n' "$tail_block" | grep -Eiq -- "$completion_pattern|$failure_pattern" && continue
         match="$(printf '%s\n' "$tail_block" | grep -Eim 1 -- "$start_pattern" || true)"
         [[ -n "$match" ]] && { printf '%s: %s\n' "$file" "$match"; break; }
-    done < <(recent_files 12 logs reports)
+    done < <(recent_files 12 logs "$docs_root")
 )"
 
 validation_evidence=""
@@ -401,7 +422,7 @@ if [[ -r "$status_file" ]]; then
     fi
 
     status_running_evidence="$(
-        awk -F '\t' '
+        awk -F '\t' -v status_source="$status_file" '
             NR == 1 {
                 for (i = 1; i <= NF; i++) idx[tolower($i)] = i
                 next
@@ -415,7 +436,7 @@ if [[ -r "$status_file" ]]; then
                 ss = tolower(status)
                 ff = tolower(finished)
                 if (job ~ /^[0-9]+$/ && (ss ~ /(pending|running|queued|submitted)/ || st ~ /(queued_or_running|pilot|run)/) && (ff == "" || ff == "-" || ss ~ /(pending|running|queued|submitted)/)) {
-                    print "reports/workflow_status.tsv: " $0
+                    print status_source ": " $0
                     exit
                 }
             }
@@ -423,7 +444,7 @@ if [[ -r "$status_file" ]]; then
     )"
 
     status_install_resolved_evidence="$(
-        awk -F '\t' '
+        awk -F '\t' -v status_source="$status_file" '
             NR == 1 {
                 for (i = 1; i <= NF; i++) idx[tolower($i)] = i
                 next
@@ -434,7 +455,7 @@ if [[ -r "$status_file" ]]; then
                 st = tolower(stage)
                 ss = tolower(status)
                 if (st ~ /(install|configure)/ && ss ~ /(completed|done|success|abandoned)/) {
-                    print "reports/workflow_status.tsv: " $0
+                    print status_source ": " $0
                 }
             }
         ' "$status_file" 2>/dev/null | head -n 5 || true
@@ -588,8 +609,8 @@ if [[ "${#scan_warnings[@]}" -gt 0 ]]; then
 fi
 
 print_block "Recent scripts" "$(recent_files 5 scripts)"
-print_block "Recent logs" "$(recent_files 5 logs reports)"
-print_block "Recent results/reports" "$(recent_files 5 results reports)"
+print_block "Recent logs" "$(recent_files 5 logs "$docs_root")"
+print_block "Recent results/docs" "$(recent_files 5 results "$docs_root")"
 
 if [[ "$check_queue" -eq 1 ]]; then
     print_block "Discovered job IDs" "$job_ids"
@@ -630,7 +651,7 @@ if [[ "$row_job_id" == "NA" && "$primary_evidence" =~ (Job[[:space:]]ID:|Submitt
 fi
 
 printf '[INFO] Recommended_minimal_next_action: %s\n' "$primary_next"
-printf '[INFO] Suggested reports/workflow_status.tsv row (not written)\n'
+printf '[INFO] Suggested %s row (not written)\n' "$status_file"
 printf 'Stage\tStatus\tEvidence_Path\tJob_ID\tExit_Code\tInput_Path\tOutput_Path\tNext_Action\tUpdated_Time\n'
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$primary_stage" "$primary_status" "$evidence_path" "$row_job_id" "$first_exit_code" \

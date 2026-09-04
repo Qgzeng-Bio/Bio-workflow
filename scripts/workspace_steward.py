@@ -27,8 +27,11 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import path_manager as pm  # noqa: E402
+import project_layout as layout_contract  # noqa: E402
 
 SCHEMA_VERSION = "workspace.v1"
+V2_SCHEMA_VERSION = "workspace.v2"
+SUPPORTED_SCHEMA_VERSIONS = {SCHEMA_VERSION, V2_SCHEMA_VERSION}
 MAX_AUDIT_DEPTH = 5
 DEFAULT_AUDIT_DEPTH = 3
 MAX_INVENTORY_ENTRIES = 5000
@@ -43,6 +46,19 @@ POLICY_COLUMNS = (
 )
 MODULE_COLUMNS = (
     "Module_ID",
+    "Parent_Module",
+    "Stage",
+    "Short_Name",
+    "Module_Kind",
+    "Depends_On",
+    "Purpose",
+    "Owner",
+    "Compatibility",
+    "Notes",
+)
+MODULE_COLUMNS_V2 = (
+    "Module_ID",
+    "Analysis_Key",
     "Parent_Module",
     "Stage",
     "Short_Name",
@@ -80,6 +96,7 @@ INVENTORY_COLUMNS = (
 PLAN_COLUMNS = (
     "Plan_SHA256",
     "Module_ID",
+    "Analysis_Key",
     "Parent_Module",
     "Stage",
     "Module_Path",
@@ -140,6 +157,10 @@ MIGRATION_COLUMNS = (
 MODULE_ID_RE = re.compile(r"^M([0-9]{3,})$")
 ROUTE_ID_RE = re.compile(r"^R([0-9]{3,})$")
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+ANALYSIS_KEY_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+FIGURE_PACKAGE_RE = re.compile(r"^F[0-9]{3}_[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*$")
+MANUSCRIPT_DIR_RE = re.compile(r"^P[0-9]{2}-[a-z][a-z0-9-]*$")
+VERSION_DIR_RE = re.compile(r"^V[0-9]{2,}$")
 STAGE_RE = re.compile(r"^[0-9]{2}$")
 MODULE_KINDS = {"group", "analysis", "publication", "management", "legacy"}
 MODULE_COMPATIBILITY = {"Managed", "Legacy"}
@@ -157,10 +178,11 @@ PATH_ROLES = {
     "Source_Table",
     "Figure",
     "Report",
+    "Manuscript",
     "Acceptance",
     "Delivery",
 }
-ROLE_ROOT = {
+ROLE_ROOT_V1 = {
     "Config": "config",
     "Manifest": "config",
     "Input_Link": "data",
@@ -173,9 +195,29 @@ ROLE_ROOT = {
     "Source_Table": "results",
     "Figure": "reports",
     "Report": "reports",
+    "Manuscript": "reports",
     "Acceptance": "reports",
     "Delivery": "reports",
 }
+ROLE_ROOT_V2 = {
+    "Config": "config",
+    "Manifest": "config",
+    "Input_Link": "rawdata",
+    "Script": "scripts",
+    "Log": "logs",
+    "Temporary": "tmp",
+    "Result": "results",
+    "QC": "results",
+    "Plot_Data": "results",
+    "Source_Table": "results",
+    "Figure": "results",
+    "Report": "docs",
+    "Manuscript": "manuscripts",
+    "Acceptance": "docs",
+    "Delivery": "docs",
+}
+# Compatibility alias for callers/tests that inspect the v1 contract directly.
+ROLE_ROOT = ROLE_ROOT_V1
 ROUTE_COMPATIBILITY = {"Managed", "Tool_managed", "Legacy"}
 RETENTION_VALUES = {"Disposable", "Working", "Retained", "Delivery"}
 REQUIRED_VALUES = {"Yes", "No"}
@@ -196,6 +238,30 @@ CANONICAL_CONTROL_PATHS = {
     "reports/Methods_Summary.md",
     "reports/Delivery_Index.md",
 }
+V2_CONTROL_PATHS = {
+    "config/Project_Layout.tsv",
+    "config/Input_Manifest.tsv",
+    "config/Sample_Metadata.tsv",
+    "config/Reference_Manifest.tsv",
+    "config/Tool_Versions.tsv",
+    "config/result_manifest.yaml",
+    "config/Directory_Index.tsv",
+    "config/Workspace_Policy.tsv",
+    "config/Workspace_Modules.tsv",
+    "config/Workspace_Routes.tsv",
+    "rawdata/README.md",
+    "docs/Analysis_Plan.md",
+    "docs/status/workflow_status.tsv",
+    "docs/status/Task_Status.tsv",
+    "docs/status/run_record.tsv",
+    "docs/validation/Claim_Audit.tsv",
+    "docs/validation/Acceptance_Report.md",
+    "docs/methods/Methods_Summary.md",
+    "docs/delivery/Delivery_Index.md",
+    "docs/decisions/Decision_Log.md",
+    "docs/research-log/README.md",
+    "manuscripts/README.md",
+}
 ROOT_CONTROL_NAMES = {
     "AGENTS.md",
     "CLAUDE.md",
@@ -203,6 +269,10 @@ ROOT_CONTROL_NAMES = {
     "LICENSE",
     "LICENSE.md",
     ".gitignore",
+    ".gitattributes",
+    ".github",
+    "PROJECT_STATUS.md",
+    "CHANGELOG.md",
 }
 COMPLETED_TASK_STATUSES = {"Complete_unvalidated", "Validated"}
 DELIVERED_WORKFLOW_STAGES = {"Delivered"}
@@ -308,10 +378,18 @@ def read_policy(project: Path) -> dict[str, str]:
     if len(rows) != 1:
         raise WorkspaceError("Workspace_Policy.tsv must contain exactly one data row")
     row = rows[0]
-    if row["Schema_Version"] != SCHEMA_VERSION:
-        raise WorkspaceError(f"unsupported workspace schema: {row['Schema_Version']!r}")
+    try:
+        layout = layout_contract.detect_layout(project)
+    except layout_contract.LayoutError as exc:
+        raise WorkspaceError(str(exc)) from exc
+    expected_schema = V2_SCHEMA_VERSION if layout.is_v2 else SCHEMA_VERSION
+    if row["Schema_Version"] != expected_schema:
+        raise WorkspaceError(
+            f"workspace schema {row['Schema_Version']!r} does not match project layout "
+            f"{layout.schema_version!r}; expected {expected_schema!r}"
+        )
     if row["Enforcement_Mode"] != "Hybrid":
-        raise WorkspaceError("Enforcement_Mode must be Hybrid in workspace.v1")
+        raise WorkspaceError(f"Enforcement_Mode must be Hybrid in {expected_schema}")
     if row["Plan_Status"] not in {"Draft", "Reviewed"}:
         raise WorkspaceError("Plan_Status must be Draft or Reviewed")
     if row["Plan_Status"] == "Reviewed" and not re.fullmatch(r"[0-9a-f]{64}", row["Plan_SHA256"]):
@@ -328,24 +406,59 @@ def read_policy(project: Path) -> dict[str, str]:
     return row
 
 
-def validate_short_name(stage: str, short_name: str) -> None:
-    tokens = short_name.split("_") if short_name else []
+def validate_short_name(
+    stage: str, short_name: str, layout: layout_contract.ProjectLayout
+) -> None:
+    tokens = short_name.split(layout.module_separator) if short_name else []
+    if layout.is_v2 and any(
+        token.casefold() in pm.FORBIDDEN_TOKENS or pm.VERSION_RE.fullmatch(token)
+        for token in tokens
+    ):
+        raise WorkspaceError(
+            "analysis-module names cannot contain version/status tokens; use <module>/versions/VNN"
+        )
     try:
-        pm.build_name("stage", int(stage), tokens, None)
+        pm.build_name(
+            "stage", int(stage), tokens, None, separator=layout.module_separator
+        )
     except (pm.PathManagerError, ValueError) as exc:
-        raise WorkspaceError(f"invalid managed module name {stage}_{short_name}: {exc}") from exc
+        expected = f"{stage}{layout.module_separator}{short_name}"
+        raise WorkspaceError(f"invalid managed module name {expected}: {exc}") from exc
 
 
-def validate_modules(rows: list[dict[str, str]]) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
+def validate_modules(
+    rows: list[dict[str, str]], layout: layout_contract.ProjectLayout = layout_contract.LEGACY_LAYOUT
+) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
     if not rows:
         raise WorkspaceError("Workspace_Modules.tsv must contain at least one module")
     modules: dict[str, dict[str, str]] = {}
+    analysis_keys: dict[str, str] = {}
     for line_number, row in enumerate(rows, 2):
         module_id = row["Module_ID"]
         if not MODULE_ID_RE.fullmatch(module_id):
             raise WorkspaceError(f"Workspace_Modules.tsv:{line_number}: invalid Module_ID {module_id!r}")
         if module_id in modules:
             raise WorkspaceError(f"duplicate Module_ID: {module_id}")
+        if layout.is_v2:
+            analysis_key = clean(row.get("Analysis_Key", ""), "Analysis_Key")
+            if not ANALYSIS_KEY_RE.fullmatch(analysis_key):
+                raise WorkspaceError(
+                    f"{module_id}: Analysis_Key must use lowercase letters/digits/hyphens"
+                )
+            folded_key = analysis_key.casefold()
+            if folded_key in analysis_keys:
+                raise WorkspaceError(
+                    f"duplicate Analysis_Key {analysis_key!r}: "
+                    f"{analysis_keys[folded_key]} and {module_id}; one analysis may have only one module entry"
+                )
+            analysis_keys[folded_key] = module_id
+            row["Analysis_Key"] = analysis_key
+            if row.get("Short_Name", "") and row["Short_Name"] != analysis_key:
+                raise WorkspaceError(
+                    f"{module_id}: Short_Name must equal stable Analysis_Key in layout v2"
+                )
+        else:
+            row["Analysis_Key"] = ""
         row["Parent_Module"] = clean(row["Parent_Module"], "Parent_Module")
         row["Stage"] = clean(row["Stage"], "Stage", allow_empty=True)
         row["Short_Name"] = clean(row["Short_Name"], "Short_Name")
@@ -361,7 +474,7 @@ def validate_modules(rows: list[dict[str, str]]) -> tuple[dict[str, dict[str, st
                 raise WorkspaceError(f"{module_id}: managed Stage must be 01-99")
             if row["Module_Kind"] == "legacy":
                 raise WorkspaceError(f"{module_id}: Managed module cannot have Module_Kind=legacy")
-            validate_short_name(row["Stage"], row["Short_Name"])
+            validate_short_name(row["Stage"], row["Short_Name"], layout)
         else:
             if row["Module_Kind"] != "legacy":
                 raise WorkspaceError(f"{module_id}: Legacy compatibility requires Module_Kind=legacy")
@@ -443,7 +556,7 @@ def validate_modules(rows: list[dict[str, str]]) -> tuple[dict[str, dict[str, st
             return module_paths[module_id]
         row = modules[module_id]
         segment = (
-            f"{row['Stage']}_{row['Short_Name']}"
+            f"{row['Stage']}{layout.module_separator}{row['Short_Name']}"
             if row["Compatibility"] == "Managed"
             else row["Short_Name"]
         )
@@ -471,6 +584,7 @@ def validate_routes(
     rows: list[dict[str, str]],
     modules: dict[str, dict[str, str]],
     module_paths: dict[str, str],
+    layout: layout_contract.ProjectLayout = layout_contract.LEGACY_LAYOUT,
 ) -> dict[str, dict[str, str]]:
     if not rows:
         raise WorkspaceError("Workspace_Routes.tsv must contain at least one route")
@@ -503,15 +617,19 @@ def validate_routes(
         relative_text = relative.as_posix()
         row["Relative_Path"] = relative_text
         root = relative.parts[0]
-        if root not in pm.CANONICAL_DIRS:
+        canonical_roots = set(layout.canonical_dirs)
+        if root not in canonical_roots:
             raise WorkspaceError(f"{route_id}: route must stay under a canonical project root")
-        expected_root = ROLE_ROOT[row["Path_Role"]]
+        role_roots = ROLE_ROOT_V2 if layout.is_v2 else ROLE_ROOT_V1
+        expected_root = role_roots[row["Path_Role"]]
         if row["Compatibility"] == "Managed" and root != expected_root:
             raise WorkspaceError(
                 f"{route_id}: role {row['Path_Role']} must be under {expected_root}/, not {root}/"
             )
         if row["Path_Type"] == "Artifact" and relative.name in {"", "."}:
             raise WorkspaceError(f"{route_id}: Artifact must identify an exact file path")
+        if layout.is_v2 and root == "tmp" and row["Path_Role"] != "Temporary":
+            raise WorkspaceError(f"{route_id}: tmp/ may only use the Temporary role")
         folded = relative_text.casefold()
         if folded in seen_paths:
             raise WorkspaceError(
@@ -531,11 +649,40 @@ def validate_routes(
             owned_path = after_root_path if row["Path_Type"] == "Directory" else after_root_path.parent
             owned_text = owned_path.as_posix()
             module_prefix = module_paths[row["Module_ID"]]
-            if owned_text != module_prefix and not owned_text.startswith(module_prefix + "/"):
+            manuscript_exception = layout.is_v2 and row["Path_Role"] == "Manuscript"
+            if manuscript_exception:
+                if (
+                    modules[row["Module_ID"]]["Module_Kind"] != "publication"
+                    or row["Path_Type"] != "Directory"
+                    or len(relative.parts) != 2
+                    or not MANUSCRIPT_DIR_RE.fullmatch(relative.parts[1])
+                ):
+                    raise WorkspaceError(
+                        f"{route_id}: Manuscript directory must be manuscripts/PNN-short-name "
+                        "owned by a publication module"
+                    )
+            elif owned_text != module_prefix and not owned_text.startswith(module_prefix + "/"):
                 raise WorkspaceError(
                     f"{route_id}: managed {row['Path_Type'].lower()} must follow module path "
                     f"{root}/{module_prefix}"
                 )
+            if layout.is_v2 and root == "results":
+                tail = Path(owned_text).relative_to(Path(module_prefix)).parts
+                version_positions = [index for index, part in enumerate(tail) if re.match(r"^[Vv][0-9]", part)]
+                for position in version_positions:
+                    version = tail[position]
+                    if position == 0 or tail[position - 1] != "versions" or not VERSION_DIR_RE.fullmatch(version):
+                        raise WorkspaceError(
+                            f"{route_id}: retained versions must use {root}/{module_prefix}/versions/VNN"
+                        )
+            if layout.is_v2 and row["Path_Role"] == "Figure":
+                if row["Path_Type"] != "Directory":
+                    raise WorkspaceError(f"{route_id}: a managed Figure route must identify one figure-package directory")
+                tail = Path(relative_text).relative_to(Path(root) / module_prefix).parts
+                if len(tail) != 2 or tail[0] != "figures" or not FIGURE_PACKAGE_RE.fullmatch(tail[1]):
+                    raise WorkspaceError(
+                        f"{route_id}: Figure directory must be {root}/{module_prefix}/figures/FNNN_Name"
+                    )
         routes[route_id] = row
 
     for route_id, row in routes.items():
@@ -544,7 +691,7 @@ def validate_routes(
         relative = Path(row["Relative_Path"])
         if row["Path_Type"] == "Directory":
             parent = relative.parent.as_posix()
-            if parent not in pm.CANONICAL_DIRS:
+            if parent not in set(layout.canonical_dirs):
                 parent_routes = [
                     candidate
                     for candidate in routes.values()
@@ -583,7 +730,10 @@ def validate_routes(
             directory_count[row["Module_ID"]] += 1
     required_by_kind = {
         "analysis": {"Script", "Log", "Temporary", "Result"},
-        "publication": {"Script", "Plot_Data", "Figure", "Report"},
+        "publication": (
+            {"Script", "Plot_Data", "Figure", "Manuscript"}
+            if layout.is_v2 else {"Script", "Plot_Data", "Figure", "Report"}
+        ),
         "management": {"Config", "Report"},
     }
     for module_id, module in modules.items():
@@ -595,6 +745,37 @@ def validate_routes(
         missing = required_by_kind.get(kind, set()) - role_sets[module_id]
         if missing:
             raise WorkspaceError(f"{module_id}: {kind} module missing Directory roles: {','.join(sorted(missing))}")
+        if layout.is_v2 and kind == "publication":
+            manuscript_routes = [
+                row for row in routes.values()
+                if row["Module_ID"] == module_id
+                and row["Path_Type"] == "Directory"
+                and row["Path_Role"] == "Manuscript"
+                and row["Compatibility"] == "Managed"
+            ]
+            if len(manuscript_routes) != 1:
+                raise WorkspaceError(
+                    f"{module_id}: publication module requires exactly one Manuscript directory route"
+                )
+
+    if layout.is_v2:
+        for module_id, module in modules.items():
+            if module["Compatibility"] != "Managed" or module["Module_Kind"] not in {"analysis", "publication"}:
+                continue
+            expected = f"results/{module_paths[module_id]}"
+            roots = [
+                row for row in routes.values()
+                if row["Module_ID"] == module_id
+                and row["Path_Type"] == "Directory"
+                and row["Compatibility"] == "Managed"
+                and row["Relative_Path"] == expected
+                and row["Path_Role"] in {"Result", "Plot_Data"}
+            ]
+            if len(roots) != 1:
+                raise WorkspaceError(
+                    f"{module_id}: Analysis_Key={module['Analysis_Key']} requires exactly one retained "
+                    f"results entry at {expected}"
+                )
     return routes
 
 
@@ -604,9 +785,14 @@ def canonical_rows(columns: tuple[str, ...], rows: Iterable[dict[str, str]], id_
     return render_tsv(columns, public_rows)
 
 
-def plan_sha256(modules: dict[str, dict[str, str]], routes: dict[str, dict[str, str]]) -> str:
+def plan_sha256(
+    modules: dict[str, dict[str, str]],
+    routes: dict[str, dict[str, str]],
+    layout: layout_contract.ProjectLayout = layout_contract.LEGACY_LAYOUT,
+) -> str:
+    columns = MODULE_COLUMNS_V2 if layout.is_v2 else MODULE_COLUMNS
     content = (
-        canonical_rows(MODULE_COLUMNS, modules.values(), "Module_ID")
+        canonical_rows(columns, modules.values(), "Module_ID")
         + "\0"
         + canonical_rows(ROUTE_COLUMNS, routes.values(), "Route_ID")
     )
@@ -616,23 +802,25 @@ def plan_sha256(modules: dict[str, dict[str, str]], routes: dict[str, dict[str, 
 def load_workspace(project: Path) -> tuple[dict[str, str], dict[str, dict[str, str]], dict[str, str], dict[str, dict[str, str]], str]:
     paths = workspace_paths(project)
     try:
+        layout = layout_contract.detect_layout(project)
         config = safe_inside(project, "config", "workspace config directory")
         if not config.is_dir():
             raise WorkspaceError(f"workspace config directory must exist: {config}")
         policy = read_policy(project)
-        module_rows = read_exact_tsv(paths["modules"], MODULE_COLUMNS, "Workspace_Modules.tsv")
+        module_columns = MODULE_COLUMNS_V2 if layout.is_v2 else MODULE_COLUMNS
+        module_rows = read_exact_tsv(paths["modules"], module_columns, "Workspace_Modules.tsv")
         route_rows = read_exact_tsv(paths["routes"], ROUTE_COLUMNS, "Workspace_Routes.tsv")
-    except WorkspaceError as exc:
+    except (WorkspaceError, layout_contract.LayoutError) as exc:
         raise WorkspaceError(f"[WS001] schema/contract error: {exc}") from exc
     try:
-        modules, module_paths = validate_modules(module_rows)
+        modules, module_paths = validate_modules(module_rows, layout)
     except WorkspaceError as exc:
         raise WorkspaceError(f"[WS002] module tree/DAG/stage error: {exc}") from exc
     try:
-        routes = validate_routes(route_rows, modules, module_paths)
+        routes = validate_routes(route_rows, modules, module_paths, layout)
     except WorkspaceError as exc:
         raise WorkspaceError(f"[WS003] route/root/path error: {exc}") from exc
-    fingerprint = plan_sha256(modules, routes)
+    fingerprint = plan_sha256(modules, routes, layout)
     return policy, modules, module_paths, routes, fingerprint
 
 
@@ -680,9 +868,13 @@ def run_bootstrap(args: argparse.Namespace) -> int:
         raise WorkspaceError(f"project config directory must be an existing non-symlink directory: {config}")
     template_dir = SCRIPT_DIR.parent / "assets" / "project-templates"
     paths = workspace_paths(project)
+    try:
+        layout = layout_contract.detect_layout(project)
+    except layout_contract.LayoutError as exc:
+        raise WorkspaceError(str(exc)) from exc
     sources = {
-        "policy": template_dir / "Workspace_Policy.tsv",
-        "modules": template_dir / "Workspace_Modules.tsv",
+        "policy": template_dir / ("Workspace_Policy_v2.tsv" if layout.is_v2 else "Workspace_Policy.tsv"),
+        "modules": template_dir / ("Workspace_Modules_v2.tsv" if layout.is_v2 else "Workspace_Modules.tsv"),
         "routes": template_dir / "Workspace_Routes.tsv",
     }
     actions: list[dict[str, str]] = []
@@ -761,6 +953,11 @@ def inventory(project: Path, max_depth: int) -> list[dict[str, str]]:
     except pm.PathManagerError as exc:
         raise WorkspaceError(str(exc)) from exc
     indexed = {row["Relative_Path"]: row for row in index_rows}
+    try:
+        layout = layout_contract.detect_layout(project)
+    except layout_contract.LayoutError as exc:
+        raise WorkspaceError(str(exc)) from exc
+    pruned_roots = {layout.rawdata_root, "logs", "tmp"}
     rows: list[dict[str, str]] = []
 
     def visit(parent: Path, depth: int) -> None:
@@ -797,7 +994,7 @@ def inventory(project: Path, max_depth: int) -> list[dict[str, str]]:
                 raise WorkspaceError(f"inventory exceeds hard cap of {MAX_INVENTORY_ENTRIES} entries")
             if entry_type != "Directory":
                 continue
-            if depth == 0 and child.name in PRUNE_ROOTS:
+            if depth == 0 and child.name in pruned_roots:
                 continue
             visit(child, depth + 1)
 
@@ -833,6 +1030,7 @@ def plan_rows(fingerprint: str, modules: dict[str, dict[str, str]], module_paths
             rows.append({
                 "Plan_SHA256": fingerprint,
                 "Module_ID": module_id,
+                "Analysis_Key": module.get("Analysis_Key", "NA") or "NA",
                 "Parent_Module": module["Parent_Module"],
                 "Stage": module["Stage"],
                 "Module_Path": module_paths[module_id],
@@ -910,7 +1108,12 @@ def run_route(args: argparse.Namespace) -> int:
 
 
 def latest_task_rows(project: Path) -> tuple[dict[str, dict[str, str]], list[str]]:
-    path = safe_inside(project, "reports/Task_Status.tsv", "Task_Status.tsv")
+    try:
+        layout = layout_contract.detect_layout(project)
+        relative = layout_contract.control_relative(layout, "task_status")
+    except layout_contract.LayoutError as exc:
+        raise WorkspaceError(str(exc)) from exc
+    path = safe_inside(project, relative, "Task_Status.tsv")
     if not path.exists():
         return {}, []
     required = (
@@ -931,7 +1134,12 @@ def latest_task_rows(project: Path) -> tuple[dict[str, dict[str, str]], list[str
 
 
 def workflow_stage(project: Path) -> str:
-    path = safe_inside(project, "reports/workflow_status.tsv", "workflow_status.tsv")
+    try:
+        layout = layout_contract.detect_layout(project)
+        relative = layout_contract.control_relative(layout, "workflow_status")
+    except layout_contract.LayoutError as exc:
+        raise WorkspaceError(str(exc)) from exc
+    path = safe_inside(project, relative, "workflow_status.tsv")
     if not path.exists():
         return "NA"
     columns = ("Stage", "Status", "Evidence_Path", "Job_ID", "Exit_Code", "Input_Path", "Output_Path", "Next_Action", "Updated_Time")
@@ -988,6 +1196,10 @@ def finding(status: str, rule_id: str, detail: str, *, relative: str = "NA", mod
 
 
 def audit_workspace(project: Path, max_depth: int | None = None) -> tuple[list[dict[str, str]], dict[str, Any]]:
+    try:
+        layout = layout_contract.detect_layout(project)
+    except layout_contract.LayoutError as exc:
+        raise WorkspaceError(str(exc)) from exc
     policy, modules, _, routes, fingerprint = load_workspace(project)
     depth = max_depth if max_depth is not None else int(policy["Max_Audit_Depth"])
     entries = inventory(project, depth)
@@ -997,7 +1209,8 @@ def audit_workspace(project: Path, max_depth: int | None = None) -> tuple[list[d
     elif policy["Plan_SHA256"] != fingerprint:
         findings.append(finding("BLOCK", "WS004", "workspace plan fingerprint drifted after review"))
 
-    for root in sorted(pm.CANONICAL_DIRS):
+    canonical_roots = set(layout.canonical_dirs)
+    for root in sorted(canonical_roots):
         root_path = project / root
         if root_path.is_symlink():
             findings.append(finding("BLOCK", "WS013", "canonical project root is a symbolic link", relative=root))
@@ -1060,7 +1273,50 @@ def audit_workspace(project: Path, max_depth: int | None = None) -> tuple[list[d
         if not target.is_file() and (producer_done or delivered):
             findings.append(finding("BLOCK", "WS010", "required key artifact is missing after producer completion/delivery", relative=route["Relative_Path"], module_id=route["Module_ID"], route_id=route["Route_ID"]))
 
-    allowed_control = CANONICAL_CONTROL_PATHS
+    if layout.is_v2:
+        for route in routes.values():
+            if route["Path_Type"] != "Directory" or route["Path_Role"] != "Figure":
+                continue
+            package = safe_inside(project, route["Relative_Path"], f"figure package {route['Route_ID']}")
+            producers = route["_Producer"]  # type: ignore[index]
+            producer_done = any(
+                task_id in latest_tasks and latest_tasks[task_id]["Status"] in COMPLETED_TASK_STATUSES
+                for task_id in producers
+            )
+            if not (producer_done or delivered):
+                continue
+            requirements = {
+                "README.md": (package / "README.md").is_file(),
+                "PDF": package.is_dir() and any(path.is_file() for path in package.glob("*.pdf")),
+                "PNG": package.is_dir() and any(path.is_file() for path in package.glob("*.png")),
+                "source-data TSV": (package / "source-data").is_dir() and any(
+                    path.is_file() for path in (package / "source-data").glob("*.tsv")
+                ),
+                "checks Markdown": (package / "checks").is_dir() and any(
+                    path.is_file() for path in (package / "checks").glob("*.md")
+                ),
+                "checks JSON": (package / "checks").is_dir() and any(
+                    path.is_file() for path in (package / "checks").glob("*.json")
+                ),
+                "Figure_Index.tsv": (package.parent / "Figure_Index.tsv").is_file(),
+            }
+            missing = [name for name, present in requirements.items() if not present]
+            if missing:
+                findings.append(finding(
+                    "BLOCK", "WS015",
+                    "completed figure package is incomplete: " + ", ".join(missing),
+                    relative=route["Relative_Path"], module_id=route["Module_ID"], route_id=route["Route_ID"],
+                ))
+
+    allowed_control = V2_CONTROL_PATHS if layout.is_v2 else CANONICAL_CONTROL_PATHS
+    allowed_control = set(allowed_control)
+    for relative in list(allowed_control):
+        parent = Path(relative).parent
+        while parent != Path("."):
+            allowed_control.add(parent.as_posix())
+            parent = parent.parent
+    if layout.is_v2:
+        allowed_control.update({"config/parameters", "config/environments", "docs/status", "docs/research-log", "docs/decisions", "docs/methods", "docs/validation", "docs/delivery"})
     for entry in entries:
         relative = entry["Relative_Path"]
         path = Path(relative)
@@ -1070,11 +1326,11 @@ def audit_workspace(project: Path, max_depth: int | None = None) -> tuple[list[d
             matches = matching_routes(routes, relative)
         indexed_row = index.get(relative)
         if entry["Entry_Type"] == "Symlink":
-            managed_control = relative in pm.CANONICAL_DIRS or relative in allowed_control
+            managed_control = relative in canonical_roots or relative in allowed_control
             status = "BLOCK" if managed_control or (matches and matches[0]["Compatibility"] == "Managed") else "WARN"
             findings.append(finding(status, "WS013", "symbolic link not followed", relative=relative, module_id=matches[0]["Module_ID"] if matches else "NA", route_id=matches[0]["Route_ID"] if matches else "NA"))
             continue
-        if relative in pm.CANONICAL_DIRS or relative in allowed_control:
+        if relative in canonical_roots or relative in allowed_control:
             continue
         if path.parent == Path(".") and path.name in ROOT_CONTROL_NAMES:
             continue
@@ -1110,7 +1366,7 @@ def audit_workspace(project: Path, max_depth: int | None = None) -> tuple[list[d
     task_roles = {
         "Script_Path": {"Script"},
         "Log_Path": {"Log"},
-        "Output_Path": {"Result", "QC", "Plot_Data", "Source_Table", "Figure", "Report", "Acceptance", "Delivery"},
+        "Output_Path": {"Result", "QC", "Plot_Data", "Source_Table", "Figure", "Report", "Manuscript", "Acceptance", "Delivery"},
         "Acceptance_Path": {"Acceptance", "Delivery", "Report"},
     }
     for task_id, task in latest_tasks.items():
@@ -1173,10 +1429,12 @@ def infer_index_spec(route: dict[str, str], modules: dict[str, dict[str, str]]) 
     if route["Compatibility"] == "Legacy":
         return "legacy", "NA", []
     name = Path(route["Relative_Path"]).name
-    if re.match(r"^[0-9]{2}_", name):
-        parts = name.split("_")
+    match = re.match(r"^([0-9]{2})([_-])", name)
+    if match:
+        separator = match.group(2)
+        parts = name.split(separator)
         return "stage", parts[0], parts[1:]
-    return "result", "NA", name.split("_")
+    return "result", "NA", re.split(r"[_-]", name)
 
 
 def render_policy(row: dict[str, str]) -> str:
@@ -1414,7 +1672,7 @@ def run_preflight(args: argparse.Namespace) -> int:
     project = pm.resolve_project(args.project)
     paths: list[tuple[str, str, set[str]]] = [("Script", args.script_path, {"Script"})]
     paths.extend(("Log", value, {"Log"}) for value in args.log_path)
-    paths.extend(("Output", value, {"Result", "QC", "Plot_Data", "Source_Table", "Figure", "Report", "Acceptance", "Delivery"}) for value in args.output_path)
+    paths.extend(("Output", value, {"Result", "QC", "Plot_Data", "Source_Table", "Figure", "Report", "Manuscript", "Acceptance", "Delivery"}) for value in args.output_path)
     paths.extend(("Temporary", value, {"Temporary"}) for value in args.tmp_path)
     rows, worst = preflight_check(project, args.module, args.task_id, paths)
     write_tsv(PREFLIGHT_COLUMNS, rows)
@@ -1423,11 +1681,16 @@ def run_preflight(args: argparse.Namespace) -> int:
 
 def run_migration_plan(args: argparse.Namespace) -> int:
     project = pm.resolve_project(args.project)
+    try:
+        layout = layout_contract.detect_layout(project)
+    except layout_contract.LayoutError as exc:
+        raise WorkspaceError(str(exc)) from exc
     entries = inventory(project, args.max_depth)
     rows: list[dict[str, str]] = []
     for entry in entries:
         relative = entry["Relative_Path"]
-        if relative in pm.CANONICAL_DIRS or relative in CANONICAL_CONTROL_PATHS:
+        allowed_controls = V2_CONTROL_PATHS if layout.is_v2 else CANONICAL_CONTROL_PATHS
+        if relative in set(layout.canonical_dirs) or relative in allowed_controls:
             continue
         path = Path(relative)
         role = entry["Observed_Role"]
@@ -1447,11 +1710,11 @@ def run_migration_plan(args: argparse.Namespace) -> int:
             suggested_path = "tmp/REVIEW_REQUIRED"
             confidence = "Medium"
             reason = "temporary-like directory is under results/; content semantics need review"
-        elif entry["Entry_Type"] == "Directory" and role in {"Report", "Figure"} and path.parts[0] == "results":
-            root = "reports"
+        elif entry["Entry_Type"] == "Directory" and role == "Report" and path.parts[0] == "results":
+            root = layout.documentation_root
             suggested_path = f"{root}/REVIEW_REQUIRED"
             confidence = "Medium"
-            reason = f"{role.lower()}-like directory is under results/; module association needs review"
+            reason = "report-like directory is under results/; module association needs review"
         rows.append({
             "Current_Path": relative,
             "Observed_Type": entry["Entry_Type"],

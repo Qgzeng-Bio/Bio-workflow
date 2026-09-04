@@ -93,6 +93,8 @@ fi
 
 # --- locate sibling helpers in the project scripts dir -------------------------
 self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=project_layout.sh
+source "$self_dir/project_layout.sh"
 helper_dirs=("$self_dir")
 
 find_helper() {
@@ -188,6 +190,7 @@ resource_line="(未运行; slurm_preflight.sh 未产生资源判断)"
 task_line="(无 manifest / array)"
 quota_line="(未运行)"
 output_line="(未指定 --output)"
+structure_line="(未启用 / legacy project)"
 workspace_line="(未启用 / legacy project)"
 
 # === 1. 输入层 / input layer ===================================================
@@ -408,11 +411,75 @@ if [[ -n "$output_dir" ]]; then
     fi
 fi
 
-# === 6. Workspace Steward route gate ===========================================
-if [[ -z "$project" && -f "$PWD/config/Workspace_Policy.tsv" ]]; then
-    project="$PWD"
+# === 6. Layout-v2 structure + Workspace Steward route gates ==================
+script_project="$(bioflow_find_project_root "$script" 2>/dev/null || true)"
+output_project=""
+[[ -n "$output_dir" ]] && output_project="$(bioflow_find_project_root "$output_dir" 2>/dev/null || true)"
+if [[ -n "$script_project" && -n "$output_project" && "$script_project" != "$output_project" ]]; then
+    blockers+=("脚本与输出属于不同 Bioflow 项目: script=$script_project output=$output_project")
 fi
 if [[ -n "$project" ]]; then
+    project="$(realpath -m -- "$project" 2>/dev/null || printf '%s' "$project")"
+    for inferred in "$script_project" "$output_project"; do
+        [[ -z "$inferred" || "$inferred" == "$project" ]] \
+            || blockers+=("显式 --project 与脚本/输出所属项目不一致: project=$project inferred=$inferred")
+    done
+elif [[ -n "$script_project" ]]; then
+    project="$script_project"
+elif [[ -n "$output_project" ]]; then
+    project="$output_project"
+elif [[ -f "$PWD/config/Project_Layout.tsv" || -f "$PWD/config/Workspace_Policy.tsv" ]]; then
+    project="$PWD"
+fi
+if [[ -n "$project" && -f "$project/config/Project_Layout.tsv" ]]; then
+    project_norm="$(realpath -m -- "$project" 2>/dev/null || printf '%s' "$project")"
+    if [[ -n "$output_dir" ]]; then
+        output_norm="$(realpath -m -- "$output_dir" 2>/dev/null || printf '%s' "$output_dir")"
+        case "${output_norm%/}" in
+            "${project_norm%/}/tmp"|"${project_norm%/}/tmp/"*)
+                blockers+=("布局 v2 的 --output 不得位于 tmp/；tmp 只能保存可删除重建的中间文件: $output_norm")
+                structure_line="BLOCK (formal output under tmp/)"
+                ;;
+            "${project_norm%/}/rawdata"|"${project_norm%/}/rawdata/"*)
+                blockers+=("布局 v2 的 --output 不得位于 rawdata/；rawdata 仅保存只读原始输入或链接: $output_norm")
+                structure_line="BLOCK (write target under rawdata/)"
+                ;;
+        esac
+        case "${output_norm%/}" in
+            "${project_norm%/}/results"|"${project_norm%/}/results/"*|"${project_norm%/}/docs"|"${project_norm%/}/docs/"*|"${project_norm%/}/manuscripts"|"${project_norm%/}/manuscripts/"*) ;;
+            *) blockers+=("布局 v2 的 --output 必须留在同一项目的 results/docs/manuscripts 中: $output_norm") ;;
+        esac
+    fi
+    script_norm="$(realpath -m -- "$script" 2>/dev/null || printf '%s' "$script")"
+    case "$script_norm" in
+        "${project_norm%/}/scripts/"*) ;;
+        *) blockers+=("布局 v2 的提交脚本必须位于同一项目 scripts/ 下: $script_norm") ;;
+    esac
+    structure_audit="$self_dir/project_structure_audit.py"
+    if [[ ! -f "$structure_audit" ]]; then
+        structure_line="project_structure_audit.py 缺失"
+        blockers+=("布局 v2 项目缺少结构检查器: $structure_audit")
+    else
+        set +e
+        structure_out="$(python3 "$structure_audit" --project "$project" --format tsv 2>&1)"
+        structure_rc=$?
+        set -e
+        if [[ "$structure_rc" -ge 2 ]]; then
+            structure_line="BLOCK (structure audit exit $structure_rc)"
+            structure_reason="$(printf '%s\n' "$structure_out" | awk -F '\t' '$1 == "BLOCK" {print; exit}')"
+            [[ -n "$structure_reason" ]] || structure_reason="$(printf '%s' "$structure_out" | tail -n 1)"
+            blockers+=("Bioflow v2 目录结构 BLOCK: $structure_reason")
+        elif [[ "$structure_rc" -eq 1 ]]; then
+            structure_line="WARN (draft/incomplete structure)"
+            structure_reason="$(printf '%s\n' "$structure_out" | awk -F '\t' '$1 == "WARN" {print; exit}')"
+            [[ -n "$structure_reason" ]] || structure_reason="$(printf '%s' "$structure_out" | tail -n 1)"
+            warnings+=("Bioflow v2 目录结构有 WARN: $structure_reason")
+        else
+            structure_line="PASS | layout v2"
+        fi
+    fi
+fi
+if [[ -n "$project" && -f "$project/config/Workspace_Policy.tsv" ]]; then
     steward="$self_dir/workspace_steward.py"
     if [[ ! -f "$steward" ]]; then
         workspace_line="workspace_steward.py 缺失"
@@ -471,6 +538,7 @@ printf '[资源]   partition=%s  cpus-per-task=%s  mem=%s\n' \
 printf '[资源判断] %s\n' "$resource_line"
 printf '[配额]   %s\n' "$quota_line"
 printf '[输出]   %s\n' "$output_line"
+printf '[目录结构] %s\n' "$structure_line"
 printf '[工作区] %s\n' "$workspace_line"
 printf '[时间]   %s\n' "$(get_sbatch_value '--time' '-t' >/dev/null 2>&1 && echo '⚠️ 含 #SBATCH --time, 确认是否需要' || echo '无 #SBATCH --time')"
 printf -- '----------------------------------------------------------------------\n'

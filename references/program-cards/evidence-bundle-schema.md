@@ -3,7 +3,8 @@
 Third-version onboarding writes evidence under:
 
 ```text
-reports/program-onboarding/<program_key>/<timestamp>/
+docs/program-onboarding/<program_key>/<timestamp>/       # layout v2
+reports/program-onboarding/<program_key>/<timestamp>/    # legacy
 ```
 
 The bundle is appendable across the onboarding sequence. A missing file means the

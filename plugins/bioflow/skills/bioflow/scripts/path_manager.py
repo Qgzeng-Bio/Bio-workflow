@@ -17,12 +17,16 @@ import tempfile
 from pathlib import Path
 from typing import Any, Iterable
 
+import project_layout as layout_contract
+
 MAX_NAME_LENGTH = 24
 MAX_SEMANTIC_TOKENS = 3
 MAX_AUDIT_DEPTH = 5
 DEFAULT_AUDIT_DEPTH = 3
-CANONICAL_DIRS = {"config", "data", "scripts", "logs", "tmp", "results", "reports"}
-PRUNE_ROOTS = {"data", "logs", "tmp"}
+# Kept as the legacy compatibility surface. New code must call
+# canonical_dirs()/prune_roots() for a concrete project.
+CANONICAL_DIRS = set(layout_contract.LEGACY_LAYOUT.canonical_dirs)
+PRUNE_ROOTS = {layout_contract.LEGACY_LAYOUT.rawdata_root, "logs", "tmp"}
 PRUNE_NAMES = {"__pycache__", ".cache", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 FORBIDDEN_TOKENS = {
     "final",
@@ -35,6 +39,9 @@ FORBIDDEN_TOKENS = {
     "output",
     "outputs",
     "run",
+    "best",
+    "revised",
+    "rerun",
 }
 INDEX_COLUMNS = (
     "Directory_ID",
@@ -70,12 +77,37 @@ INDEX_STATUSES = {"Active", "Archived", "External"}
 PROTECTED_RE = re.compile(r"^/data9/home/[^/]+/(?:data|tools)(?:/|$)")
 TOKEN_RE = re.compile(r"^[A-Za-z0-9]+$")
 VERSION_RE = re.compile(r"^(?:V[0-9]+|v[0-9]+(?:\.[0-9]+)?|[0-9]{8})$")
-MANAGED_NAME_RE = re.compile(r"^[A-Za-z0-9_]+(?:\.[0-9]+)?$")
+LEGACY_MANAGED_NAME_RE = re.compile(r"^[A-Za-z0-9_]+(?:\.[0-9]+)?$")
+V2_MANAGED_NAME_RE = re.compile(r"^[A-Za-z0-9-]+(?:\.[0-9]+)?$")
 DIRECTORY_ID_RE = re.compile(r"^D([0-9]{3,})$")
 
 
 class PathManagerError(ValueError):
     """Expected naming, path-safety, or index-contract failure."""
+
+
+def project_layout(project: Path) -> layout_contract.ProjectLayout:
+    try:
+        return layout_contract.detect_layout(project)
+    except layout_contract.LayoutError as exc:
+        raise PathManagerError(str(exc)) from exc
+
+
+def canonical_dirs(project: Path) -> set[str]:
+    return set(project_layout(project).canonical_dirs)
+
+
+def prune_roots(project: Path) -> set[str]:
+    layout = project_layout(project)
+    return {layout.rawdata_root, "logs", "tmp"}
+
+
+def name_pattern(separator: str) -> re.Pattern[str]:
+    if separator == "_":
+        return LEGACY_MANAGED_NAME_RE
+    if separator == "-":
+        return V2_MANAGED_NAME_RE
+    raise PathManagerError(f"unsupported module separator: {separator!r}")
 
 
 def contains_control(value: str) -> bool:
@@ -193,21 +225,30 @@ def validate_version(version: str | None) -> str | None:
     return version
 
 
-def build_name(kind: str, step: int | None, tokens: list[str], version: str | None) -> tuple[str, str]:
+def build_name(
+    kind: str,
+    step: int | None,
+    tokens: list[str],
+    version: str | None,
+    *,
+    separator: str = "_",
+) -> tuple[str, str]:
     if kind not in {"stage", "result"}:
         raise PathManagerError("suggest/create kind must be stage or result")
     stage = normalize_step(step, kind)
     tokens = validate_tokens(tokens)
     version = validate_version(version)
+    if kind == "stage" and version is not None:
+        raise PathManagerError("analysis-module names cannot carry versions; use <module>/versions/VNN")
     pieces = tokens + ([version] if version else [])
     if kind == "stage":
         pieces.insert(0, stage)
-    name = "_".join(pieces)
+    name = separator.join(pieces)
     if len(name) > MAX_NAME_LENGTH:
         raise PathManagerError(
             f"recommended name exceeds {MAX_NAME_LENGTH} characters ({len(name)}): {name}"
         )
-    if not MANAGED_NAME_RE.fullmatch(name):
+    if not name_pattern(separator).fullmatch(name):
         raise PathManagerError(f"generated name violates managed-name syntax: {name}")
     return name, stage
 
@@ -413,20 +454,20 @@ def preview_write(mode: str, target: Path, path: Path, row: dict[str, str]) -> N
     write_tsv_stdout(columns, [payload])
 
 
-def normalized_suggestion(name: str, kind: str) -> str:
-    candidate = re.sub(r"[\s-]+", "_", name.strip())
-    candidate = re.sub(r"_+", "_", candidate).strip("_")
-    parts = candidate.split("_") if candidate else []
+def normalized_suggestion(name: str, kind: str, separator: str = "_") -> str:
+    candidate = re.sub(r"[\s_-]+", separator, name.strip())
+    candidate = re.sub(re.escape(separator) + "+", separator, candidate).strip(separator)
+    parts = candidate.split(separator) if candidate else []
     kept: list[str] = []
     for position, part in enumerate(parts):
         if kind == "stage" and position == 0 and re.fullmatch(r"[0-9]{1,2}", part):
             kept.append(f"{int(part):02d}")
         elif part.casefold() not in FORBIDDEN_TOKENS:
             kept.append(part)
-    candidate = "_".join(kept)
+    candidate = separator.join(kept)
     if not candidate or len(candidate) > MAX_NAME_LENGTH:
         return "REVIEW_REQUIRED"
-    if not MANAGED_NAME_RE.fullmatch(candidate):
+    if not name_pattern(separator).fullmatch(candidate):
         return "REVIEW_REQUIRED"
     semantic = kept[1:] if kind == "stage" and kept and re.fullmatch(r"[0-9]{2}", kept[0]) else kept
     if semantic and VERSION_RE.fullmatch(semantic[-1]):
@@ -436,14 +477,19 @@ def normalized_suggestion(name: str, kind: str) -> str:
     return candidate
 
 
-def evaluate_name(name: str, kind: str) -> list[dict[str, str]]:
+def evaluate_name(name: str, kind: str, separator: str = "_") -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
-    suggestion = normalized_suggestion(name, kind)
+    suggestion = normalized_suggestion(name, kind, separator)
     if len(name) > MAX_NAME_LENGTH:
         findings.append({"Rule_ID": "PATH001", "Detail": f"name exceeds {MAX_NAME_LENGTH} characters", "Suggested_Name": "REVIEW_REQUIRED"})
-    if not MANAGED_NAME_RE.fullmatch(name) or name.startswith("_") or name.endswith("_") or "__" in name:
-        findings.append({"Rule_ID": "PATH004", "Detail": "name must use ASCII letters/digits/underscores; one dot is allowed only in a trailing version", "Suggested_Name": suggestion})
-    parts = name.split("_")
+    if (
+        not name_pattern(separator).fullmatch(name)
+        or name.startswith(separator)
+        or name.endswith(separator)
+        or separator * 2 in name
+    ):
+        findings.append({"Rule_ID": "PATH004", "Detail": f"name must use ASCII letters/digits/{separator!r}; one dot is allowed only in a trailing version", "Suggested_Name": suggestion})
+    parts = name.split(separator)
     semantic = parts[:]
     if kind == "stage":
         if not parts or not re.fullmatch(r"[0-9]{2}", parts[0]):
@@ -468,8 +514,9 @@ def audit_row(
     rule_id: str,
     detail: str,
     suggested: str = "NA",
+    separator: str = "_",
 ) -> dict[str, str]:
-    parts = name.split("_") if name else []
+    parts = name.split(separator) if name else []
     semantic = parts[1:] if kind == "stage" and parts and re.fullmatch(r"[0-9]{2}", parts[0]) else parts
     if semantic and VERSION_RE.fullmatch(semantic[-1]):
         semantic = semantic[:-1]
@@ -485,8 +532,11 @@ def audit_row(
     }
 
 
-def scan_directories(project: Path, max_depth: int) -> list[tuple[str, Path, bool]]:
+def scan_directories(
+    project: Path, max_depth: int, pruned_roots: set[str] | None = None
+) -> list[tuple[str, Path, bool]]:
     found: list[tuple[str, Path, bool]] = []
+    pruned_roots = PRUNE_ROOTS if pruned_roots is None else pruned_roots
 
     def visit(parent: Path, depth: int) -> None:
         if depth >= max_depth:
@@ -505,7 +555,7 @@ def scan_directories(project: Path, max_depth: int) -> list[tuple[str, Path, boo
             if not child.is_dir():
                 continue
             found.append((relative, child, False))
-            if depth == 0 and child.name in PRUNE_ROOTS:
+            if depth == 0 and child.name in pruned_roots:
                 continue
             visit(child, depth + 1)
 
@@ -514,7 +564,10 @@ def scan_directories(project: Path, max_depth: int) -> list[tuple[str, Path, boo
 
 
 def run_suggest(args: argparse.Namespace) -> int:
-    name, _ = build_name(args.kind, args.step, args.token, args.version)
+    separator = "-"
+    if args.project:
+        separator = project_layout(resolve_project(args.project)).module_separator
+    name, _ = build_name(args.kind, args.step, args.token, args.version, separator=separator)
     status, rule_id, detail = "PASS", "OK", "name satisfies managed-directory rules"
     if (args.project is None) != (args.parent is None):
         raise PathManagerError("--project and --parent must be supplied together for collision checking")
@@ -543,9 +596,12 @@ def run_audit(args: argparse.Namespace) -> int:
     if not 1 <= args.max_depth <= MAX_AUDIT_DEPTH:
         raise PathManagerError(f"--max-depth must be between 1 and {MAX_AUDIT_DEPTH}")
     project = resolve_project(args.project)
+    layout = project_layout(project)
+    fixed_roots = set(layout.canonical_dirs)
+    separator = layout.module_separator
     _, index_rows = load_index(project)
     indexed = {row["Relative_Path"]: row for row in index_rows}
-    scanned = scan_directories(project, args.max_depth)
+    scanned = scan_directories(project, args.max_depth, prune_roots(project))
     rows: list[dict[str, str]] = []
     sibling_groups: dict[tuple[str, str], list[str]] = {}
     scanned_paths = {relative for relative, _, _ in scanned}
@@ -555,24 +611,24 @@ def run_audit(args: argparse.Namespace) -> int:
         sibling_groups.setdefault((parent, path.name.casefold()), []).append(relative)
         entry = indexed.get(relative)
         if is_symlink:
-            rows.append(audit_row(relative, entry["Directory_Kind"] if entry else "unmanaged", path.name, "EXEMPT", "PATH008", "symbolic link not followed"))
+            rows.append(audit_row(relative, entry["Directory_Kind"] if entry else "unmanaged", path.name, "EXEMPT", "PATH008", "symbolic link not followed", separator=separator))
             continue
-        if Path(relative).parent == Path(".") and path.name in CANONICAL_DIRS:
-            rows.append(audit_row(relative, "canonical", path.name, "EXEMPT", "PATH010", "fixed Bioflow project directory"))
+        if Path(relative).parent == Path(".") and path.name in fixed_roots:
+            rows.append(audit_row(relative, "canonical", path.name, "EXEMPT", "PATH010", "fixed Bioflow project directory", separator=separator))
             continue
         if entry and entry["Directory_Kind"] == "tool_managed":
-            rows.append(audit_row(relative, "tool_managed", path.name, "EXEMPT", "PATH009", "tool-controlled name registered in Directory_Index.tsv"))
+            rows.append(audit_row(relative, "tool_managed", path.name, "EXEMPT", "PATH009", "tool-controlled name registered in Directory_Index.tsv", separator=separator))
             continue
         if entry and entry["Directory_Kind"] == "legacy":
-            rows.append(audit_row(relative, "legacy", path.name, "WARN", "PATH006", "legacy directory is advisory-only; no automatic rename"))
+            rows.append(audit_row(relative, "legacy", path.name, "WARN", "PATH006", "legacy directory is advisory-only; no automatic rename", separator=separator))
             continue
         kind = entry["Directory_Kind"] if entry else ("stage" if re.match(r"^[0-9]{2}[_-]", path.name) else "result")
-        findings = evaluate_name(path.name, kind)
+        findings = evaluate_name(path.name, kind, separator)
         if findings:
             for finding in findings:
-                rows.append(audit_row(relative, kind, path.name, "WARN", finding["Rule_ID"], finding["Detail"], finding["Suggested_Name"]))
+                rows.append(audit_row(relative, kind, path.name, "WARN", finding["Rule_ID"], finding["Detail"], finding["Suggested_Name"], separator))
         else:
-            rows.append(audit_row(relative, kind, path.name, "PASS", "OK", "name satisfies managed-directory rules"))
+            rows.append(audit_row(relative, kind, path.name, "PASS", "OK", "name satisfies managed-directory rules", separator=separator))
 
     for (_, _), relatives in sibling_groups.items():
         if len(relatives) > 1:
@@ -581,12 +637,12 @@ def run_audit(args: argparse.Namespace) -> int:
                 path = project / relative
                 entry = indexed.get(relative)
                 kind = entry["Directory_Kind"] if entry else "result"
-                rows.append(audit_row(relative, kind, path.name, "WARN", "PATH005", detail))
+                rows.append(audit_row(relative, kind, path.name, "WARN", "PATH005", detail, separator=separator))
 
     for row in index_rows:
         relative = row["Relative_Path"]
         if relative not in scanned_paths and not (project / relative).exists():
-            rows.append(audit_row(relative, row["Directory_Kind"], Path(relative).name, "WARN", "PATH007", "indexed directory is missing"))
+            rows.append(audit_row(relative, row["Directory_Kind"], Path(relative).name, "WARN", "PATH007", "indexed directory is missing", separator=separator))
 
     rows.sort(key=lambda row: (row["Relative_Path"].casefold(), row["Relative_Path"], row["Rule_ID"]))
     write_tsv_stdout(AUDIT_COLUMNS, rows)
@@ -612,7 +668,10 @@ def run_create(args: argparse.Namespace) -> int:
         raise PathManagerError(f"parent must be an existing non-symlink directory: {parent}")
     if not os.access(parent, os.W_OK):
         raise PathManagerError(f"parent is not writable: {parent}")
-    name, stage = build_name(args.kind, args.step, args.token, args.version)
+    layout = project_layout(project)
+    name, stage = build_name(
+        args.kind, args.step, args.token, args.version, separator=layout.module_separator
+    )
     collision = casefold_collision(parent, name)
     if collision:
         raise PathManagerError(f"target/case-insensitive sibling already exists: {collision}")
@@ -660,7 +719,8 @@ def run_register(args: argparse.Namespace) -> int:
     stage = normalize_step(args.step, args.kind) if args.kind in {"stage", "result"} else "NA"
     tokens = validate_tokens(args.token) if args.token else []
     if args.kind in {"stage", "result"} and not tokens:
-        inferred = target.name.split("_")
+        separator = project_layout(project).module_separator
+        inferred = target.name.split(separator)
         if args.kind == "stage":
             inferred = inferred[1:]
         if inferred and VERSION_RE.fullmatch(inferred[-1]):
@@ -669,7 +729,7 @@ def run_register(args: argparse.Namespace) -> int:
     if args.kind == "result" and args.step is not None:
         raise PathManagerError("--step is valid only for kind=stage")
     if args.kind in {"stage", "result"}:
-        findings = evaluate_name(target.name, args.kind)
+        findings = evaluate_name(target.name, args.kind, project_layout(project).module_separator)
         if findings:
             rules = ",".join(sorted({finding["Rule_ID"] for finding in findings}))
             raise PathManagerError(
@@ -697,7 +757,7 @@ def add_name_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--kind", choices=("stage", "result"), required=True)
     parser.add_argument("--step", type=int)
     parser.add_argument("--token", action="append", default=[], help="repeat 1-3 times; casing is preserved")
-    parser.add_argument("--version", help="optional YYYYMMDD, V2, or v1.1 token")
+    parser.add_argument("--version", help="optional for result directories only; analysis modules use versions/VNN internally")
 
 
 def add_index_arguments(parser: argparse.ArgumentParser) -> None:

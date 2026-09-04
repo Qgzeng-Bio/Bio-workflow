@@ -30,6 +30,7 @@ from typing import Any
 # Allow ``import menu`` when this script is launched from any working directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import menu  # noqa: E402  (sys.path tweak above is intentional)
+import project_layout as layout_contract  # noqa: E402
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -145,7 +146,11 @@ def validate_project_root(path: str | None) -> Path:
 
 
 def onboard_root(project_root: Path) -> Path:
-    return project_root / "reports" / "program-onboarding"
+    try:
+        layout = layout_contract.detect_layout(project_root)
+    except layout_contract.LayoutError as exc:
+        raise ValueError(str(exc)) from exc
+    return project_root / layout_contract.control_relative(layout, "onboarding")
 
 
 def choice_root(project_root: Path) -> Path:
@@ -175,7 +180,13 @@ def validate_project_path(
 
 def looks_like_onboarding_bundle(path: Path) -> bool:
     parts = path.resolve().parts
-    return len(parts) >= 4 and parts[-4] == "reports" and parts[-3] == "program-onboarding" and bool(parts[-2]) and bool(parts[-1])
+    return (
+        len(parts) >= 4
+        and parts[-4] in {"docs", "reports"}
+        and parts[-3] == "program-onboarding"
+        and bool(parts[-2])
+        and bool(parts[-1])
+    )
 
 
 def validate_bundle_dir(bundle: Path, project_root: Path | None = None, allow_external: bool = False) -> Path:
@@ -187,7 +198,10 @@ def validate_bundle_dir(bundle: Path, project_root: Path | None = None, allow_ex
     if project_root is not None and not is_relative_to(resolved, project_root):
         raise ValueError(f"evidence dir must be under project root {rel(project_root)}")
     if not looks_like_onboarding_bundle(resolved):
-        raise ValueError("evidence dir must follow <project>/reports/program-onboarding/<program_key>/<timestamp>")
+        raise ValueError(
+            "evidence dir must follow <project>/docs/program-onboarding/<program_key>/<timestamp> "
+            "for layout v2 or the legacy reports/program-onboarding path"
+        )
     return resolved
 
 
@@ -1586,7 +1600,7 @@ def build_parser() -> argparse.ArgumentParser:
     probe_parser = subparsers.add_parser("probe", help="Run cheap local discovery without installing")
     probe_parser.add_argument("program", help="Program name or explicit executable path")
     probe_parser.add_argument("--path", help="Explicit executable path to check before PATH lookup")
-    probe_parser.add_argument("--out-root", help="Evidence root; defaults to reports/program-onboarding")
+    probe_parser.add_argument("--out-root", help="Evidence root; defaults to the active layout documentation root/program-onboarding")
     probe_parser.add_argument("--project-root", help="Project root for evidence output; defaults to current directory")
     probe_parser.add_argument(
         "--allow-external-paths",
@@ -1616,7 +1630,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Explicitly allow proposal to install into an existing target env.",
     )
-    plan_parser.add_argument("--out-root", help="Evidence root; defaults to reports/program-onboarding")
+    plan_parser.add_argument("--out-root", help="Evidence root; defaults to the active layout documentation root/program-onboarding")
     plan_parser.add_argument("--project-root", help="Project root for evidence output; defaults to current directory")
     plan_parser.set_defaults(func=plan_install)
 

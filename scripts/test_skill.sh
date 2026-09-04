@@ -59,9 +59,14 @@ scripts/test_slurm_preflight.sh
 "$python_bin" scripts/test_fill_gap_from_spanning_alignment.py
 "$python_bin" scripts/test_reference_consistency.py
 "$python_bin" scripts/test_prepare_paperplot_handoff.py
+"$python_bin" scripts/test_project_layout.py
 "$python_bin" scripts/test_path_manager.py
+"$python_bin" scripts/test_git_project_audit.py
+"$python_bin" scripts/test_project_structure_audit.py
 "$python_bin" scripts/test_workspace_steward.py
+"$python_bin" scripts/test_workspace_v2.py
 bash scripts/test_workspace_integration.sh
+bash scripts/test_layout_v2_integration.sh
 
 quick_validate="${HOME%/}/.codex/skills/.system/skill-creator/scripts/quick_validate.py"
 if [[ -f "$quick_validate" ]]; then
@@ -148,8 +153,8 @@ else
     printf '[WARN] Claude CLI not found in CLAUDE_BIN, PATH, or ~/anaconda3/envs/claude/bin; skipped\n'
 fi
 
-printf '[TEST] Plugin drift dry-run\n'
-scripts/sync_plugin_wrapper.sh
+printf '[TEST] Plugin wrapper equality\n'
+scripts/sync_plugin_wrapper.sh --check
 
 printf '[TEST] Git whitespace\n'
 git diff --check

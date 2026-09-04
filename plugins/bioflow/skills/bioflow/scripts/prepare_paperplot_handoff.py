@@ -320,8 +320,40 @@ def select_key_samples(
     return selected, {sample: reasons[sample] for sample in selected}
 
 
-def resolve_evidence_readiness(rows: list[dict[str, Any]], input_dir: Path, figure_role: str) -> dict[str, Any]:
+def find_v2_project_root(start: Path) -> Path | None:
+    current = start.resolve(strict=False)
+    for _ in range(8):
+        marker = current / "config" / "Project_Layout.tsv"
+        if marker.is_file() and not marker.is_symlink():
+            try:
+                lines = marker.read_text(encoding="utf-8").splitlines()[:2]
+            except (OSError, UnicodeError):
+                return None
+            if len(lines) == 2 and lines[1].startswith("bioflow.layout.v2\t"):
+                return current
+            return None
+        if current.parent == current:
+            break
+        current = current.parent
+    return None
+
+
+def path_is_in_project_tmp(path: Path, project: Path | None) -> bool:
+    if project is None:
+        return False
+    try:
+        path.relative_to(project / "tmp")
+    except ValueError:
+        return False
+    return True
+
+
+def resolve_evidence_readiness(
+    rows: list[dict[str, Any]], input_dir: Path, figure_role: str,
+    project_root: Path | None = None,
+) -> dict[str, Any]:
     statuses = sorted({row["Claim_Status"] for row in rows if row["Claim_Status"]})
+    project_root = project_root or find_v2_project_root(input_dir)
     missing_evidence: list[str] = []
     for row in rows:
         value = row["Evidence_Path"]
@@ -330,6 +362,10 @@ def resolve_evidence_readiness(rows: list[dict[str, Any]], input_dir: Path, figu
         raw = Path(value).expanduser()
         path = raw if raw.is_absolute() else input_dir / raw
         path = path.resolve(strict=False)
+        if figure_role == "publication" and path_is_in_project_tmp(path, project_root):
+            raise HandoffError(
+                f"publication handoff Evidence_Path must not come from disposable tmp/: {path}"
+            )
         if not path.exists() or not path.is_file() or not os.access(path, os.R_OK):
             missing_evidence.append(str(path))
     if figure_role == "publication" and ("blocked" in statuses or "uncertain" in statuses):
@@ -505,7 +541,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     conversions = apply_unit_targets(rows, metric_specs, targets)
     aggregate, per_metric, directional_metrics = calculate_ranks(rows, metric_specs)
     selected, key_reasons = select_key_samples(rows, aggregate, args.max_key_samples)
-    readiness = resolve_evidence_readiness(rows, input_path.resolve().parent, args.figure_role)
+    candidate_roots = {
+        root for root in (
+            find_v2_project_root(input_path.resolve().parent),
+            find_v2_project_root(output_tsv.parent),
+            find_v2_project_root(output_json.parent),
+        ) if root is not None
+    }
+    if len(candidate_roots) > 1:
+        raise HandoffError(
+            "input and output paths belong to different layout-v2 projects: "
+            + ", ".join(str(root) for root in sorted(candidate_roots))
+        )
+    project_root = next(iter(candidate_roots), None)
+    readiness = resolve_evidence_readiness(
+        rows, input_path.resolve().parent, args.figure_role, project_root
+    )
     all_metrics = sorted(metric_specs)
     missing_metrics = {
         sample: sorted(
