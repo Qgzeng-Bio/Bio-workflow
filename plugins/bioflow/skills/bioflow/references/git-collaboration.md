@@ -63,7 +63,8 @@ explained before intentionally staging the file.
 1. Start from a reviewed main baseline; inspect `git status` before changing files.
 2. Use one branch for one bounded scientific, figure, validation, or writing intent.
 3. Run/validate work through the normal Bioflow gates.
-4. Update the research or decision record and affected Claim/Figure/Version indexes.
+4. Update the research/decision record and affected Claim/Figure/Version indexes,
+   then run `scripts/project_records_audit.py --project <project>`.
 5. Inspect `git diff` and `git diff --cached`; stage explicit paths rather than habitual `git add .`.
 6. Commit one coherent intent with a useful prefix such as `analysis:`, `data:`, `figure:`, `methods:`, `writing:`, `fix:`, or `docs:`.
 7. Use a Pull Request for evidence review before merging important scientific changes.
@@ -73,7 +74,9 @@ Do not automatically run `git init`, `git add`, commit, push, merge, tag, histor
 ## Human records and machine authorities
 
 - `PROJECT_STATUS.md` is a concise human landing page. The machine authorities remain `docs/status/workflow_status.tsv` and `Task_Status.tsv` in layout v2.
-- `docs/research-log/` records why an analysis/interpretation changed. `logs/` records what programs/schedulers emitted.
+- `docs/research-log/` records why an analysis/interpretation changed. `logs/` records what programs/schedulers emitted. `docs/research-log/Log_Index.tsv` registers each dated Markdown record.
+- `docs/decisions/Decision_Index.tsv` is the stable authority for scientific/input/parameter/result-selection decisions; `Decision_Log.md` may add narrative but must not duplicate a conflicting table.
+- Read `references/project-records.md` and run `scripts/project_records_audit.py` before important acceptance, PR, tag, or manuscript-freeze review.
 - `config/result_manifest.yaml` decides whether a scientific claim is supportable under active checks.
 - A manuscript `Claim_Evidence_Map.tsv` maps that stable Claim ID to manuscript text, figures, source tables, scripts, review, and release state. It must not silently redefine scientific support.
 - `Version_Index.tsv` and `Figure_Index.tsv` record selected versions and figure state. Git history does not replace these identities for server-side results.

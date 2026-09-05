@@ -259,7 +259,10 @@ V2_CONTROL_PATHS = {
     "docs/methods/Methods_Summary.md",
     "docs/delivery/Delivery_Index.md",
     "docs/decisions/Decision_Log.md",
+    "docs/decisions/Decision_Index.tsv",
     "docs/research-log/README.md",
+    "docs/research-log/TEMPLATE.md",
+    "docs/research-log/Log_Index.tsv",
     "manuscripts/README.md",
 }
 ROOT_CONTROL_NAMES = {

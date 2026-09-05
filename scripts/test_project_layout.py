@@ -31,6 +31,8 @@ with tempfile.TemporaryDirectory(prefix="bioflow-layout-test.") as tmp_name:
         ".github/PULL_REQUEST_TEMPLATE.md", ".github/ISSUE_TEMPLATE/analysis.md",
         "rawdata/README.md", "docs/Analysis_Plan.md", "docs/status/Task_Status.tsv",
         "docs/decisions/Decision_Log.md", "manuscripts/README.md",
+        "docs/research-log/TEMPLATE.md", "docs/research-log/Log_Index.tsv",
+        "docs/decisions/Decision_Index.tsv",
     ):
         assert (project / relative).is_file(), relative
     assert not (project / "data").exists() and not (project / "reports").exists()

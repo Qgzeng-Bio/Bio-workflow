@@ -96,9 +96,10 @@ if [[ "$layout" == "v2" ]]; then
         "$templates/workflow_status.tsv" "$templates/Task_Status.tsv"
         "$templates/Acceptance_Report.md" "$templates/Methods_Summary.md"
         "$templates/Delivery_Index.md" "$templates/Decision_Log.md"
-        "$templates/Research_Log_README.md" "$templates/Manuscripts_README.md"
+        "$templates/Research_Log_README.md" "$templates/Research_Log_Entry.md" "$templates/Manuscripts_README.md"
         "$templates/Pull_Request_Template.md" "$templates/Analysis_Issue_Template.md"
         "$templates/result_manifest.yaml" "$templates/Directory_Index.tsv"
+        "$templates/Log_Index.tsv" "$templates/Decision_Index.tsv"
     )
     targets=(
         "$project_abs/config/Project_Layout.tsv" "$project_abs/README.md"
@@ -109,9 +110,10 @@ if [[ "$layout" == "v2" ]]; then
         "$project_abs/docs/status/workflow_status.tsv" "$project_abs/docs/status/Task_Status.tsv"
         "$project_abs/docs/validation/Acceptance_Report.md" "$project_abs/docs/methods/Methods_Summary.md"
         "$project_abs/docs/delivery/Delivery_Index.md" "$project_abs/docs/decisions/Decision_Log.md"
-        "$project_abs/docs/research-log/README.md" "$project_abs/manuscripts/README.md"
+        "$project_abs/docs/research-log/README.md" "$project_abs/docs/research-log/TEMPLATE.md" "$project_abs/manuscripts/README.md"
         "$project_abs/.github/PULL_REQUEST_TEMPLATE.md" "$project_abs/.github/ISSUE_TEMPLATE/analysis.md"
         "$project_abs/config/result_manifest.yaml" "$project_abs/config/Directory_Index.tsv"
+        "$project_abs/docs/research-log/Log_Index.tsv" "$project_abs/docs/decisions/Decision_Index.tsv"
     )
 else
     dirs=(config data scripts logs tmp results reports)

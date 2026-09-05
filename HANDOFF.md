@@ -1,8 +1,121 @@
 # Bioflow Skill Handoff
 
-Last updated: 2026-08-11 - Git project safety gate accepted locally
+Last updated: 2026-08-11 - project records layer accepted locally
 
-## Latest Local Update — 2026-08-11: Git/GitHub Project Safety Gate
+## Latest Local Update — 2026-08-11: Project Records Layer
+
+Purpose: add the third governance layer after layout v2 and the Git safety gate:
+a concise human status page, dated research logs, a machine-readable log index,
+stable scientific decision records, and a changelog contract.
+
+What changed:
+
+- Enhanced `PROJECT_STATUS.md`: objective, lifecycle/result/manuscript maturity,
+  baseline, priorities, module snapshot, blockers, and explicit machine-authority
+  links.
+- Added `Research_Log_Entry.md` and expanded `Research_Log_README.md`.
+- Added `docs/research-log/Log_Index.tsv` with stable `R001` IDs and exact TSV
+  schema.
+- Enhanced `Decision_Log.md` and added `Decision_Index.tsv` with stable `D001`
+  IDs, evidence paths, affected modules/claims, status, owner, and notes.
+- Added `scripts/project_records_audit.py`, a bounded read-only audit with
+  text/TSV/JSON output and stable `REC_*` rule IDs.
+- Added `scripts/test_project_records_audit.py` covering clean initialization,
+  valid populated records, malformed filenames, missing/mismatched index rows,
+  missing formal output, tmp output, formal UNKNOWN placeholders, accepted
+  decision evidence, and legacy non-enforcement.
+- Added `references/project-records.md` and routed it from SKILL, README,
+  lifecycle, layout, and Git collaboration contracts.
+- `scripts/init_project.sh` now creates the research-log template and both exact
+  TSV indexes only when missing; existing files are never overwritten.
+- Workspace Steward's layout-v2 controlled paths now recognize
+  `Decision_Index.tsv`, `Log_Index.tsv`, and `research-log/TEMPLATE.md` so a
+  clean initialized project remains PASS.
+
+Validation:
+
+- `scripts/test_project_records_audit.py`: PASS.
+- `scripts/test_project_layout.py`, `scripts/test_reference_consistency.py`,
+  and initializer fixtures: PASS.
+- Full `scripts/test_skill.sh`: PASS, including all prior layout/Git/workspace
+  gates, Pi integration, program cards, Codex/Claude plugin validation, strict
+  Plugin equality, and Git whitespace.
+- Pre-commit review round 1 (independent agent): no P0; three P1 findings
+  (Accepted+NA decision evidence, research-log subdirectory escape, and any-path
+  `tmp` evidence) plus three P2 parsing/false-positive findings were fixed and
+  regression-tested.
+- Pre-commit review round 2 (independent agent): no P0/P1 and release-ready;
+  two P2 edge findings (directory evidence and Superseded/Reversed with NA
+  evidence) were fixed and regression-tested. Directory evidence is allowed only
+  for decision records, while superseded/reversed decisions must cite the evidence
+  that changed them.
+- Post-fix full `scripts/test_skill.sh`, Plugin equality, and Codex runtime drift
+  checks all PASS.
+- Plugin wrapper and Codex runtime were synchronized from this source and both
+  drift checks PASS.
+
+State:
+
+- This project-records layer is accepted locally but not yet committed or pushed.
+- The previous post-release HANDOFF refresh is also still local; both documentation
+  changes can be committed together or separately after review.
+- The records audit never writes project files. Persistent record updates remain
+  normal project writes requiring disclosure and user confirmation.
+
+## Release Record — 2026-08-11: Layout v2 + Git Safety Gate
+
+Purpose: record the reviewed, tested, committed, and pushed release of both the
+unified Bioflow project-directory governance layer and the read-only Git safety
+gate.
+
+Release:
+
+- New commit: `c4d180e feat: add layout v2 governance and Git safety gate`.
+- Pushed to `origin/main` at `git@github.com:Qgzeng-Bio/Bio-workflow.git` with
+  fast-forward range `a76d35b..c4d180e`.
+- The publication also released the two previously local commits:
+  - `900ba43 fix: harden workspace steward contracts and gates`
+  - `e502fbd docs: document stricter workspace safety gates`
+- Commit size: 146 files, 7888 insertions, 1686 deletions.
+- The user’s Chinese GitHub-collaboration handbook was explicitly included by
+  user choice. Its CRLF line endings were normalized to LF and 12 trailing
+  whitespace issues were removed; no prose content was intentionally changed.
+
+Pre-release review:
+
+- Round 1 (independent agent): no P0; one P1 staging-completeness risk and four
+  P2 findings. All were fixed: plugin `--check` ignores excluded cache cleanup,
+  claim-audit infers the manifest project root, asset fixtures are exempt from
+  broad bioinformatics ignore globs, and HANDOFF records the intentional
+  compatibility changes.
+- Round 2 (manual + executable checks after agent API/limit failures): the Git
+  audit fixture no longer self-triggers the credential heuristic; full-repo
+  `git_project_audit.py` PASSed over 273 candidates with no WARN/BLOCK.
+
+Final gates before commit:
+
+- Explicit staging of every modified and required untracked file; no `git add .`.
+- `git diff --cached --check`: PASS after handbook whitespace normalization.
+- `git_project_audit.py --staged-only`: PASS over 147 staged candidates.
+- `scripts/sync_plugin_wrapper.sh --check`: PASS.
+- `scripts/sync_install.sh` dry-run: PASS apart from the deliberately excluded
+  local Chinese handbook in the source tree.
+- Final `scripts/test_skill.sh`: PASS.
+- Plugin wrapper and Codex runtime were synchronized from the released source.
+
+Publication notes:
+
+- `main` and `origin/main` both resolved to `c4d180e` immediately after push,
+  and the tracked worktree was clean before this post-release HANDOFF refresh.
+- Pi and Claude consume the source through symlinks; run Pi `/reload` or start a
+  new Pi/Codex/Claude session to refresh cached skill discovery/content.
+- The default SSH helper selected proxy port 18082, which reset connections.
+  Push used a one-shot SSH proxy override through working port 23180; no SSH
+  configuration was modified.
+- This HANDOFF-only refresh is intentionally local until reviewed and separately
+  committed/pushed by explicit user approval.
+
+## Feature Update — 2026-08-11: Git/GitHub Project Safety Gate
 
 Purpose: add the first executable Git/GitHub collaboration layer after directory
 layout v2: a local, read-only pre-staging safety audit. It creates no repository,
@@ -48,7 +161,8 @@ Validation:
 
 State at this handoff:
 
-- This Git safety layer and layout v2 are accepted locally; no commit or push.
+- This Git safety layer and layout v2 were published together in `c4d180e`;
+  see the release record above.
 - Intentional compatibility changes: `path_manager.py` now rejects a version
   token on analysis-module names (use `<module>/versions/VNN`), and
   `log_claim_audit.sh` derives the default audit path from the manifest's
@@ -61,11 +175,11 @@ State at this handoff:
 - The audit is deliberately heuristic: it does not claim privacy/ethics/licence
   compliance and must not be treated as a professional secret scanner.
 
-## Latest Local Update — 2026-08-11: Layout v2 Directory Governance
+## Feature Update — 2026-08-11: Layout v2 Directory Governance
 
 Purpose: absorb the user's unified project-directory design and Git/GitHub
-handbook into Bioflow. The implementation is accepted locally and synchronized
-to the Plugin wrapper and Codex runtime; nothing has been committed or pushed.
+handbook into Bioflow. The implementation was accepted, synchronized, and
+published with the Git safety gate in `c4d180e`.
 
 New project layout v2 (default for new/empty projects):
 
@@ -135,14 +249,14 @@ Resident-trigger update (separate file):
   `/data9/home/qgzeng/projects/AGENTS.md`, requiring proactive Bioflow loading
   and bounded read-only project takeover inside `/data9/home/qgzeng/projects/`.
 
-Post-acceptance release items:
+Post-acceptance release status:
 
-- Review the final Git diff and decide whether the untracked Chinese handbook is
-  part of the source repository or remains a local design document.
-- Create a local commit and/or push only after separate explicit user approval.
-- Pi and Claude use source symlinks and are current; Codex runtime is synced.
-  Start a new Codex session after discovery/routing changes; use Pi `/reload` or
-  a new Pi session to refresh loaded context/skills.
+- The Chinese handbook decision was resolved by user choice and committed.
+- Layout v2 and the Git safety gate were committed and pushed as `c4d180e`.
+- Pi and Claude use source symlinks and are current; the Codex runtime copy was
+  synchronized before publication. Start a new Codex session after
+  discovery/routing changes; use Pi `/reload` or a new Pi session to refresh
+  loaded context/skills.
 
 ## Latest Local Update — 2026-08-10: Reusable `pi-ask` Dialogs
 

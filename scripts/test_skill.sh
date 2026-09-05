@@ -63,6 +63,7 @@ scripts/test_slurm_preflight.sh
 "$python_bin" scripts/test_path_manager.py
 "$python_bin" scripts/test_git_project_audit.py
 "$python_bin" scripts/test_project_structure_audit.py
+"$python_bin" scripts/test_project_records_audit.py
 "$python_bin" scripts/test_workspace_steward.py
 "$python_bin" scripts/test_workspace_v2.py
 bash scripts/test_workspace_integration.sh

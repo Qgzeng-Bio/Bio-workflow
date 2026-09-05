@@ -104,7 +104,10 @@ strictly disposable: formal outputs, evidence, figures, acceptance, delivery, an
 manuscript records must not cite it. Run `scripts/project_structure_audit.py`
 before submission and acceptance. Formal figures use one package per stable F-ID
 with PDF/PNG at package root, plotting TSV under `source-data/`, checks/JSON/MD
-under `checks/`, and draft alternatives under the owning `tmp/` route. Before
+under `checks/`, and draft alternatives under the owning `tmp/` route. Project status,
+research logs, and decision records follow `references/project-records.md`; run
+`scripts/project_records_audit.py` before acceptance, PR review, or manuscript
+freeze. Before
 any Git staging, commit review, PR, tag, or GitHub release discussion, read
 `references/git-collaboration.md` and run the read-only
 `scripts/git_project_audit.py --project <project>`; never automatically run
@@ -142,6 +145,7 @@ Keep `SKILL.md` as the routing hub. Load detailed references only when their tas
 - `references/task-monitoring.md`: use for running-task, progress, queue, mixed-status, array, blocker, and next-action requests. It defines `Task_Status.tsv` and the read-only `scripts/project_dashboard.py` route.
 - `references/project-layout.md`: use for layout-v2/legacy roots, rawdata/tmp boundaries, one-analysis-one-result entry, internal versions, figure packages, naming, compatibility, and new-project templates.
 - `references/git-collaboration.md`: use for Git/GitHub content boundaries, the read-only `scripts/git_project_audit.py` gate, branch/commit/PR review, research logs, claim-to-manuscript traceability, and tagged result/manuscript freezes.
+- `references/project-records.md`: use for PROJECT_STATUS, dated research logs and Log_Index, Decision_Index, changelog updates, maturity semantics, and the read-only `scripts/project_records_audit.py` gate.
 - `references/path-management.md`: use for one-directory short-name suggestions, bounded naming audits, safe single-directory creation/registration, `Directory_Index.tsv`, and path-manager rule IDs; it is not the project architecture manager.
 - `references/workspace-steward.md`: use for project module trees/DAGs, canonical role routes, workspace planning/application, key artifacts, legacy migration plans, execution preflight, and workspace drift.
 - `references/resume-protocol.md`: use with the lifecycle contract when taking over, checking, or recovering an existing project. It defines bounded evidence collection and mixed-evidence precedence.
@@ -562,6 +566,7 @@ When slimming or reorganizing this skill, preserve behavior before reducing line
 - concise path management through `references/path-management.md` and `scripts/path_manager.py`, with bounded audit, dry-run writes, protected-path guards, and no rename/delete surface
 - layout-v2 boundaries through `references/project-layout.md`, `scripts/project_layout.py`, and `scripts/project_structure_audit.py`, preserving legacy projects while enforcing rawdata/tmp/result-version/figure-package contracts on v2
 - Git/manuscript traceability through `references/git-collaboration.md` and `scripts/git_project_audit.py`, without automatic init/add/commit/push/tag, upload, LFS, or history rewrite
+- project records through `references/project-records.md` and `scripts/project_records_audit.py`, with bounded read-only checks and no automatic record rewriting
 - project workspace stewardship through `references/workspace-steward.md` and `scripts/workspace_steward.py`, with explicit Agent-authored module DAG/routes, stable Analysis_Key in v2, reviewed fingerprints, transactional apply, execution-gate routing, hybrid legacy compatibility, and no path mutation surface
 
 If content is moved out of `SKILL.md`, ensure the destination reference is linked from `Reference routing map`, from a task route, or from the relevant workflow step. Do not create orphan references.

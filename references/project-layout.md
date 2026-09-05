@@ -74,7 +74,7 @@ Store retained scientific outputs, accepted summaries, compact tables, and repro
 
 ### `docs/`
 
-Use `docs/Analysis_Plan.md`, `docs/status/`, `docs/research-log/`, `docs/decisions/`, `docs/methods/`, `docs/validation/`, and `docs/delivery/`. These records explain why work was done, current state, decisions, methods, acceptance, limitations, and handoff. They do not duplicate machine logs.
+Use `docs/Analysis_Plan.md`, `docs/status/`, `docs/research-log/`, `docs/decisions/`, `docs/methods/`, `docs/validation/`, and `docs/delivery/`. These records explain why work was done, current state, decisions, methods, acceptance, limitations, and handoff. They do not duplicate machine logs. `PROJECT_STATUS.md`, dated research logs, `Log_Index.tsv`, `Decision_Index.tsv`, and `CHANGELOG.md` follow `references/project-records.md`.
 
 ### `manuscripts/`
 

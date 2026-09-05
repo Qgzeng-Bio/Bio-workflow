@@ -277,7 +277,8 @@ Layout v2 uses:
 - `results/`: retained scientific outputs, with one stable entry per Analysis_Key,
   internal `versions/VNN`, summary tables, and figure packages;
 - `docs/`: plan, status, research/decision logs, acceptance, methods, interpretation,
-  handoff, and delivery index;
+  handoff, and delivery index; `references/project-records.md` defines the status page,
+  dated research logs, Log_Index, Decision_Index, and changelog contract;
 - `manuscripts/`: one stable directory per paper, claim mapping, supplement, and
   frozen submission releases.
 
@@ -293,14 +294,18 @@ The minimal reproducibility chain is:
 
 ```text
 Question -> Input manifest -> Plan -> Script/config snapshot -> Task/run record
-         -> Output index -> Acceptance evidence -> Claim/report -> Delivery index
+         -> Output index -> Research/decision record -> Acceptance evidence
+         -> Claim/report -> Delivery index
 ```
 
 Use `docs/status/workflow_status.tsv` for one project-wide lifecycle state and
 `docs/status/Task_Status.tsv` for concurrent stages, samples, pilots, jobs, and
 validation tasks in v2; use the existing `reports/` paths in legacy projects.
 Read `references/task-monitoring.md` for the task schema and
-read-only dashboard; do not force a mixed project into one task state.
+read-only dashboard; do not force a mixed project into one task state. Run
+`scripts/project_records_audit.py` before acceptance, PR review, or manuscript
+freeze so research/decision records and the human status page remain internally
+consistent.
 
 Prefer Markdown, YAML, and tab-separated TSV. Do not add a database or workflow
 framework solely to track these artifacts.

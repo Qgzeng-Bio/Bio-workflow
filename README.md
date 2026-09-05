@@ -177,6 +177,7 @@ scripts/submit_and_log.sh --script align.sbatch --manifest config/samples.tsv --
 | `resource_usage_audit.sh` | after a pilot, parse `/usr/bin/time -v` + `sacct` to right-size `--cpus-per-task` / `--mem` / array concurrency |
 | `project_structure_audit.py` | bounded/read-only v2 check for fixed roots, one-analysis-one-result entry, internal versions, tmp evidence, figure packages, and manuscript names |
 | `git_project_audit.py` | read-only Git staging safety gate: blocks rawdata/runtime/cache/raw-alignment/credential/symlink/≥100 MiB candidates; warns for ≥50 MiB and binary/bioinformatics delivery files |
+| `project_records_audit.py` | read-only status/research-log/decision/changelog audit: stable IDs, required sections, index consistency, maturity, formal output evidence, and tmp-reference boundaries |
 | `check_quota.sh` | show QOS occupancy (200/100/600) and dry-run whether a batch would exceed the submit cap |
 | `submit_chunked.sh` | dry-run or submit a large array through per-chunk scripts stored in the current project and re-entering `submit_and_log.sh` |
 | `check_inputs.sh` | input inventory + integrity (exists / readable / non-empty / gzip magic / format sniff / optional pairing) |
@@ -195,6 +196,30 @@ clone, tag, reset, checkout, clean, or a network command. It reports `PASS`,
 `WARN`, or `BLOCK`; rawdata, logs/tmp/cache, raw/alignment files, credentials,
 unsafe symlinks, and ≥100 MiB candidates are blocked. Review any WARN before
 explicitly staging exact paths. Do not use habitual `git add .`.
+
+## Project records
+
+Layout v2 projects maintain a concise human status page, one dated Markdown record
+per important analysis/interpretation change, a machine-readable log index, a
+stable decision index, and a changelog:
+
+```text
+PROJECT_STATUS.md
+CHANGELOG.md
+docs/research-log/Log_Index.tsv
+docs/decisions/Decision_Index.tsv
+```
+
+Audit them read-only before acceptance, PR review, or manuscript freeze:
+
+```bash
+python3 scripts/project_records_audit.py --project /absolute/path/to/project
+```
+
+The audit blocks malformed IDs/dates/sections, unindexed logs, index/log drift,
+formal `tmp/` output references, incomplete Verified/Frozen records, and accepted
+decisions without readable evidence. It never rewrites records. See
+[`references/project-records.md`](references/project-records.md).
 
 ## Resume & failure triage
 

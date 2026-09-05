@@ -98,11 +98,13 @@ workspace_contract = (REFS / "workspace-steward.md").read_text()
 layout = (REFS / "project-layout.md").read_text()
 lifecycle = (REFS / "project-lifecycle.md").read_text()
 monitoring = (REFS / "task-monitoring.md").read_text()
+records_contract = (REFS / "project-records.md").read_text()
 executor = (REFS / "executor-safety.md").read_text()
 agent_metadata = (ROOT / "agents" / "openai.yaml").read_text()
 assert "references/path-management.md" in skill
 assert "references/workspace-steward.md" in skill
 assert "references/git-collaboration.md" in skill and "git_project_audit.py" in skill
+assert "references/project-records.md" in skill and "project_records_audit.py" in skill
 assert "scripts/path_manager.py suggest" in skill
 assert "scripts/workspace_steward.py inspect" in skill
 frontmatter = skill.split("---", 2)[1]
@@ -124,16 +126,23 @@ assert "combined parent/dependency" in workspace_contract
 assert "Analysis_Key" in workspace_contract and "versions/VNN" in workspace_contract
 assert "exact registered script" in workspace_contract
 assert "Producer_Tasks`/`Consumer_Tasks` must exist" in monitoring
+assert "Research_Log_ID" in records_contract and "Decision_Index.tsv" in records_contract
+assert "scripts/project_records_audit.py" in records_contract and "REC_LOG_INDEX" in records_contract
 assert "项目工作区管理" in agent_metadata and "module DAGs" in agent_metadata
 expected_headers = {
     "Workspace_Policy.tsv": "Schema_Version\tEnforcement_Mode\tPlan_Status\tPlan_SHA256\tMax_Audit_Depth\tUpdated_Time",
     "Workspace_Modules.tsv": "Module_ID\tParent_Module\tStage\tShort_Name\tModule_Kind\tDepends_On\tPurpose\tOwner\tCompatibility\tNotes",
     "Workspace_Routes.tsv": "Route_ID\tModule_ID\tPath_Type\tPath_Role\tRelative_Path\tProducer_Tasks\tConsumer_Tasks\tRetention\tRequired\tCompatibility\tPurpose\tNotes",
     "Workspace_Modules_v2.tsv": "Module_ID\tAnalysis_Key\tParent_Module\tStage\tShort_Name\tModule_Kind\tDepends_On\tPurpose\tOwner\tCompatibility\tNotes",
+    "Log_Index.tsv": "Research_Log_ID\tDate\tFilename\tAnalysis_Key\tModule_ID\tTask_ID\tResult_Maturity\tRecord_Status\tTitle\tNotes",
+    "Decision_Index.tsv": "Decision_ID\tDate\tDecision\tEvidence_Path\tAffected_Modules\tAffected_Claims\tStatus\tDecided_By\tNotes",
 }
 for filename, header in expected_headers.items():
     assert (ROOT / "assets" / "project-templates" / filename).read_text().splitlines()[0] == header
-    assert header in workspace_contract
-print("PASS | path manager and Workspace Steward contracts, triggers, schemas, and gates are linked")
+    if filename.startswith("Workspace_"):
+        assert header in workspace_contract
+    if filename in {"Log_Index.tsv", "Decision_Index.tsv"}:
+        assert header in records_contract
+print("PASS | path manager, Workspace Steward, and project-record contracts, triggers, schemas, and gates are linked")
 
 print("PASS | genome evaluation and workflow reference consistency")
