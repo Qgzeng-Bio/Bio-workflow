@@ -4,6 +4,19 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$root"
 
+source_only=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --source-only) source_only=1; shift ;;
+        -h|--help)
+            printf '%s\n' 'Usage: scripts/test_skill.sh [--source-only]' \
+                'Default: full source, runtime integration, and plugin distribution checks.' \
+                '--source-only: source checks only; not a runtime/deployment/release verdict.'
+            exit 0 ;;
+        *) printf 'ERROR | Unknown argument: %s\n' "$1" >&2; exit 2 ;;
+    esac
+done
+
 python_bin="${PYTHON_BIN:-}"
 if [[ -z "$python_bin" ]]; then
     for candidate in "${HOME%/}/anaconda3/bin/python" python3 python; do
@@ -44,7 +57,9 @@ trap 'rm -rf "$cache"' EXIT
 export PYTHONPYCACHEPREFIX="$cache/pycache"
 
 printf '[TEST] Shell syntax\n'
-bash -n scripts/*.sh assets/slurm-templates/*.sbatch
+for script in scripts/*.sh assets/slurm-templates/*.sbatch; do
+    bash -n "$script"
+done
 
 printf '[TEST] Python compile\n'
 "$python_bin" -m py_compile scripts/*.py
@@ -64,10 +79,13 @@ scripts/test_slurm_preflight.sh
 "$python_bin" scripts/test_git_project_audit.py
 "$python_bin" scripts/test_project_structure_audit.py
 "$python_bin" scripts/test_project_records_audit.py
+"$python_bin" scripts/test_publication_trace_audit.py
 "$python_bin" scripts/test_workspace_steward.py
 "$python_bin" scripts/test_workspace_v2.py
 bash scripts/test_workspace_integration.sh
 bash scripts/test_layout_v2_integration.sh
+"$python_bin" scripts/test_sync_install.py
+"$python_bin" scripts/test_maintenance_modes.py
 
 quick_validate="${HOME%/}/.codex/skills/.system/skill-creator/scripts/quick_validate.py"
 if [[ -f "$quick_validate" ]]; then
@@ -77,6 +95,7 @@ else
     printf '[WARN] Skill validator unavailable; skipped: %s\n' "$quick_validate"
 fi
 
+if [[ "$source_only" -eq 0 ]]; then
 printf '[TEST] Pi integration\n'
 pi_agent_dir="${PI_CODING_AGENT_DIR:-${HOME%/}/.pi/agent}"
 pi_bioflow="$pi_agent_dir/skills/bioflow/SKILL.md"
@@ -131,10 +150,20 @@ PY
 else
     printf '[WARN] Optional pi-ask package unavailable; Bioflow will use text questions: %s\n' "$pi_ask_dir"
 fi
+else
+    printf '[SKIP] Runtime/Pi integration excluded by --source-only\n'
+fi
 
 printf '[TEST] Program cards\n'
-"$python_bin" scripts/validate_program_cards.py
+# --check-drafts validates active cards as well as optional draft cards.
 "$python_bin" scripts/validate_program_cards.py --check-drafts
+
+if [[ "$source_only" -eq 1 ]]; then
+    printf '[TEST] Source Git whitespace\n'
+    git diff --check
+    printf 'PASS | bioflow source suite (runtime/plugin distribution not checked)\n'
+    exit 0
+fi
 
 plugin_validate="${HOME%/}/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py"
 if [[ -f "$plugin_validate" && -d plugins/bioflow ]]; then

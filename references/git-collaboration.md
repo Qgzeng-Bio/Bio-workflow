@@ -109,6 +109,8 @@ Review the staged diff, actual rendered figures, source-table consistency, Metho
 
 ## Freeze and release
 
+Read `references/publication-traceability.md` before creating a paper package, Claim Evidence Map, manuscript anchor, release manifest, frozen copy, or tag. `Claim_Evidence_Map.tsv` is the cross-layer relationship authority; `Release_Manifest.yaml` is the single release/freeze authority. Do not add duplicate Source Table, Manuscript Status, or release-checklist indexes.
+
 Use annotated tags for meaningful scientific/manuscript milestones rather than `final_v2` filenames. A frozen submission release records:
 
 - tag and commit SHA;
@@ -118,7 +120,7 @@ Use annotated tags for meaningful scientific/manuscript milestones rather than `
 - acceptance and claim-check status;
 - known limitations and rerun entry point.
 
-Do not silently replace a frozen artifact. Corrections or revisions become a new commit/tag and retain the reason for change.
+Do not silently replace a frozen artifact. Corrections or revisions become a new release ID and, after separate approval, a new commit/tag. Creating directories, copying artifacts, hashing large files, committing, tagging, and pushing remain separately disclosed actions; a template or Draft manifest is not permission to perform them.
 
 ## Safe first setup
 

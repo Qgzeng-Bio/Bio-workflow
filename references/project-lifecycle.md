@@ -4,6 +4,14 @@ Use this contract to start, resume, manage, validate, interpret, and deliver a
 bioinformatics project. It is the single source of truth for project stages;
 task-specific playbooks add domain checks but must not redefine these stages.
 
+Each **Minimum next action** below is a checkpoint, not a requirement to stop
+after one step. Read-only requests end with the requested assessment. Explicit
+execution requests continue within the authorized scope until their deliverable
+is verified, a real blocker remains, or an existing approval gate is reached.
+All stage-specific Allowed, Forbidden, and Transition gate rules still apply;
+never infer authorization from a stage label or a successful check. Keep running
+work immutable while pursuing only independent, already-authorized work.
+
 ## Contents
 
 - [Evidence rules](#evidence-rules)

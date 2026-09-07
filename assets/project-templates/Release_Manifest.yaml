@@ -1,0 +1,35 @@
+schema_version: bioflow.release.v1
+paper_id: null
+release_id: null
+status: Draft
+release_date: null
+
+git:
+  source_commit_sha: null
+  release_tag: null
+
+authorities:
+  result_manifest: config/result_manifest.yaml
+  claim_evidence_map: null
+  manuscript_source: null
+  acceptance_path: docs/validation/Acceptance_Report.md
+  rerun_entrypoint: null
+
+selected:
+  claims: []
+  versions: []
+  figures: []
+
+artifacts: []
+
+checklist:
+  result_contract_required: false
+  structure_audit_required: false
+  records_audit_required: false
+  trace_audit_required: false
+  limitations_reviewed: false
+  sensitive_data_reviewed: false
+  licenses_reviewed: false
+  coauthor_approval_recorded: false
+
+known_limitations: []

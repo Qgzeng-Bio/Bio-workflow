@@ -102,6 +102,16 @@ but failure evidence overrides stale optimistic status. Missing or empty explici
 outputs after completion are reported as failed integrity checks. Queue/accounting
 unavailability is a warning, not proof that a job finished.
 
+## Request scope
+
+A monitoring or next-step advice request ends with evidence and recommendations;
+it does not authorize repairs, status writes, or queue changes. If the user also
+explicitly requests execution, use this read-only snapshot as the checkpoint for
+the relevant lifecycle route, then continue only within that authorized scope
+and its existing gates. A smallest-next-action recommendation is not itself a
+stopping rule or an approval. Do not alter active work; independent authorized
+tasks may proceed while another branch is waiting.
+
 ## Reporting contract
 
 A progress answer should cover:
