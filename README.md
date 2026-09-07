@@ -34,12 +34,43 @@ These are baked in as defaults so an agent doesn't rediscover them every time:
 ```text
 bioflow/
 ├── SKILL.md                 # skill entry point
-├── HANDOFF.md               # running change log
+├── HANDOFF.md               # concise current state and next steps
+├── docs/maintenance/        # portable source verification summaries
+├── docs/history/            # local-only full historical snapshots
+├── reports/                 # development plans and verification evidence
 ├── agents/openai.yaml       # agent metadata
 ├── assets/slurm-templates/  # per_sample_array.sbatch, per_chunk_array.sbatch
 ├── references/              # software resource cards, validation checklists, resume protocol
 └── scripts/                 # read-only checks + guarded executors (below)
 ```
+
+## Documentation and runtime boundaries
+
+- `SKILL.md` is the execution/routing entry; `references/` defines its detailed contracts.
+- README explains use and maintenance; [HANDOFF.md](HANDOFF.md) records current state,
+  not a chronological journal. [The source milestone summary](docs/maintenance/20260907.md)
+  records the current validation scope and limitations.
+- `docs/maintenance/` holds portable summaries. Full snapshots under local
+  `docs/history/` may contain account-specific history and are intentionally not
+  required in a clone.
+- Local `reports/` contains detailed development evidence and backups, not a second
+  runtime contract or a collection of accepted biological results. Do not bulk-stage
+  it or include account-rule material in a Bioflow feature commit.
+- The Chinese GitHub handbook is design background; its illustrative directory
+  names do not override the active [layout contract](references/project-layout.md).
+
+The Codex runtime payload is explicitly limited to `SKILL.md`, `references/`,
+`scripts/`, `assets/`, and `agents/`. `sync_install.sh` does not send README,
+HANDOFF, `docs/`, `reports/`, `plugins/`, local settings, or caches. Target-only
+files are retained even inside payload directories: this is not a strict mirror,
+and obsolete scripts may remain until a separately reviewed cleanup. Files are
+not presumed tool-owned merely from their directory. An incomplete source or unsafe
+payload root is rejected before synchronization.
+
+For this account, Pi and Claude use source symlinks; Codex uses a real installed
+copy. Source edits and a source-only test PASS do not imply that the Codex copy or
+plugin wrapper is deployed. See HANDOFF for the current differences. No sync or
+Git write is implied by a test result.
 
 ## The executor trio — generate → gate → submit
 
@@ -178,6 +209,7 @@ scripts/submit_and_log.sh --script align.sbatch --manifest config/samples.tsv --
 | `project_structure_audit.py` | bounded/read-only v2 check for fixed roots, one-analysis-one-result entry, internal versions, tmp evidence, figure packages, and manuscript names |
 | `git_project_audit.py` | read-only Git staging safety gate: blocks rawdata/runtime/cache/raw-alignment/credential/symlink/≥100 MiB candidates; warns for ≥50 MiB and binary/bioinformatics delivery files |
 | `project_records_audit.py` | read-only status/research-log/decision/changelog audit: stable IDs, required sections, index consistency, maturity, formal output evidence, and tmp-reference boundaries |
+| `publication_trace_audit.py` | read-only claim/version/figure/source-table/manuscript join plus Frozen release closure, SHA-256, prerequisite audits, and optional local Git tag verification |
 | `check_quota.sh` | show QOS occupancy (200/100/600) and dry-run whether a batch would exceed the submit cap |
 | `submit_chunked.sh` | dry-run or submit a large array through per-chunk scripts stored in the current project and re-entering `submit_and_log.sh` |
 | `check_inputs.sh` | input inventory + integrity (exists / readable / non-empty / gzip magic / format sniff / optional pairing) |
@@ -220,6 +252,24 @@ The audit blocks malformed IDs/dates/sections, unindexed logs, index/log drift,
 formal `tmp/` output references, incomplete Verified/Frozen records, and accepted
 decisions without readable evidence. It never rewrites records. See
 [`references/project-records.md`](references/project-records.md).
+
+## Publication traceability
+
+When a paper package exists, audit its Claim-to-manuscript evidence chain:
+
+```bash
+python3 scripts/publication_trace_audit.py --project /absolute/path/to/project
+python3 scripts/publication_trace_audit.py --project /absolute/path/to/project --paper P01-genome --format json
+python3 scripts/publication_trace_audit.py --project /absolute/path/to/project --paper P01-genome --release R01 --check-git
+```
+
+The audit is bounded and read-only. Draft gaps produce WARN; Reviewed mappings
+require claim-contract PASS, validated versions, manuscript-ready figures, exact
+figure-package source TSVs, and one Markdown anchor per Claim ID. Frozen releases
+add selected-set closure, prerequisite audits, accepted evidence, rerun entry,
+frozen artifact SHA-256, complete checklist/limitations, and optional local-only
+Git commit/tag verification. See
+[`references/publication-traceability.md`](references/publication-traceability.md).
 
 ## Resume & failure triage
 
@@ -328,8 +378,9 @@ validated for every local input/tool version.
 
 ## Plugin wrapper install
 
-The raw skill install remains the recommended path for daily use because Pi,
-Codex, and Claude Code can share one source checkout:
+A raw skill install remains suitable for daily use. The following is a generic
+symlink setup for users who deliberately want all three agents to share a source
+checkout. It is not this account's current Codex-copy deployment procedure:
 
 ```bash
 mkdir -p ~/agent-skills ~/.pi/agent/skills ~/.codex/skills ~/.claude/skills
@@ -469,12 +520,20 @@ The helper scripts no longer hardcode `/data9/home/qgzeng`. They follow whoever 
 `SKILL.md` is the source of truth; validate after changes:
 
 ```bash
-scripts/test_skill.sh                            # core suite, including optional Pi integration checks
-scripts/sync_install.sh                          # dry-run Codex runtime sync
-scripts/sync_install.sh --yes                    # write Codex runtime sync
+scripts/test_skill.sh --source-only              # source checks; not a runtime/distribution verdict
+scripts/test_skill.sh                            # full suite, including Pi and strict plugin checks
+scripts/sync_install.sh                          # dry-run managed Codex runtime payload sync
+scripts/sync_install.sh --yes                    # approved runtime payload write; all target-only files retained
 scripts/sync_plugin_wrapper.sh                   # dry-run Codex plugin-wrapper sync
 scripts/sync_plugin_wrapper.sh --yes             # write and validate plugin wrapper
 ```
+
+Use `--source-only` while editing source with deliberately unsynchronized mirrors.
+It still runs source regression, skill/card validation, and whitespace checks;
+its success marker explicitly excludes runtime and plugin-distribution validation.
+The default command retains the full integration and plugin-equality checks and
+may correctly fail while the wrapper is behind. Do not deploy merely to hide that
+state. New sync/mode regressions use isolated temporary HOME/toolchain fixtures.
 
 For `slurm_preflight.sh` changes, test at least one passing and one failing script before
 trusting the new rules.
