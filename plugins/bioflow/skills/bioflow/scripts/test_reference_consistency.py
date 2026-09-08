@@ -99,12 +99,14 @@ layout = (REFS / "project-layout.md").read_text()
 lifecycle = (REFS / "project-lifecycle.md").read_text()
 monitoring = (REFS / "task-monitoring.md").read_text()
 records_contract = (REFS / "project-records.md").read_text()
+publication_contract = (REFS / "publication-traceability.md").read_text()
 executor = (REFS / "executor-safety.md").read_text()
 agent_metadata = (ROOT / "agents" / "openai.yaml").read_text()
 assert "references/path-management.md" in skill
 assert "references/workspace-steward.md" in skill
 assert "references/git-collaboration.md" in skill and "git_project_audit.py" in skill
 assert "references/project-records.md" in skill and "project_records_audit.py" in skill
+assert "references/publication-traceability.md" in skill
 assert "scripts/path_manager.py suggest" in skill
 assert "scripts/workspace_steward.py inspect" in skill
 frontmatter = skill.split("---", 2)[1]
@@ -128,6 +130,11 @@ assert "exact registered script" in workspace_contract
 assert "Producer_Tasks`/`Consumer_Tasks` must exist" in monitoring
 assert "Research_Log_ID" in records_contract and "Decision_Index.tsv" in records_contract
 assert "scripts/project_records_audit.py" in records_contract and "REC_LOG_INDEX" in records_contract
+assert "claim_evidence.v1" in publication_contract and "bioflow.release.v1" in publication_contract
+assert "<!-- bioflow-claim:" in publication_contract and "init_project.sh" in publication_contract
+assert "scripts/publication_trace_audit.py" in publication_contract
+assert (ROOT / "scripts" / "publication_trace_audit.py").is_file()
+assert (ROOT / "scripts" / "test_publication_trace_audit.py").is_file()
 assert "项目工作区管理" in agent_metadata and "module DAGs" in agent_metadata
 expected_headers = {
     "Workspace_Policy.tsv": "Schema_Version\tEnforcement_Mode\tPlan_Status\tPlan_SHA256\tMax_Audit_Depth\tUpdated_Time",
@@ -136,6 +143,7 @@ expected_headers = {
     "Workspace_Modules_v2.tsv": "Module_ID\tAnalysis_Key\tParent_Module\tStage\tShort_Name\tModule_Kind\tDepends_On\tPurpose\tOwner\tCompatibility\tNotes",
     "Log_Index.tsv": "Research_Log_ID\tDate\tFilename\tAnalysis_Key\tModule_ID\tTask_ID\tResult_Maturity\tRecord_Status\tTitle\tNotes",
     "Decision_Index.tsv": "Decision_ID\tDate\tDecision\tEvidence_Path\tAffected_Modules\tAffected_Claims\tStatus\tDecided_By\tNotes",
+    "Claim_Evidence_Map.tsv": "Schema_Version\tPaper_ID\tClaim_ID\tManuscript_Path\tFigure_Refs\tSource_Table_Paths\tVersion_Refs\tMapping_Status\tNotes",
 }
 for filename, header in expected_headers.items():
     assert (ROOT / "assets" / "project-templates" / filename).read_text().splitlines()[0] == header
@@ -143,6 +151,17 @@ for filename, header in expected_headers.items():
         assert header in workspace_contract
     if filename in {"Log_Index.tsv", "Decision_Index.tsv"}:
         assert header in records_contract
-print("PASS | path manager, Workspace Steward, and project-record contracts, triggers, schemas, and gates are linked")
+    if filename == "Claim_Evidence_Map.tsv":
+        assert header in publication_contract
+release_template = yaml.safe_load((ROOT / "assets" / "project-templates" / "Release_Manifest.yaml").read_text())
+assert release_template["schema_version"] == "bioflow.release.v1"
+assert release_template["status"] == "Draft" and release_template["artifacts"] == []
+assert set(release_template["git"]) == {"source_commit_sha", "release_tag"}
+assert all(value is False for value in release_template["checklist"].values())
+manuscript_template = (ROOT / "assets" / "project-templates" / "Manuscript.md").read_text()
+assert "<!-- bioflow-claim:" not in manuscript_template
+assert (ROOT / "assets" / "project-templates" / "Version_Index.tsv").read_text().splitlines()[0] == expected_headers.get("Version_Index.tsv", "Version_ID\tParent_Version\tStatus\tSelected\tInput_Manifest\tParameter_File\tScript_Commit\tResult_Path\tAcceptance_Path\tNotes")
+assert (ROOT / "assets" / "project-templates" / "Figure_Index.tsv").read_text().splitlines()[0] == "Figure_ID\tFigure_Title\tFigure_Directory\tSource_Result\tPlot_Script\tStatus\tManuscript_Target\tNotes"
+print("PASS | path, workspace, project-record, and publication-trace contracts are linked")
 
 print("PASS | genome evaluation and workflow reference consistency")

@@ -7,7 +7,7 @@ usage() {
 Usage:
   scripts/sync_install.sh [--yes] [--source DIR] [--target DIR] [--python PYTHON] [--skip-validate]
 
-Synchronize this source skill into the Codex runtime copy.
+Synchronize only the managed Bioflow runtime payload into the Codex copy.
 
 Defaults:
   --source  directory above this script
@@ -15,11 +15,17 @@ Defaults:
 
 Behavior:
   - without --yes: dry-run only; prints rsync itemized changes and writes nothing.
-  - with    --yes: validates source, rsyncs with --delete, then validates target.
+  - with    --yes: validates source, syncs the managed payload, then validates target.
+  - requires a complete source: SKILL.md, references/, scripts/, assets/, agents/.
+  - target-only files are retained, even inside payload directories; this is not a strict mirror.
+  - removal of obsolete or local target files requires a separate reviewed cleanup.
 
-Excluded from sync:
-  .git, .claude, .codex, .agents, tmp, the local Chinese handbook,
-  __pycache__, *.pyc
+Managed runtime payload:
+  SKILL.md, references/, scripts/, assets/, agents/
+
+Not sent or automatically cleaned from the target:
+  README.md, HANDOFF.md, docs/, reports/, plugins/, .git, local agent settings,
+  tmp/, __pycache__, *.pyc, and all other paths outside the managed payload.
 
 Options:
   --yes            actually write to the Codex runtime copy
@@ -60,6 +66,18 @@ resolve_path() {
     realpath -m -- "$p"
 }
 
+# Trailing '/' and '/.' dereference a link for Bash -L. Remove only those
+# suffixes, without collapsing '..' or resolving links before this guard.
+target_guard="$target_dir"
+while :; do
+    case "$target_guard" in
+        */) target_guard="${target_guard%/}" ;;
+        */.) target_guard="${target_guard%/.}" ;;
+        *) break ;;
+    esac
+done
+[[ -n "$target_guard" ]] || target_guard=/
+[[ ! -L "$target_guard" ]] || { echo "ERROR | Target must not be a symlink: $target_dir" >&2; exit 2; }
 source_dir="$(resolve_path "$source_dir")"
 target_dir="$(resolve_path "$target_dir")"
 
@@ -70,6 +88,23 @@ case "$target_dir" in
     *) echo "ERROR | Target must be under $home_skills: $target_dir" >&2; exit 2 ;;
 esac
 [[ "$source_dir" != "$target_dir" ]] || { echo "ERROR | Source and target are identical; refusing to sync" >&2; exit 2; }
+case "$target_dir/" in "$source_dir/"*) echo "ERROR | Target must not be inside source" >&2; exit 2 ;; esac
+case "$source_dir/" in "$target_dir/"*) echo "ERROR | Source must not be inside target" >&2; exit 2 ;; esac
+[[ ! -L "$source_dir/SKILL.md" ]] || { echo "ERROR | Source SKILL.md must not be a symlink" >&2; exit 2; }
+if [[ -L "$target_dir/SKILL.md" || ( -e "$target_dir/SKILL.md" && ! -f "$target_dir/SKILL.md" ) ]]; then
+    echo "ERROR | Target SKILL.md must be a regular file when present" >&2
+    exit 2
+fi
+for payload_dir in references scripts assets agents; do
+    if [[ ! -d "$source_dir/$payload_dir" || -L "$source_dir/$payload_dir" ]]; then
+        echo "ERROR | Source payload directory missing or unsafe: $payload_dir" >&2
+        exit 2
+    fi
+    if [[ -L "$target_dir/$payload_dir" || ( -e "$target_dir/$payload_dir" && ! -d "$target_dir/$payload_dir" ) ]]; then
+        echo "ERROR | Target payload directory is unsafe: $payload_dir" >&2
+        exit 2
+    fi
+done
 
 validator="${HOME%/}/.codex/skills/.system/skill-creator/scripts/quick_validate.py"
 
@@ -111,7 +146,7 @@ fi
 
 rsync_args=(
     -a
-    --delete
+    --checksum
     --itemize-changes
     --omit-dir-times
     --exclude '/.git/'
@@ -122,6 +157,12 @@ rsync_args=(
     --exclude '/生物信息学分析与论文写作_GitHub协同指导手册.md'
     --exclude '__pycache__/'
     --exclude '*.pyc'
+    --include '/SKILL.md'
+    --include '/references/***'
+    --include '/scripts/***'
+    --include '/assets/***'
+    --include '/agents/***'
+    --exclude '*'
 )
 
 if [[ "$do_sync" -eq 0 ]]; then
@@ -147,13 +188,12 @@ rsync "${rsync_args[@]}" "$source_dir/" "$target_dir/"
 
 if [[ "$do_sync" -eq 1 ]]; then
     run_validate "$target_dir"
-    echo "DIFF   | source vs Codex runtime, expected differences should be source-local only"
-    diff -qr \
-        --exclude=.git \
-        --exclude=.claude \
-        --exclude=.codex \
-        --exclude=.agents \
-        --exclude=tmp \
-        --exclude=__pycache__ \
-        "$source_dir" "$target_dir" || true
+    echo "CHECK  | current source payload only; target-only files are retained"
+    remaining="$(rsync -n "${rsync_args[@]}" "$source_dir/" "$target_dir/")"
+    if [[ -n "$remaining" ]]; then
+        printf '%s\n' "$remaining" >&2
+        echo "ERROR | Managed runtime payload still differs after sync" >&2
+        exit 1
+    fi
+    echo "PASS   | current source payload synchronized; target extras retained (not a strict mirror)"
 fi

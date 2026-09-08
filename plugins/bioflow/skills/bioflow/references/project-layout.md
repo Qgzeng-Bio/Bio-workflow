@@ -78,7 +78,7 @@ Use `docs/Analysis_Plan.md`, `docs/status/`, `docs/research-log/`, `docs/decisio
 
 ### `manuscripts/`
 
-Create one stable directory per paper only when writing begins, for example `manuscripts/P01-genome/`. Keep Markdown/LaTeX/BibTeX sources, supplement, Claim–Evidence Map, and submission releases here. Do not maintain a second changing copy of analysis figures. A submission release may contain a frozen figure snapshot tied to a Git tag, commit, and checksum.
+Create one stable directory per paper only when writing begins, for example `manuscripts/P01-genome/`. Keep Markdown/LaTeX/BibTeX sources, supplement, `Claim_Evidence_Map.tsv`, and submission releases here. Read `references/publication-traceability.md` for the exact paper/map/release contract. Ordinary project initialization never guesses or creates a `P01-*` package. Do not maintain a second changing copy of analysis figures. A reviewed release may contain a frozen figure snapshot tied to a Git tag, commit, and checksum.
 
 ## One analysis, one result entry
 

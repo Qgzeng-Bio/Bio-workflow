@@ -107,7 +107,10 @@ with PDF/PNG at package root, plotting TSV under `source-data/`, checks/JSON/MD
 under `checks/`, and draft alternatives under the owning `tmp/` route. Project status,
 research logs, and decision records follow `references/project-records.md`; run
 `scripts/project_records_audit.py` before acceptance, PR review, or manuscript
-freeze. Before
+freeze. For manuscript work, run `scripts/publication_trace_audit.py` against the
+explicit paper package; Frozen releases additionally require selected-set closure,
+frozen artifact SHA-256, prerequisite audits, and optional local `--check-git`
+verification. Before
 any Git staging, commit review, PR, tag, or GitHub release discussion, read
 `references/git-collaboration.md` and run the read-only
 `scripts/git_project_audit.py --project <project>`; never automatically run
@@ -146,6 +149,7 @@ Keep `SKILL.md` as the routing hub. Load detailed references only when their tas
 - `references/project-layout.md`: use for layout-v2/legacy roots, rawdata/tmp boundaries, one-analysis-one-result entry, internal versions, figure packages, naming, compatibility, and new-project templates.
 - `references/git-collaboration.md`: use for Git/GitHub content boundaries, the read-only `scripts/git_project_audit.py` gate, branch/commit/PR review, research logs, claim-to-manuscript traceability, and tagged result/manuscript freezes.
 - `references/project-records.md`: use for PROJECT_STATUS, dated research logs and Log_Index, Decision_Index, changelog updates, maturity semantics, and the read-only `scripts/project_records_audit.py` gate.
+- `references/publication-traceability.md`: use with read-only `scripts/publication_trace_audit.py` when creating/reviewing a paper package, Claim_Evidence_Map, manuscript claim anchors, cross-linking versions/figures/source tables, or planning a frozen Release_Manifest and Git tag.
 - `references/path-management.md`: use for one-directory short-name suggestions, bounded naming audits, safe single-directory creation/registration, `Directory_Index.tsv`, and path-manager rule IDs; it is not the project architecture manager.
 - `references/workspace-steward.md`: use for project module trees/DAGs, canonical role routes, workspace planning/application, key artifacts, legacy migration plans, execution preflight, and workspace drift.
 - `references/resume-protocol.md`: use with the lifecycle contract when taking over, checking, or recovering an existing project. It defines bounded evidence collection and mixed-evidence precedence.
@@ -193,7 +197,9 @@ scripts/project_state_audit.sh --project <project_dir> --max-depth 3
 
 Default to the current directory. Do not walk upward to parent roots or scan account/project roots unless the user confirms a deliberately broader audit. Add `--check-queue` only when audit evidence or user-provided context contains job IDs or SLURM log clues. This may call `squeue`/`sacct`, but it must not submit, cancel, resubmit, repair, or write status files.
 
-Read `references/project-lifecycle.md` and `references/resume-protocol.md` when resuming a project. Classify one of the nine canonical stages from `Project_intake` through `Delivered`, including the exception state `Failed`, then take only that stage's minimum safe next action.
+Read `references/project-lifecycle.md` and `references/resume-protocol.md` when resuming a project. Classify one of the nine canonical stages from `Project_intake` through `Delivered`, including the exception state `Failed`, then use that stage's minimum safe next action as the first checkpoint, not an automatic stopping point.
+
+For a read-only status, review, or diagnosis request, finish with the requested evidence and report; do not turn it into implementation. For an explicit execution or continuation request, proceed through the authorized checkpoints until the requested deliverable is verified, a real dependency blocks it, or an existing confirmation gate is reached. Recheck each stage's evidence and permissions before proceeding; a completed checkpoint never grants approval for a new action. A queued/running branch remains monitor-only, but does not stop independent work already authorized by the user.
 
 For resume work, make sure the answer covers this content (in whatever wording, order, and layout the agent/user style prefers — no fixed template or emoji required):
 
@@ -565,7 +571,7 @@ When slimming or reorganizing this skill, preserve behavior before reducing line
 - validation gate through `references/validation-checklists.md`
 - concise path management through `references/path-management.md` and `scripts/path_manager.py`, with bounded audit, dry-run writes, protected-path guards, and no rename/delete surface
 - layout-v2 boundaries through `references/project-layout.md`, `scripts/project_layout.py`, and `scripts/project_structure_audit.py`, preserving legacy projects while enforcing rawdata/tmp/result-version/figure-package contracts on v2
-- Git/manuscript traceability through `references/git-collaboration.md` and `scripts/git_project_audit.py`, without automatic init/add/commit/push/tag, upload, LFS, or history rewrite
+- Git/manuscript traceability through `references/git-collaboration.md`, `references/publication-traceability.md`, and `scripts/git_project_audit.py`, without automatic paper creation, init/add/commit/push/tag, release copying, upload, LFS, or history rewrite
 - project records through `references/project-records.md` and `scripts/project_records_audit.py`, with bounded read-only checks and no automatic record rewriting
 - project workspace stewardship through `references/workspace-steward.md` and `scripts/workspace_steward.py`, with explicit Agent-authored module DAG/routes, stable Analysis_Key in v2, reviewed fingerprints, transactional apply, execution-gate routing, hybrid legacy compatibility, and no path mutation surface
 

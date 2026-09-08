@@ -49,7 +49,7 @@ Agent 根据明确的研究目标和项目证据选择路线；脚本负责确�
 - 普通写入一律确认、claim检查自动落盘等条款仍未修改，不能称作整套规则已对齐。
 - 账号规则及仓库外Skill的修改不属于本次Bioflow功能提交。
 
-### B. Publication Traceability：源码验证和复核完成，未部署
+### B. 源码与payload部署检查完成
 
 目标链：Claim_ID → Version_ID → Figure_ID → source-data TSV → manuscript anchor → Release Manifest → commit/tag。
 
@@ -63,7 +63,7 @@ Agent 根据明确的研究目标和项目证据选择路线；脚本负责确�
 已实现Draft/Reviewed映射和Frozen closure；保持Version/Figure原有表头，避免重复权威表。
 `source_commit_sha`与`release_tag`分开，避免Manifest包含自身commit哈希的循环。
 本轮先修复三个已知缺陷，再关闭独立复核发现的文件集合、Git读取/tag身份、版本/图路径、逐图源表及acceptance下游重读问题；正反例和最终源码套件均PASS，已发现阻塞经复核关闭。
-当前没有将该层部署至Codex副本或插件wrapper，也没有真实论文包验收或Git发布。
+本次已按批准范围将Codex与plugin wrapper payload同步到 `9589449c25f839cfbdda97ffbc6343a4d3810c78`，并通过139个文件的内容SHA256、字节数、模式、无删除及CLI入口检查；这不代表真实论文包或科学验收，软件提交状态以Git为准。部署摘要见[deployment summary](docs/maintenance/deployment-20260907.md)。
 
 ### C. 当前维护：文档职责、同步边界、源码独立测试
 
@@ -92,13 +92,13 @@ Agent 根据明确的研究目标和项目证据选择路线；脚本负责确�
 | 本仓库 | 开发源码 | 当前源码提交状态以Git为准，不等于分发发布 |
 | `~/.pi/agent/skills/bioflow` | 指向本仓库的软链接 | 源码文件实时可见；会话需重新加载 |
 | `~/.claude/skills/bioflow` | 指向本仓库的软链接 | 同上 |
-| `~/.codex/skills/bioflow` | 独立副本 | 指定文案已更新；论文溯源功能未部署 |
-| `plugins/bioflow/skills/bioflow` | 生成的分发副本 | 已知落后；不得冒充当前源码验收 |
+| `~/.codex/skills/bioflow` | 独立副本 | payload已同步到 `9589449c25f839cfbdda97ffbc6343a4d3810c78`；文件/元数据/CLI入口检查通过；非科学验收 |
+| `plugins/bioflow/skills/bioflow` | 生成的分发副本 | payload已同步到 `9589449c25f839cfbdda97ffbc6343a4d3810c78`；文件/元数据/CLI入口检查通过；本部署快照独立提交，实际commit/push状态以Git为准 |
 
 运行payload只包含 `SKILL.md`、`references/`、`scripts/`、`assets/`、`agents/`。
 README/HANDOFF/docs/reports/plugins等不发送至Codex运行包。
 全部目标独有文件保持原样，包括payload目录内的旧脚本；需要清理时另列精确清单并确认。
-不要手工修改生成的wrapper。源码通过后才讨论精确同步范围，不能为了测试PASS自动部署。
+不要手工修改生成的wrapper。本次精确同步范围已按批准清单完成；本部署快照独立提交，实际commit/push状态以Git为准。
 
 ## 验证入口
 

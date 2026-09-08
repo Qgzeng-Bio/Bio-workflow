@@ -5,6 +5,17 @@ restarting valid work. Read `references/project-lifecycle.md` first; it is the
 single source of truth for stages, transition gates, startup planning, management
 artifacts, and `workflow_status.tsv`.
 
+## Request scope and stopping conditions
+
+A state check, review, or diagnosis request stays read-only and ends with its
+requested report. An explicit execution or continuation request uses the stage's
+minimum safe next action as a checkpoint, then continues within the original
+scope until the deliverable is verified, a real blocker is identified, or an
+existing confirmation gate requires a decision. Re-evaluate evidence and
+permissions at each checkpoint; this protocol never grants submission, status
+writes, result replacement, or changes to active work. Waiting on one branch does
+not block independent work that the user has already authorized.
+
 ## Response content
 
 Report the primary stage, concrete evidence, blockers, and smallest safe next
