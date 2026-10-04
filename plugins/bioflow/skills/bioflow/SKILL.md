@@ -71,7 +71,7 @@ Require user confirmation before:
 - changing formal analysis parameters after a plan has been agreed
 - downloading large raw data
 
-Before any write or job action, state purpose, logic, exact command or edit method, affected paths and approximate size, expected outputs, and risks including overwrite, disk, runtime, and queue impact.
+Before any action in the confirmation list above, state purpose, logic, exact command or edit method, affected paths and approximate size, expected outputs, and risks including overwrite, disk, runtime, and queue impact. For the low-risk project edits listed above, briefly say what will change and proceed unless the loaded project rules require more.
 
 ## Interactive clarification on Pi
 
@@ -81,7 +81,7 @@ make short user requests sufficient:
 - inspect bounded project evidence first and do not ask for facts that can be inferred reliably;
 - call `ask_user` only for consequential missing choices, with concise distinct options, consequences, and an evidence-based recommendation when available;
 - keep questionnaires short and allow a custom answer when fixed options are incomplete;
-- never treat `ask_user` as authorization; after the disclosure required above, use `confirm_action` for a write, submit, overwrite, install, delete, move, cancellation, resubmission, or concurrency change;
+- never treat `ask_user` as authorization; after the disclosure required above, use `confirm_action` for a gated action: a protected-path or result-replacing write, submit, overwrite, install, delete, move, cancellation, resubmission, or concurrency change. Do not add a `confirm_action` round for low-risk project edits that the loaded rules already allow;
 - if either tool is unavailable or reports non-TUI mode, fall back to concise text choices and keep all confirmation gates.
 
 ## Project layout
@@ -124,7 +124,7 @@ When starting/taking over a project, planning modules, choosing output paths,
 writing scripts, preparing submission, or auditing project organization, read
 `references/workspace-steward.md`. Use `scripts/workspace_steward.py inspect` first,
 let the Agent derive a module DAG and role routes from bounded evidence, then run
-`plan`. No managed execution may leave Draft status. Before writing a script use
+`plan`. Managed execution is blocked while the plan is Draft; reach Reviewed with a matching fingerprint first. Before writing a script use
 `route`; preview `apply` and obtain normal write confirmation before `--yes`;
 pass project/module/task and explicit output/tmp routes through generation and
 submission gates. Run `audit` before acceptance/delivery. Existing projects stay
@@ -367,11 +367,13 @@ The checker is cheap and guards against silent claim drift. Run it against the r
 
 Do not trigger for pure tool-usage questions, SLURM failure debugging, file listing, manifest schema discussion, or repeating an already checked result in the same answer with the same manifest path.
 
-After running the checker, also append an audit row:
+Append a persisted audit row only when the record is required (acceptance, delivery, manuscript freeze) or the user asks for it. `log_claim_audit.sh` reruns the checker and appends to `docs/validation/Claim_Audit.tsv` (v2) or `reports/claim_audit.tsv` (legacy), so disclose the target and obtain confirmation unless the already-approved action explicitly includes this append:
 
 ```bash
 bash scripts/log_claim_audit.sh --manifest <path> --job-id <id_or_NA>
 ```
+
+For a read-only check, report the checker status and command and state that no audit row was written. An unpersisted check does not satisfy an acceptance or release gate that requires the audit record.
 
 ## Workflow
 
@@ -569,7 +571,7 @@ When slimming or reorganizing this skill, preserve behavior before reducing line
 - program-level route through program cards and onboarding
 - task routing to playbooks and software cards
 - surface-aware scientific plotting delegation to `paperplot-skills`
-- result-claim gate through `check_result_contract.py`, auto-trigger phrases, and `log_claim_audit.sh`
+- result-claim gate through `check_result_contract.py`, auto-trigger phrases, and `log_claim_audit.sh` for persisted audits
 - SLURM safety layer through `gen_sbatch.sh`, `slurm_preflight.sh`, `prepare_submission.sh`, `submit_and_log.sh`, and `submit_chunked.sh`
 - validation gate through `references/validation-checklists.md`
 - concise path management through `references/path-management.md` and `scripts/path_manager.py`, with bounded audit, dry-run writes, protected-path guards, and no rename/delete surface
