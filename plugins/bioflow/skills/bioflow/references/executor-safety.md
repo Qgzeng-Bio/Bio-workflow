@@ -14,6 +14,11 @@ scripts. It supports `scripts/gen_sbatch.sh`, `scripts/slurm_preflight.sh`,
 
 ## Generate robust scripts
 
+Before editing an existing script, check whether it backs a queued or running task
+(`Script_Path` in `Task_Status.tsv`, `run_record.tsv`, or `workflow_status.tsv`, plus `squeue`
+for a recorded Job ID). Never edit such a script in place; write the fix to a new script or
+retained version and keep the registered file matching the submitted job.
+
 To generate a SLURM skeleton that already satisfies core rules, use:
 
 ```bash

@@ -61,6 +61,13 @@ Low-risk actions inside the working project:
 - run syntax checks such as `bash -n`, R parse checks, or Python import/compile checks
 - inspect queue state and existing logs
 
+Exception for active jobs: before editing a script, check whether it is the `Script_Path` of a
+queued or running task in `Task_Status.tsv`, `run_record.tsv`, or `workflow_status.tsv`
+(query `squeue` when a Job ID is recorded). If it is, do not edit it in place, even when the
+user asks to fix it: the registered file must keep matching what the scheduler is running.
+Leave it unchanged and write the fix to a new script or retained version, say it must not be
+resubmitted until the current job ends or is deliberately cancelled, or ask the user first.
+
 Require user confirmation before:
 
 - `sbatch`, `scancel`, resubmission, or changing job concurrency
