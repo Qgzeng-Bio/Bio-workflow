@@ -104,7 +104,10 @@ strictly disposable: formal outputs, evidence, figures, acceptance, delivery, an
 manuscript records must not cite it. Run `scripts/project_structure_audit.py`
 before submission and acceptance. Formal figures use one package per stable F-ID
 with PDF/PNG at package root, plotting TSV under `source-data/`, checks/JSON/MD
-under `checks/`, and draft alternatives under the owning `tmp/` route. Project status,
+under `checks/`, and draft alternatives under the owning `tmp/` route. Figure-only
+updates reuse that package and the file-level revision policy in
+`references/project-layout.md`; do not apply analysis-version directories to
+routine redraws. Project status,
 research logs, and decision records follow `references/project-records.md`; run
 `scripts/project_records_audit.py` before acceptance, PR review, or manuscript
 freeze. For manuscript work, run `scripts/publication_trace_audit.py` against the

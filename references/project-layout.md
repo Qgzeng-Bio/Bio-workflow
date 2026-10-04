@@ -111,7 +111,11 @@ A repeated attempt with the same scientific purpose is a version inside the exis
 
 ## Retained versions inside a module
 
-When more than one scientifically useful run must be retained:
+This section governs retained scientific analysis runs and data versions, not
+routine revisions of the same figure. For figure-only changes, use
+[Figure revisions](#figure-revisions-same-package-file-level-versions) below.
+
+When more than one scientifically useful analysis run must be retained:
 
 ```text
 results/01-assembly/
@@ -160,6 +164,41 @@ results/01-assembly/figures/
 - the one editable plotting script stays under `scripts/<module>/plotting/`.
 - candidate layouts and old/new experiments stay under `tmp/<module>/plotting/FNNN/`.
 - Draft packages may be incomplete and generate WARN. `Validated`, `Manuscript_ready`, `Frozen`, completed-producer, or delivered packages must have the complete contract.
+
+### Figure revisions: same package, file-level versions
+
+For redraws, labels, colours, layout, or other updates to the same stable F-ID,
+keep the existing figure-package directory. This rule also applies to compatible
+legacy figure packages; it is not a request to migrate an existing project.
+
+- Update the current PDF/PNG in place after any required overwrite approval. If
+  an earlier image must remain visible, keep file-level revisions such as
+  `F001_Assembly_Overview_v2.pdf` and `_v2.png` alongside the original files in
+  the **same package root**. Follow the user's chosen filenames; do not create a
+  fresh version automatically for every render.
+- Do **not** create `v2/`, `v3/`, `V02/`, or `versions/V02/` directories for these
+  figure revisions, put each redraw under a new analysis-version directory, or
+  assign a new F-ID merely because the image changed.
+- Reuse the existing `source-data/` and `checks/` directories. When retaining
+  file-level revisions, use the matching filename suffix for plotting tables,
+  metadata, captions, and QA records; do not repeat the directory skeleton for
+  each revision. Keep editable plotting code in its existing `scripts/` route.
+- Keep the existing Figure_Index/README current with the selected PDF and PNG
+  filenames (using compatible filename fields or notes where needed), so the
+  user can open the current images without descending through version folders.
+- Refresh the affected provenance, hashes, rendered-image QA, and review state
+  with the image. A previous PASS or human acceptance does not transfer to new
+  pixels. Candidate, reviewed, and frozen states remain distinct.
+- This is **not** permission to overwrite a frozen/published baseline, skip an
+  overwrite or backup gate, or delete old results. Existing nested figure
+  versions are not automatically moved or removed; flattening or cleanup needs
+  the usual explicit impact/rollback review and applicable approval.
+
+A new analysis/data version may still use the module's `versions/VNN` contract.
+Its existence alone does not require moving or duplicating a figure package;
+record the figure's actual data version in provenance instead. Keep this section
+as the authority for figure revision storage rather than repeating a parallel
+rule in every project's AGENTS.md.
 
 ## Module and file naming
 

@@ -1,7 +1,14 @@
 # Bioflow Skill Handoff
 
-Last reviewed: 2026-09-07
+Last reviewed: 2026-09-13
 Scope: 当前源码、验证与分发状态；不是历史开发日志。
+
+## 本次更新：图件修订的保存规则（2026-09-13）
+
+- 用户要求同图同目录更新，图片修订不再逐版建立目录。唯一规则正文位于 `references/project-layout.md` 的 `Figure revisions: same package, file-level versions`；Skill入口、路径/Workspace说明和README仅对齐并引用。分析数据版本、覆盖批准和冻结保护未放宽。
+- 布局回归测试新增同一图包仅保留`_v2.pdf/.png`文件名的正例；相关结构测试、规则链接和`git diff --check`通过，未重跑无关完整套件。
+- Pi源码入口可读；经具体批准，Codex副本已同步5个变更文件并逐文件SHA256核对。备份为本地`reports/Figure_Revision_Runtime_Backup_20260913.json`。
+- 仅源码与Codex运行副本完成；未提交/推送Git，生成的plugin wrapper未更新。下方旧提交号是此前里程碑，不代表这次规则已发布。
 
 ## 项目定位
 
@@ -21,6 +28,8 @@ Agent 根据明确的研究目标和项目证据选择路线；脚本负责确�
 - 仓库：`/data9/home/qgzeng/projects/3-Biotools_create/bio-workflow`。
 - 当前分支：`main`。
 - 本次维护的开发起点：`524be33 feat: add project records layer`，2026-09-05；它不是永久代表当前HEAD的记录。
+- 最新完成并已提交推送：`7959e94 chore: sync Bioflow plugin payload and record deployment`；包含wrapper/部署文档共20个文件。当前检查本地tracking一致，之后以Git为准。
+- 本地可选提交发布回执：`logs/deployment-publish-20260907/Receipt.json`（可选，不要求克隆仓库存在）。
 - 前一里程碑：`c4d180e feat: add layout v2 governance and Git safety gate`，2026-09-04。
 - 提交组织：功能与项目文档分开。当前HEAD、暂存区和未推送提交数以`git log`、`git status --short --branch`为准；未fetch时不推断远端实时状态。
 - 本地可能保留未跟踪的原始报告和备份；不要执行`git add -A`、reset或clean将其混入或删除。
@@ -35,7 +44,7 @@ Agent 根据明确的研究目标和项目证据选择路线；脚本负责确�
 5. 结果身份：一个 Analysis_Key 对应一个结果模块；版本放 versions/VNN，图使用稳定 F-ID。
 6. Evidence-to-Claim：结果合同区分 PASS/WARN/BLOCK/UNCERTAIN，不从缺失规则推断有效。
 7. Project Records：状态、研究日志、Log_Index、Decision_Index 和 changelog；已进入524be33。
-8. Publication Traceability：把已支持的结论接入论文和冻结发布；当前仍是未发布功能。
+8. Publication Traceability：把已支持的结论接入论文和冻结发布；源码和payload部署已完成，并随`7959e94`保存远端；不等于真实科学验收。
 
 ## 当前工作线
 
@@ -63,7 +72,7 @@ Agent 根据明确的研究目标和项目证据选择路线；脚本负责确�
 已实现Draft/Reviewed映射和Frozen closure；保持Version/Figure原有表头，避免重复权威表。
 `source_commit_sha`与`release_tag`分开，避免Manifest包含自身commit哈希的循环。
 本轮先修复三个已知缺陷，再关闭独立复核发现的文件集合、Git读取/tag身份、版本/图路径、逐图源表及acceptance下游重读问题；正反例和最终源码套件均PASS，已发现阻塞经复核关闭。
-本次已按批准范围将Codex与plugin wrapper payload同步到 `9589449c25f839cfbdda97ffbc6343a4d3810c78`，并通过139个文件的内容SHA256、字节数、模式、无删除及CLI入口检查；这不代表真实论文包或科学验收，软件提交状态以Git为准。部署摘要见[deployment summary](docs/maintenance/deployment-20260907.md)。
+本次已按批准范围将Codex与plugin wrapper 139-file payload同步到 `9589449c25f839cfbdda97ffbc6343a4d3810c78`，并通过139个文件的内容SHA256、字节数、模式、无删除及CLI入口检查；源payload对应`9589449`，`7959e94`仅保存wrapper/部署文档，不是新的payload版本。这不代表真实论文包或科学验收，软件提交状态以Git为准。部署摘要见[deployment summary](docs/maintenance/deployment-20260907.md)。
 
 ### C. 当前维护：文档职责、同步边界、源码独立测试
 
@@ -92,8 +101,8 @@ Agent 根据明确的研究目标和项目证据选择路线；脚本负责确�
 | 本仓库 | 开发源码 | 当前源码提交状态以Git为准，不等于分发发布 |
 | `~/.pi/agent/skills/bioflow` | 指向本仓库的软链接 | 源码文件实时可见；会话需重新加载 |
 | `~/.claude/skills/bioflow` | 指向本仓库的软链接 | 同上 |
-| `~/.codex/skills/bioflow` | 独立副本 | payload已同步到 `9589449c25f839cfbdda97ffbc6343a4d3810c78`；文件/元数据/CLI入口检查通过；非科学验收 |
-| `plugins/bioflow/skills/bioflow` | 生成的分发副本 | payload已同步到 `9589449c25f839cfbdda97ffbc6343a4d3810c78`；文件/元数据/CLI入口检查通过；本部署快照独立提交，实际commit/push状态以Git为准 |
+| `~/.codex/skills/bioflow` | 独立副本 | Codex payload已同步到 `9589449c25f839cfbdda97ffbc6343a4d3810c78`；文件/元数据/CLI入口检查通过；非科学验收 |
+| `plugins/bioflow/skills/bioflow` | 生成的分发副本 | wrapper 139-file payload已同步到 `9589449c25f839cfbdda97ffbc6343a4d3810c78`；文件/元数据/CLI入口检查通过；`7959e94`仅保存wrapper/部署文档，不是新的payload版本 |
 
 运行payload只包含 `SKILL.md`、`references/`、`scripts/`、`assets/`、`agents/`。
 README/HANDOFF/docs/reports/plugins等不发送至Codex运行包。
@@ -120,7 +129,7 @@ bash scripts/sync_plugin_wrapper.sh --check
 ## 下次接手顺序
 
 1. 读取沿途规则、本文和当前 `git status --short --branch`。
-2. 本轮源码维护已完成；先看验证报告，区分已完成源码/复核与尚未执行的部署、科学验收和发布。
+2. 本轮代码、同步和远端保存已完成；当前仅这次HANDOFF更新尚未提交。先看验证报告，区分已完成源码/复核/部署与尚未执行的科学验收；不自动重复同步或测试。建议新会话加载本文，后续按真实使用问题迭代；科学验收及真实Agent/Claude运行测试尚未完成。
 3. 若继续B线，读取论文溯源合同及其fixture，不从历史日志重建参数。
 4. 若继续规则文案，单独界定剩余冲突；不顺手改SOP/PaperPlot/账号规则。
 5. 任何真实部署、Git写入或结果替换，先披露精确差异并获批。

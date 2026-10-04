@@ -75,8 +75,10 @@ chromosome, figure, and accession IDs remain exact.
 Non-module helper/result subdirectories may omit a stage only when they do not
 create a second analysis entry, for example `tables`, `figures`, `source-data`,
 or a registered tool-owned directory. They live below the one stable
-`results/NN-analysis-key/` module, not beside it. Retained analysis versions use
-only `versions/VNN`.
+`results/NN-analysis-key/` module, not beside it. Retained analysis/data versions
+use `versions/VNN`. Figure-only revisions instead follow
+[the same-package, file-level policy](project-layout.md#figure-revisions-same-package-file-level-versions);
+do not name/create a directory for each redraw.
 
 ### Forbidden redundancy
 
@@ -87,7 +89,9 @@ Final  New  Latest  Result  Results  Report  Reports  Output  Outputs  Run
 ```
 
 A version token is not allowed in an analysis-module name. Retained scientific
-iterations use `versions/VNN` plus `Version_Index.tsv`. Dates/semantic versions
+analysis iterations use `versions/VNN` plus `Version_Index.tsv`; this directory
+rule does not apply to figure-file revisions governed by `project-layout.md`.
+Dates/semantic versions
 remain available for non-module artifact snapshots only when a real collision or
 release requires them; they never replace provenance.
 

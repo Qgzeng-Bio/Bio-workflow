@@ -127,8 +127,9 @@ python3 scripts/workspace_steward.py audit --project /abs/project
 The Agent derives module semantics/DAG from bounded project evidence; the CLI
 validates explicit TSV contracts and never guesses biology from names or mtime.
 In layout v2, each stable `Analysis_Key` owns one `results/NN-analysis-key`
-entry; retained iterations use only `versions/VNN`, and formal records cannot
-cite disposable `tmp/`.
+entry; retained analysis/data iterations use `versions/VNN`, and formal records
+cannot cite disposable `tmp/`. Figure-only revisions follow the same-package,
+file-level policy below instead.
 `apply --yes` transactionally creates/registers the approved non-empty tree.
 Managed Artifacts remain under their owning modules. Script/submission gates
 require the task's exact registered script and propagate every Workspace audit
@@ -333,7 +334,11 @@ The handoff never averages heterogeneous raw metrics and refuses layout-v2
 publication evidence under `tmp/`. A retained figure uses one
 `results/<module>/figures/FNNN_Name/` package: PDF/PNG and README at root,
 plotting TSV under `source-data/`, generated MD/JSON under `checks/`, and the
-editable plotting script under `scripts/<module>/plotting/`. PaperPlot uses the
+editable plotting script under `scripts/<module>/plotting/`. Updates to the same
+figure reuse that package; the authoritative
+[figure revision policy](references/project-layout.md#figure-revisions-same-package-file-level-versions)
+uses in-place updates or filename suffixes such as `_v2`, not nested revision
+directories, while preserving overwrite and frozen-result gates. PaperPlot uses the
 explicit `Key_Sample` and then performs visual design/export/checks. See
 [`references/paperplot-handoff-contract.md`](references/paperplot-handoff-contract.md).
 
