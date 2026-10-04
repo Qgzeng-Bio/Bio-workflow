@@ -127,7 +127,7 @@ results/01-assembly
 
 An analysis module requires Script, Log, Temporary, and exactly one root Result directory at `results/<module-path>`. A publication module requires Script, Plot_Data, Figure, and exactly one Manuscript route. Its retained data root is `results/<module-path>`, while its manuscript may independently use `manuscripts/P01-short-name`; manuscript numbering never renames analysis results.
 
-A v2 retained version may appear only at:
+A v2 retained analysis/data version may appear only at:
 
 ```text
 results/<module-path>/versions/VNN
@@ -138,6 +138,10 @@ A managed Figure route names one package only:
 ```text
 results/<module-path>/figures/FNNN_Name
 ```
+
+Figure-only revisions keep this same Figure route and follow the
+[file-level revision policy](project-layout.md#figure-revisions-same-package-file-level-versions).
+Do not create a new module or version-directory route merely for a redraw.
 
 The package is allowed to be incomplete while its producer is planned/running. Once its producer is complete/validated or the project is delivered, audit requires PDF, PNG, `README.md`, a TSV under `source-data/`, Markdown and JSON under `checks/`, plus the parent `Figure_Index.tsv`.
 

@@ -64,6 +64,18 @@ with tempfile.TemporaryDirectory(prefix="bioflow-structure-test.") as tmp_name:
     clean = cli(project)
     assert clean.returncode == 0, clean.stdout + clean.stderr
 
+    # Figure revisions use filenames in the same package, not nested VNN dirs.
+    # The layout audit must accept selected _v2 media without requiring the
+    # original unversioned names or an extra figure/module directory.
+    for extension in ("pdf", "png"):
+        (package / f"F001_Assembly_Overview.{extension}").rename(
+            package / f"F001_Assembly_Overview_v2.{extension}")
+    revised = cli(project)
+    assert revised.returncode == 0, revised.stdout + revised.stderr
+    for extension in ("pdf", "png"):
+        (package / f"F001_Assembly_Overview_v2.{extension}").rename(
+            package / f"F001_Assembly_Overview.{extension}")
+
     figure_index = module / "figures" / "Figure_Index.tsv"
     bad_status = [{
         "Figure_ID": "F001", "Figure_Title": "Assembly overview", "Figure_Directory": "F001_Assembly_Overview",
