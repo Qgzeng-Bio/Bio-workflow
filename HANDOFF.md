@@ -1,14 +1,14 @@
 # Bioflow Skill Handoff
 
-Last reviewed: 2026-09-13
+Last reviewed: 2026-10-04
 Scope: 当前源码、验证与分发状态；不是历史开发日志。
 
 ## 本次更新：图件修订的保存规则（2026-09-13）
 
 - 用户要求同图同目录更新，图片修订不再逐版建立目录。唯一规则正文位于 `references/project-layout.md` 的 `Figure revisions: same package, file-level versions`；Skill入口、路径/Workspace说明和README仅对齐并引用。分析数据版本、覆盖批准和冻结保护未放宽。
-- 布局回归测试新增同一图包仅保留`_v2.pdf/.png`文件名的正例；相关结构测试、规则链接和`git diff --check`通过，未重跑无关完整套件。
+- 布局回归测试新增同一图包仅保留`_v2.pdf/.png`文件名的正例。2026-10-04 `bash scripts/test_skill.sh --source-only` 全套PASS（201项PASS、0 FAIL，仅预期SKIP运行集成）；本地日志`logs/test_source_only_20261004_110623.log`。
 - Pi源码入口可读；经具体批准，Codex副本已同步5个变更文件并逐文件SHA256核对。备份为本地`reports/Figure_Revision_Runtime_Backup_20260913.json`。
-- 仅源码与Codex运行副本完成；未提交/推送Git，生成的plugin wrapper未更新。下方旧提交号是此前里程碑，不代表这次规则已发布。
+- 源码已提交为`e811402`；plugin wrapper经批准用`sync_plugin_wrapper.sh --yes`同步这5个文件，`--check`无漂移、插件校验通过，提交为`364eebf`。推送状态以`git status --short --branch`为准。
 
 ## 项目定位
 
@@ -129,7 +129,7 @@ bash scripts/sync_plugin_wrapper.sh --check
 ## 下次接手顺序
 
 1. 读取沿途规则、本文和当前 `git status --short --branch`。
-2. 本轮代码、同步和远端保存已完成；当前仅这次HANDOFF更新尚未提交。先看验证报告，区分已完成源码/复核/部署与尚未执行的科学验收；不自动重复同步或测试。建议新会话加载本文，后续按真实使用问题迭代；科学验收及真实Agent/Claude运行测试尚未完成。
+2. 图件修订规则的源码、Codex副本和plugin wrapper已同步并提交（`e811402`、`364eebf`）；是否已推送以Git为准。先看验证报告，区分已完成源码/复核/部署与尚未执行的科学验收；不自动重复同步或测试。建议新会话加载本文，后续按真实使用问题迭代；科学验收及真实Agent/Claude运行测试尚未完成。
 3. 若继续B线，读取论文溯源合同及其fixture，不从历史日志重建参数。
 4. 若继续规则文案，单独界定剩余冲突；不顺手改SOP/PaperPlot/账号规则。
 5. 任何真实部署、Git写入或结果替换，先披露精确差异并获批。
